@@ -17,14 +17,17 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "db:migrate:all": "tsx scripts/migrate-all.ts",
-    "db:seed": "tsx packages/db/src/seed.ts",
+    "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx packages/adapters/timetable-lgu/src/cli.ts",
     "prepare": "husky"
   },
   "devDependencies": {
     "@campusos/config": "workspace:*",
+    "@campusos/db": "workspace:*",
+    "@campusos/tenants": "workspace:*",
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
+    "dotenv": "^16.4.7",
     "eslint": "^9.17.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
