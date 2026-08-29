@@ -1,4 +1,5 @@
-// Public surface of @campusos/db. Populated in the multi-tenancy phase with the
-// schema, tenant-context helper, and repositories. The raw client is exported
-// ONLY from '@campusos/db/client' so app code cannot reach it by accident.
-export {};
+// Public surface of @campusos/db. The raw client is intentionally NOT exported
+// here — it lives at '@campusos/db/client' and is banned from app code.
+export * from './schema/index';
+export * from './repositories/index';
+export { withTenant, type TenantTransaction } from './tenant-context';

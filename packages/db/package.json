@@ -9,7 +9,8 @@
     "./client": "./src/client.ts",
     "./schema": "./src/schema/index.ts",
     "./tenant-context": "./src/tenant-context.ts",
-    "./repositories": "./src/repositories/index.ts"
+    "./repositories": "./src/repositories/index.ts",
+    "./migrate": "./src/migrate.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -17,7 +18,7 @@
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/migrate.ts"
+    "db:migrate": "tsx src/migrate-cli.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.3",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@campusos/config": "workspace:*",
+    "dotenv": "^16.4.7",
     "drizzle-kit": "^0.30.1",
     "eslint": "^9.17.0",
     "tsx": "^4.19.2",
