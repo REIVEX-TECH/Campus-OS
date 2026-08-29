@@ -1,0 +1,36 @@
+{
+  "name": "campusos",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "db:migrate:all": "tsx scripts/migrate-all.ts",
+    "db:seed": "tsx packages/db/src/seed.ts",
+    "ingest:lgu": "tsx packages/adapters/timetable-lgu/src/cli.ts",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@campusos/config": "workspace:*",
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

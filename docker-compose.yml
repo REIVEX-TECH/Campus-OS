@@ -1,0 +1,30 @@
+# Postgres for contributors who don't run a native install.
+# Native Postgres users can ignore this and run scripts/db-bootstrap.sql directly.
+#
+# The named volume persists data across `docker compose down`. On FIRST init the
+# bootstrap script runs automatically (creates the campusos_app role and the
+# campusos_dev / campusos_test databases). If you already run Postgres on 5432,
+# stop it or change the host port mapping below.
+services:
+  postgres:
+    image: postgres:16
+    container_name: campusos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - campusos-pgdata:/var/lib/postgresql/data
+      - ./scripts/db-bootstrap.sql:/docker-entrypoint-initdb.d/01-bootstrap.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  campusos-pgdata:
+    name: campusos-pgdata

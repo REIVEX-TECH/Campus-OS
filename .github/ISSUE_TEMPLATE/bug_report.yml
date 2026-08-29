@@ -1,0 +1,40 @@
+name: Bug report
+description: Something is not working as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps, commands, and URLs.
+      placeholder: |
+        1. Run `pnpm ...`
+        2. Open ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: tenant
+    attributes:
+      label: Tenant / module
+      description: Which tenant slug and/or module is affected (if any).
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, pnpm version, Postgres version, browser.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant logs. Redact any secrets or PII first.
+      render: shell
