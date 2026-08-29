@@ -1,3 +1,9 @@
-// Tenant config schema, types, and registry/resolver. Populated in the
-// multi-tenancy phase.
-export {};
+export {
+  tenantConfigSchema,
+  brandingSchema,
+  seoSchema,
+  slugSchema,
+  type TenantConfig,
+  type TenantConfigInput,
+} from './schema';
+export { createTenantRegistry, subdomainOf, type TenantRegistry } from './registry';
