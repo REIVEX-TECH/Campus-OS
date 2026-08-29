@@ -8,9 +8,15 @@ importers:
 
   .:
     devDependencies:
+      '@campusos/adapter-timetable-lgu':
+        specifier: workspace:*
+        version: link:packages/adapters/timetable-lgu
       '@campusos/config':
         specifier: workspace:*
         version: link:packages/config
+      '@campusos/core':
+        specifier: workspace:*
+        version: link:packages/core
       '@campusos/db':
         specifier: workspace:*
         version: link:packages/db
@@ -93,6 +99,34 @@ importers:
       tailwindcss:
         specifier: ^4.0.0
         version: 4.3.3
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.2
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(supports-color@7.2.0)(tsx@4.23.12)(yaml@2.9.0)
+
+  packages/adapters/timetable-lgu:
+    dependencies:
+      '@campusos/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@campusos/config':
+        specifier: workspace:*
+        version: link:../../config
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.12
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

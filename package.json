@@ -18,11 +18,13 @@
     "test:integration": "turbo run test:integration",
     "db:migrate:all": "tsx scripts/migrate-all.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "ingest:lgu": "tsx packages/adapters/timetable-lgu/src/cli.ts",
+    "ingest:lgu": "tsx scripts/ingest-lgu.ts",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@campusos/adapter-timetable-lgu": "workspace:*",
     "@campusos/config": "workspace:*",
+    "@campusos/core": "workspace:*",
     "@campusos/db": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
