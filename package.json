@@ -24,6 +24,7 @@
   "devDependencies": {
     "@campusos/config": "workspace:*",
     "@campusos/db": "workspace:*",
+    "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
