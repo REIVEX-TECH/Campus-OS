@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { db, sqlClient } from '../src/client';
+import { getDb, getSqlClient } from '../src/client';
 import { runBaseMigrations } from '../src/migrate';
 import { createTenantRepositories, universitiesRepository } from '../src/repositories/index';
 import { rooms } from '../src/schema/tenant';
@@ -14,7 +14,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   // TRUNCATE is not subject to RLS and campusos_app owns the tables.
-  await db.execute(
+  await getDb().execute(
     sql`truncate table "rooms", "buildings", "campuses", "universities" restart identity cascade`,
   );
   await universitiesRepository.upsert({ slug: 'aaa', name: 'Alpha University', timezone: 'UTC' });
@@ -22,7 +22,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await sqlClient.end();
+  await getSqlClient().end();
 });
 
 async function seedRoom(tenant: string, roomName: string) {
@@ -72,7 +72,7 @@ describe('cross-tenant isolation (Postgres RLS)', () => {
   it('no tenant context sees nothing (default deny)', async () => {
     await seedRoom('aaa', 'A-101');
     // db.select outside withTenant → app.tenant_id unset → RLS denies all.
-    const leaked = await db.select().from(rooms);
+    const leaked = await getDb().select().from(rooms);
     expect(leaked).toEqual([]);
   });
 });

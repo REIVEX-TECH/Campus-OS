@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { db, type Db } from './client';
+import { getDb, type Db } from './client';
 
 /** The transaction handle passed to a `withTenant` callback. */
 export type TenantTransaction = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -14,7 +14,7 @@ export function withTenant<T>(
   tenantId: string,
   fn: (tx: TenantTransaction) => Promise<T>,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
+  return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
     return fn(tx);
   });

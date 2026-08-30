@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -85,5 +85,63 @@ jobs:
       - name: Run all migrations
         run: pnpm db:migrate:all
 
-      - name: Integration tests (repositories + tenant isolation)
+      # Runs every package's test:integration — db RLS isolation AND the
+      # timetable module's enriched-read tests.
+      - name: Integration tests (RLS isolation + module reads)
         run: pnpm test:integration
+
+  e2e:
+    name: e2e smoke (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGPASSWORD: postgres
+      DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_dev
+      TEST_DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_test
+      APP_DOMAIN: localhost:3100
+      SOURCE_MODE: fixture
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bootstrap roles and databases
+        run: psql -h localhost -U postgres -f scripts/db-bootstrap.sql
+
+      - name: Migrate and seed
+        run: pnpm db:migrate:all && pnpm db:seed
+
+      - name: Ingest LGU fixtures
+        run: pnpm ingest:lgu
+
+      - name: Build web
+        run: pnpm --filter web build
+
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Run e2e smoke
+        run: pnpm --filter web test:e2e

@@ -196,6 +196,9 @@ and zero queries.
 - One logical change per commit. No "misc fixes" commits.
 - PR description covers: what, why, how to test, screenshots for UI, migration
   notes, breaking changes.
+- Every feature branch includes a ready-to-paste PR body at
+  `docs/pr/NNNN-<slug>.md`, written from the branch's actual content before
+  handing over for review.
 - Update `README`, `docs/`, and `.env.example` in the same PR as the code.
 
 ---
