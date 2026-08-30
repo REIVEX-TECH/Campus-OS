@@ -18,6 +18,9 @@ next-env.d.ts
 # test / coverage
 coverage/
 
+# session-probe artifacts (captured live HTML for inspection)
+.probe/
+
 # logs
 *.log
 npm-debug.log*

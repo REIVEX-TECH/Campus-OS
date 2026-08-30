@@ -1,183 +1,228 @@
 import 'dotenv/config';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config';
 import { PORTAL_PATHS, parseOptions } from './portal';
 
-// Diagnostic ONLY. Mints an anonymous session at the portal root, then reuses it
-// to POST the real endpoints, to decide whether ingestion can be fully
-// autonomous or needs a human-supplied session. It NEVER bypasses or solves a
-// Cloudflare challenge — if one is detected it reports and stops. Hits the live
-// portal (a handful of polite requests): run locally, never in CI.
+// Diagnostic ONLY. Replicates the real browser sequence — mint an anonymous
+// session at index.php, perform the "Continue to Home Page" action, then hit the
+// data endpoints — to decide whether ingestion can be fully autonomous. It also
+// tests an optional env-supplied browser session. It NEVER bypasses a Cloudflare
+// challenge; it only detects and reports one. Hits the live portal (a handful of
+// polite requests): run locally, never in CI. Cookie values are never printed.
 
 const DELAY_MS = 1500;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const ARTIFACT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '.probe');
 
-const CF_MARKERS = [
-  /just a moment/i,
-  /cf-browser-verification/i,
-  /challenge-platform/i,
-  /_cf_chl/i,
-  /attention required/i,
-  /cf-mitigated/i,
-];
+// Real Cloudflare *challenge* signals only — NOT mere "served via Cloudflare".
+function isCloudflareChallenge(status: number, headers: Headers, body: string): boolean {
+  if ((headers.get('cf-mitigated') ?? '').toLowerCase() === 'challenge') return true;
+  const challenge =
+    /just a moment/i.test(body) ||
+    /attention required/i.test(body) ||
+    /challenge-platform/i.test(body) ||
+    /cf-browser-verification/i.test(body);
+  return challenge && (status === 403 || status === 503 || status === 429);
+}
 
-function isCloudflareChallenge(status: number, body: string): boolean {
-  const marked = CF_MARKERS.some((re) => re.test(body));
+function isLoginPage(body: string): boolean {
   return (
-    marked || ((status === 403 || status === 503 || status === 429) && /cloudflare/i.test(body))
+    /<title>[^<]*login/i.test(body) ||
+    /continue to home/i.test(body) ||
+    /type=["']password["']/i.test(body)
   );
 }
 
-function isLoginForm(body: string): boolean {
-  return /type=["']password["']/i.test(body) || /name=["']password["']/i.test(body);
-}
-
-function snippet(body: string): string {
+function scrub(body: string): string {
   return body
     .replace(/PHPSESSID=[^;"'\s]+/gi, 'PHPSESSID=***')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 240);
+    .replace(/cf_clearance=[^;"'\s]+/gi, 'cf_clearance=***');
+}
+function snippet(body: string): string {
+  return scrub(body).replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-interface Cookies {
-  phpsessid?: string;
-  cfClearance?: string;
-  names: string[];
-}
-
-function extractCookies(res: Response): Cookies {
+type Jar = Record<string, string>;
+function absorbCookies(jar: Jar, res: Response): string[] {
   const getSetCookie = (res.headers as { getSetCookie?: () => string[] }).getSetCookie;
-  const list = getSetCookie ? getSetCookie.call(res.headers) : [];
-  const cookies: Cookies = { names: [] };
-  for (const sc of list) {
+  const names: string[] = [];
+  for (const sc of getSetCookie ? getSetCookie.call(res.headers) : []) {
     const pair = sc.split(';')[0] ?? '';
     const eq = pair.indexOf('=');
     if (eq < 0) continue;
     const name = pair.slice(0, eq).trim();
-    const value = pair.slice(eq + 1);
-    cookies.names.push(name);
-    if (name.toLowerCase() === 'phpsessid') cookies.phpsessid = value;
-    if (name.toLowerCase() === 'cf_clearance') cookies.cfClearance = value;
+    jar[name] = pair.slice(eq + 1);
+    names.push(name);
   }
-  return cookies;
+  return names;
 }
-
-function cookieHeader(c: Cookies): string {
-  return [
-    c.phpsessid ? `PHPSESSID=${c.phpsessid}` : '',
-    c.cfClearance ? `cf_clearance=${c.cfClearance}` : '',
-  ]
-    .filter(Boolean)
+function cookieHeader(jar: Jar): string {
+  return Object.entries(jar)
+    .map(([k, v]) => `${k}=${v}`)
     .join('; ');
 }
 
-function verdict(name: string, implication: string): never {
-  console.log('');
-  console.log(`VERDICT: ${name}`);
-  console.log(`IMPLICATION: ${implication}`);
-  process.exit(0);
+interface ContinueAction {
+  kind: 'link' | 'form' | 'meta' | 'js';
+  method: 'GET' | 'POST';
+  url: string;
+  body: string;
 }
 
-async function main(): Promise<void> {
-  const config = loadConfig();
-  const ua = config.userAgent;
-  const headersHtml = { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml,*/*' };
-  const log = (m: string): void => console.log(`[probe] ${m}`);
+/** Best-effort discovery of what "Continue to Home Page" does, from login HTML. */
+function discoverContinue(html: string, base: string): ContinueAction | null {
+  const abs = (href: string): string => new URL(href, base).toString();
 
-  // 1) bootstrap GET → mint anonymous session
-  const rootUrl = `${config.baseUrl}/index.php`;
-  log(`GET ${rootUrl}`);
-  const rootRes = await fetch(rootUrl, { headers: headersHtml, redirect: 'manual' });
-  const rootBody = await rootRes.text();
-  const cookies = extractCookies(rootRes);
-  log(`→ ${rootRes.status}; Set-Cookie: ${cookies.names.join(', ') || '(none)'}`);
-  log(
-    `minted anonymous: PHPSESSID=${cookies.phpsessid ? 'yes' : 'no'}, cf_clearance=${cookies.cfClearance ? 'yes' : 'no'}`,
+  const anchor = [...html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].find(
+    (m) => /continue|home/i.test((m[2] ?? '').replace(/<[^>]*>/g, '')),
   );
-  if (isCloudflareChallenge(rootRes.status, rootBody)) {
-    log(`body: ${snippet(rootBody)}`);
-    verdict(
-      'CLOUDFLARE_CHALLENGE',
-      'A Cloudflare bot challenge sits in front of the portal root. We do NOT bypass it. ' +
-        'Autonomous minting is impossible; recording/live ingestion need a human-supplied ' +
-        'cf_clearance AND PHPSESSID (both copied from a browser that passed the challenge).',
-    );
+  if (anchor?.[1]) return { kind: 'link', method: 'GET', url: abs(anchor[1]), body: '' };
+
+  const form = /<form\b[^>]*action=["']([^"']+)["'][^>]*>([\s\S]*?)<\/form>/gi.exec(html);
+  if (form?.[1] && /continue|home/i.test(form[2] ?? '')) {
+    const methodMatch = /method=["']([^"']+)["']/i.exec(form[0]);
+    const method = (methodMatch?.[1] ?? 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET';
+    const hidden = [
+      ...(form[2] ?? '').matchAll(
+        /<input\b[^>]*name=["']([^"']+)["'][^>]*value=["']([^"']*)["']/gi,
+      ),
+    ];
+    const body = new URLSearchParams(
+      Object.fromEntries(hidden.map((h) => [h[1] ?? '', h[2] ?? ''])),
+    ).toString();
+    return { kind: 'form', method, url: abs(form[1]), body };
   }
-  await sleep(DELAY_MS);
 
-  const cookie = cookieHeader(cookies);
-  const postHeaders = {
-    Cookie: cookie,
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'User-Agent': ua,
-    Accept: 'text/html,*/*',
-  };
+  const meta =
+    /<meta[^>]*http-equiv=["']refresh["'][^>]*content=["'][^;]*;\s*url=([^"']+)["']/i.exec(html);
+  if (meta?.[1]) return { kind: 'meta', method: 'GET', url: abs(meta[1]), body: '' };
 
-  // 2) POST semesters with the anonymous session
-  log(`POST ${PORTAL_PATHS.semesterPanel}`);
-  const semRes = await fetch(`${config.baseUrl}/${PORTAL_PATHS.semesterPanel}`, {
+  const js = /(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i.exec(html);
+  if (js?.[1]) return { kind: 'js', method: 'GET', url: abs(js[1]), body: '' };
+
+  return null;
+}
+
+async function postData(
+  baseUrl: string,
+  path: string,
+  jar: Jar,
+  ua: string,
+  params: Record<string, string>,
+) {
+  const res = await fetch(`${baseUrl}/${path}`, {
     method: 'POST',
-    headers: postHeaders,
-    body: '',
+    headers: {
+      Cookie: cookieHeader(jar),
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': ua,
+      Accept: 'text/html,*/*',
+    },
+    body: new URLSearchParams(params).toString(),
     redirect: 'manual',
   });
-  const semBody = await semRes.text();
-  if (isCloudflareChallenge(semRes.status, semBody)) {
-    verdict(
-      'CLOUDFLARE_CHALLENGE',
-      'Cloudflare challenged the POST despite a minted session. We do NOT bypass it; a ' +
-        'human-supplied cf_clearance + PHPSESSID would be required.',
-    );
-  }
-  const semOptions = parseOptions(semBody);
-  log(`→ ${semRes.status}; semester options: ${semOptions.length}; body: ${snippet(semBody)}`);
-  await sleep(DELAY_MS);
-
-  // 3) POST degrees for the first semester (if any)
-  let degreeCount = 0;
-  if (semOptions.length > 0) {
-    const first = semOptions[0]!;
-    log(`POST ${PORTAL_PATHS.ajax} (semester=${first.value})`);
-    const degRes = await fetch(`${config.baseUrl}/${PORTAL_PATHS.ajax}`, {
-      method: 'POST',
-      headers: postHeaders,
-      body: new URLSearchParams({ semester: first.value }).toString(),
-      redirect: 'manual',
-    });
-    const degBody = await degRes.text();
-    if (isCloudflareChallenge(degRes.status, degBody)) {
-      verdict(
-        'CLOUDFLARE_CHALLENGE',
-        'Cloudflare challenged the degrees POST. We do NOT bypass it.',
-      );
-    }
-    degreeCount = parseOptions(degBody).length;
-    log(`→ ${degRes.status}; degree options: ${degreeCount}; body: ${snippet(degBody)}`);
-  }
-
-  // 4) classify
-  if (semOptions.length > 0 && degreeCount > 0) {
-    verdict(
-      'ANONYMOUS_OK',
-      'The freshly-minted anonymous session returned real dropdown data. Fully autonomous ' +
-        'ingestion is possible — the adapter can bootstrap its own session; no human cookie needed.',
-    );
-  }
-  if (isLoginForm(semBody)) {
-    verdict(
-      'SESSION_REQUIRED',
-      'The portal returned a login form to the anonymous session. A real authenticated ' +
-        'PHPSESSID (from a logged-in user) is required for recording/live ingestion.',
-    );
-  }
-  verdict(
-    'SESSION_REQUIRED',
-    'The anonymous session returned no dropdown data (empty/redirect, not a Cloudflare ' +
-      'challenge). A human-supplied authenticated PHPSESSID is required.',
-  );
+  const body = await res.text();
+  return {
+    status: res.status,
+    options: parseOptions(body).length,
+    cf: isCloudflareChallenge(res.status, res.headers, body),
+    login: isLoginPage(body),
+    body,
+  };
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+async function main(): Promise<string> {
+  const config = loadConfig();
+  const ua = config.userAgent;
+  const log = (m: string): void => console.log(`[probe] ${m}`);
+  await mkdir(ARTIFACT_DIR, { recursive: true });
+
+  // 1) mint anonymous session
+  const rootUrl = `${config.baseUrl}/index.php`;
+  const jar: Jar = {};
+  log(`GET ${rootUrl}`);
+  const rootRes = await fetch(rootUrl, {
+    headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml,*/*' },
+    redirect: 'manual',
+  });
+  const rootBody = await rootRes.text();
+  const minted = absorbCookies(jar, rootRes);
+  await writeFile(join(ARTIFACT_DIR, 'login-page.html'), scrub(rootBody), 'utf8');
+  log(
+    `→ ${rootRes.status}; Set-Cookie: ${minted.join(', ') || '(none)'}; title/login-page=${isLoginPage(rootBody)}`,
+  );
+  log(`saved login HTML to .probe/login-page.html (${rootBody.length} bytes) for inspection`);
+  if (isCloudflareChallenge(rootRes.status, rootRes.headers, rootBody)) {
+    return 'CLOUDFLARE_CHALLENGE — real CF challenge at the root; not bypassed; needs a human cf_clearance + PHPSESSID.';
+  }
+  await sleep(DELAY_MS);
+
+  // 2) reproduce "Continue to Home Page"
+  const cont = discoverContinue(rootBody, rootUrl);
+  if (cont) {
+    log(`Continue action: ${cont.kind} ${cont.method} ${cont.url}`);
+    const contRes = await fetch(cont.url, {
+      method: cont.method,
+      headers: {
+        Cookie: cookieHeader(jar),
+        'User-Agent': ua,
+        Accept: 'text/html,*/*',
+        ...(cont.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+      },
+      body: cont.method === 'POST' ? cont.body : undefined,
+      redirect: 'manual',
+    });
+    await contRes.text();
+    const upgraded = absorbCookies(jar, contRes);
+    log(`→ ${contRes.status}; new cookies: ${upgraded.join(', ') || '(none)'}`);
+    await sleep(DELAY_MS);
+  } else {
+    log(
+      'Continue action: NOT FOUND in login HTML (may be JS-driven — see .probe/login-page.html / paste the DevTools flow)',
+    );
+  }
+
+  // 3) anonymous (post-Continue) data endpoints
+  log(`POST ${PORTAL_PATHS.semesterPanel} (anonymous, post-Continue)`);
+  const anonSem = await postData(config.baseUrl, PORTAL_PATHS.semesterPanel, jar, ua, {});
+  log(
+    `→ ${anonSem.status}; semester options: ${anonSem.options}; login-page=${anonSem.login}; body: ${snippet(anonSem.body)}`,
+  );
+  if (anonSem.cf) return 'CLOUDFLARE_CHALLENGE on the data endpoint; not bypassed.';
+
+  // 4) optional env-supplied browser session arm
+  const envSession = config.phpSessId;
+  const envCf = process.env.LGU_CF_CLEARANCE;
+  let envReport =
+    'env session: not provided (set LGU_PHPSESSID [+ LGU_CF_CLEARANCE] to test the logged-in path)';
+  if (envSession) {
+    await sleep(DELAY_MS);
+    const envJar: Jar = { PHPSESSID: envSession, ...(envCf ? { cf_clearance: envCf } : {}) };
+    log(`POST ${PORTAL_PATHS.semesterPanel} (env-supplied session)`);
+    const envSem = await postData(config.baseUrl, PORTAL_PATHS.semesterPanel, envJar, ua, {});
+    log(`→ ${envSem.status}; semester options: ${envSem.options}; login-page=${envSem.login}`);
+    envReport = `env session: ${envSem.options} semester options (login-page=${envSem.login})`;
+  }
+
+  // 5) classify on DATA endpoint results
+  if (anonSem.options > 0) {
+    return `ANONYMOUS_OK — the post-Continue anonymous session returned ${anonSem.options} semesters. Fully autonomous ingestion is possible (no human cookie). [${envReport}]`;
+  }
+  if (envSession && /\d/.test(envReport) && !envReport.includes(': 0 ')) {
+    return `SESSION_REQUIRED — anonymous returned no data but the env browser session did. A human-supplied PHPSESSID is needed. [${envReport}]`;
+  }
+  return `SESSION_REQUIRED_OR_CONTINUE_UNRESOLVED — anonymous returned no dropdown data (login-page=${anonSem.login}), not a CF challenge. Either Continue wasn't reproduced correctly (check .probe/login-page.html or paste the DevTools Network flow) or the data endpoints need a logged-in cookie. [${envReport}]`;
+}
+
+main()
+  .then((verdict) => {
+    console.log('');
+    console.log(`VERDICT: ${verdict}`);
+    process.exitCode = 0; // avoid process.exit(): it triggers a tsx/libuv teardown assert on Windows
+  })
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
