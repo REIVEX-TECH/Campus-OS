@@ -31,7 +31,8 @@ import each other; they communicate through core interfaces and events.
 
 ## Prerequisites
 
-- **Node.js ≥ 20** (`.nvmrc` pins 20). This repo is developed on Node 24.
+- **Node.js ≥ 22.13** (required by pnpm 11; `.nvmrc` pins 24, matching the
+  reference environment and CI).
 - **pnpm 11** — `corepack enable` then `corepack use pnpm@11` (the
   `packageManager` field pins the exact version).
 - **PostgreSQL 16+** — either a native install or the bundled Docker Compose
