@@ -7,7 +7,8 @@
 # stop it or change the host port mapping below.
 services:
   postgres:
-    image: postgres:16
+    # Matches the reference dev environment. Campus OS supports Postgres 16+.
+    image: postgres:18
     container_name: campusos-postgres
     restart: unless-stopped
     environment:

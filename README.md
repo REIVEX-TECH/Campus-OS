@@ -47,10 +47,11 @@ cp .env.example .env
 
 ### Database — pick one path
 
-Campus OS talks to Postgres **only** through `DATABASE_URL`. Both paths below
-create a least-privilege role `campusos_app` and two databases, `campusos_dev`
-and `campusos_test`. Row-Level Security is **forced**, so the app role cannot
-read across tenants even if application-level filters are bypassed.
+Campus OS talks to Postgres **only** through `DATABASE_URL`. **Supported: Postgres
+16+** (the reference environment and the Docker image are Postgres 18). Both
+paths below create a least-privilege role `campusos_app` and two databases,
+`campusos_dev` and `campusos_test`. Row-Level Security is **forced**, so the app
+role cannot read across tenants even if application-level filters are bypassed.
 
 **Path A — native Postgres (primary).** Run the bootstrap once as a superuser,
 then migrate:
@@ -66,7 +67,7 @@ psql -U postgres -h localhost -f scripts/db-bootstrap.sql
 **Path B — Docker (for contributors without a local Postgres).**
 
 ```bash
-docker compose up -d            # Postgres 16 + named volume + role/db bootstrap
+docker compose up -d            # Postgres 18 + named volume + role/db bootstrap
 ```
 
 Then, for either path:
