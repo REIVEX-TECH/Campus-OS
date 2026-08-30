@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createLguSource } from '@campusos/adapter-timetable-lgu';
 import { runIngestion } from '@campusos/core/ingestion';
-import { sqlClient } from '@campusos/db/client';
+import { getSqlClient } from '@campusos/db/client';
 import { TimetableSink } from '@campusos/module-timetable/sink';
 import { tenantRegistry } from '@campusos/tenants';
 
@@ -39,5 +39,5 @@ main()
     process.exitCode = 1;
   })
   .finally(() => {
-    void sqlClient.end();
+    void getSqlClient().end();
   });

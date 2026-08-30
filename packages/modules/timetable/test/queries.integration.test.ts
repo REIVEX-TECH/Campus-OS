@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '@campusos/db';
-import { db, sqlClient } from '@campusos/db/client';
+import { getDb, getSqlClient } from '@campusos/db/client';
 import { applyMigrations, runBaseMigrations } from '@campusos/db/migrate';
 import { buildings, campuses, rooms, universities } from '@campusos/db/schema';
 import { migrationsFolder } from '../src/manifest';
@@ -25,11 +25,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await sqlClient.end();
+  await getSqlClient().end();
 });
 
 async function seed() {
-  await db.execute(sql`truncate table "universities" restart identity cascade`);
+  await getDb().execute(sql`truncate table "universities" restart identity cascade`);
   await universitiesRepoUpsert();
   return withTenant('aaa', async (tx) => {
     const [dept] = await tx
@@ -124,7 +124,7 @@ async function seed() {
 }
 
 async function universitiesRepoUpsert() {
-  await db
+  await getDb()
     .insert(universities)
     .values({ slug: 'aaa', name: 'Alpha U', timezone: 'Asia/Karachi' })
     .onConflictDoNothing();

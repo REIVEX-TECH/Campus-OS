@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { db } from '../client';
+import { getDb } from '../client';
 import { universities, type NewUniversity, type University } from '../schema/tenant';
 
 /**
@@ -8,16 +8,20 @@ import { universities, type NewUniversity, type University } from '../schema/ten
  */
 export const universitiesRepository = {
   list(): Promise<University[]> {
-    return db.select().from(universities);
+    return getDb().select().from(universities);
   },
 
   async getBySlug(slug: string): Promise<University | null> {
-    const rows = await db.select().from(universities).where(eq(universities.slug, slug)).limit(1);
+    const rows = await getDb()
+      .select()
+      .from(universities)
+      .where(eq(universities.slug, slug))
+      .limit(1);
     return rows[0] ?? null;
   },
 
   async upsert(input: NewUniversity): Promise<University> {
-    const rows = await db
+    const rows = await getDb()
       .insert(universities)
       .values(input)
       .onConflictDoUpdate({

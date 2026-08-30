@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { universitiesRepository } from '@campusos/db';
-import { sqlClient } from '@campusos/db/client';
+import { getSqlClient } from '@campusos/db/client';
 import { tenantRegistry } from '@campusos/tenants';
 
 // Seeds a `universities` row for each configured tenant. The file-based tenant
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     });
   }
   console.log(`✓ seeded ${tenants.length} tenant(s): ${tenants.map((t) => t.slug).join(', ')}`);
-  await sqlClient.end();
+  await getSqlClient().end();
 }
 
 main().catch((error: unknown) => {
