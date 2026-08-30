@@ -6,3 +6,6 @@ coverage/
 pnpm-lock.yaml
 *.tsbuildinfo
 packages/**/drizzle/**/*.sql
+# Recorded portal responses: external artifacts kept byte-for-byte (and the
+# source HTML is intentionally malformed), so never reformat them.
+packages/adapters/*/tests/fixtures/**/*.html

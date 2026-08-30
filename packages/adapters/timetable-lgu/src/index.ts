@@ -1,19 +1,16 @@
 export { LguTimetableSource, createLguSource, type LguSourceOptions } from './source';
 export { loadConfig, SOURCE_ID, USER_AGENT, type AdapterConfig } from './config';
+export { createAutonomousSession, type PortalSession } from './session';
+export { createFixtureHttpClient, createLiveHttpClient, type HttpClient } from './http';
+export { crawl, type RawRecords, type RawTimetableRecord } from './fetch';
+export { normalizeRecords, parseTimetable } from './normalize';
 export {
-  establishSession,
-  recoveryMessage,
-  SessionError,
-  type EstablishedSession,
-  type SessionPath,
-} from './session';
+  parseOptions,
+  fixtureFor,
+  fixtureName,
+  PORTAL_PATHS,
+  PORTAL_BASE_URL,
+  type PortalOption,
+} from './portal';
 export { mapWithConcurrency } from './queue';
-export { normalizeRecords } from './normalize';
-export {
-  createFixtureHttpClient,
-  createLiveHttpClient,
-  fixtureFileFor,
-  type HttpClient,
-  type HttpResponse,
-} from './http';
-export { fetchAll, type RawRecords, type RawTimetableRecord } from './fetch';
+export { parsedSlotSchema, type ParsedSlot } from './schemas';

@@ -39,18 +39,39 @@ export interface PortalOption {
   label: string;
 }
 
-/** Extract `<option value="…">label</option>` pairs from a dropdown fragment. */
+/**
+ * Extract `<option value="…">label</option>` pairs from a dropdown fragment.
+ * Tolerates both the ajax responses (double-quoted, closed `</option>`) and the
+ * semester panel (single-quoted values, UNCLOSED `<option>` tags): the label
+ * runs to the next `<option>`, `</option>`, `</select>`, or end. Options with an
+ * empty value (placeholders) are skipped.
+ */
 export function parseOptions(html: string): PortalOption[] {
   const options: PortalOption[] = [];
-  const re = /<option[^>]*\svalue=["']([^"']*)["'][^>]*>([\s\S]*?)<\/option>/gi;
+  const re =
+    /<option\b[^>]*\svalue=(["'])(.*?)\1[^>]*>([\s\S]*?)(?=<option\b|<\/option>|<\/select>|$)/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(html)) !== null) {
-    const value = (match[1] ?? '').trim();
-    const label = (match[2] ?? '')
+    const value = (match[2] ?? '').trim();
+    const label = (match[3] ?? '')
       .replace(/<[^>]*>/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (value) options.push({ value, label });
   }
   return options;
+}
+
+/** Map a portal request (path + form params) to its fixture filename. */
+export function fixtureFor(path: string, params: Record<string, string>): string {
+  if (path === PORTAL_PATHS.semesterPanel) return fixtureName.semesterPanel();
+  if (path === PORTAL_PATHS.ajax) {
+    return params.program
+      ? fixtureName.sections(params.semester ?? '', params.program)
+      : fixtureName.degrees(params.semester ?? '');
+  }
+  if (path === PORTAL_PATHS.sectionTimetable) {
+    return fixtureName.timetable(params.semester ?? '', params.program ?? '', params.section ?? '');
+  }
+  throw new Error(`no fixture mapping for path: ${path}`);
 }

@@ -8,10 +8,10 @@ import {
   type TimetableSource,
 } from '@campusos/core/ingestion';
 import { loadConfig, SOURCE_ID, type AdapterConfig } from './config';
-import { fetchAll, type RawRecords } from './fetch';
+import { crawl, type RawRecords } from './fetch';
 import { createFixtureHttpClient, createLiveHttpClient, type HttpClient } from './http';
 import { normalizeRecords } from './normalize';
-import { establishSession } from './session';
+import { createAutonomousSession } from './session';
 
 export interface LguSourceOptions {
   config?: AdapterConfig;
@@ -32,18 +32,24 @@ export class LguTimetableSource implements TimetableSource {
     this.log = options.logger ?? ((message) => console.log(`[${SOURCE_ID}] ${message}`));
   }
 
-  private client(): HttpClient {
+  private async client(): Promise<HttpClient> {
     if (this.injectedHttp) return this.injectedHttp;
     if (this.config.mode === 'fixture') return createFixtureHttpClient(this.config.fixturesDir);
-    return createLiveHttpClient({ 'user-agent': this.config.userAgent });
+    // live: autonomous session by default; env PHPSESSID only as an override.
+    const cookie = this.config.phpSessId
+      ? `PHPSESSID=${this.config.phpSessId}`
+      : (await createAutonomousSession(this.config.baseUrl, this.config.userAgent)).cookie;
+    this.log(this.config.phpSessId ? 'session: env override' : 'session: autonomous');
+    return createLiveHttpClient(this.config.baseUrl, cookie, this.config.userAgent);
   }
 
   async healthCheck(): Promise<Result<SourceHealth, SourceError>> {
     try {
-      const res = await this.client().get(`${this.config.baseUrl}/api/metadata`, {
-        headers: { 'user-agent': this.config.userAgent },
-      });
-      return ok({ ok: res.ok, detail: `status ${res.status}` });
+      if (this.config.mode !== 'live' || this.injectedHttp) {
+        return ok({ ok: true, detail: 'fixture mode' });
+      }
+      await createAutonomousSession(this.config.baseUrl, this.config.userAgent);
+      return ok({ ok: true, detail: 'anonymous session minted' });
     } catch (error) {
       return err(new SourceError('health check failed', error));
     }
@@ -51,17 +57,8 @@ export class LguTimetableSource implements TimetableSource {
 
   async fetchRaw(): Promise<Result<RawTimetablePayload, SourceError>> {
     try {
-      const http = this.client();
-      let cookie: string | null = null;
-
-      if (this.config.mode === 'live' && !this.injectedHttp) {
-        const session = await establishSession(http, this.config, this.log);
-        cookie = session.cookie;
-      } else {
-        this.log('session path=fixture');
-      }
-
-      const records = await fetchAll(http, this.config, cookie);
+      const http = await this.client();
+      const records = await crawl(http, this.config);
       return ok({ source: this.id, fetchedAt: new Date().toISOString(), records });
     } catch (error) {
       return err(new SourceError('fetch failed', error));

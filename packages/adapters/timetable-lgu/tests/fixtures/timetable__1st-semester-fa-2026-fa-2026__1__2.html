@@ -1,0 +1,584 @@
+
+<!doctype html>
+<html>
+<head>
+<link rel="stylesheet" href="../../Task/TimeTable/css/style.css">
+<link rel="stylesheet" href="../../Task/TimeTable/css/icomoon.css">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timetable</title>
+<!-- <link href="../../boostrap/css/bootstrap.css" rel="stylesheet" type="text/css"> -->
+<link href="css/bootstrap-3.3.7.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+        #footer1 {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background: -moz-linear-gradient(45deg, rgba(197,217,249,1) 0%, rgba(95,129,191,1) 100%); /* FF3.6-15 */
+            background: -webkit-linear-gradient(45deg, rgba(197,217,249,1) 0%,rgba(95,129,191,1) 100%); /* Chrome10-25,Safari5.1-6 */
+            background: linear-gradient(45deg, rgba(197,217,249,1) 0%,rgba(95,129,191,1) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+            color: white;
+            text-align: center;
+            z-index:2;
+        }
+        .fh5co-social-icons > a {
+            padding: 4px 10px;
+            color: Black;
+            color:-webkit-linear-gradient(45deg, rgba(128,172,242,1) 0%,rgba(67,103,169,1) 100%); /* Chrome10-25,Safari5.1-6 */;
+        }
+        .fh5co-social-icons > a:hover, .fh5co-social-icons > a:focus, .fh5co-social-icons > a:active {
+            text-decoration: none;
+            color: #444;
+        }
+	.color{
+			/*background: linear-gradient(120deg, #1D4D6B 0%,#91e842 100%)*/
+		background:linear-gradient(#00B4DB, #0083B0);
+		}
+        table {
+            border-collapse: collapse;
+            border-spacing: 0;
+            width: 100%;
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 8px;
+        }
+
+        tr:nth-child(even){background-color: #f2f2f2}
+
+        #table-time{
+            text-align:center;
+            font-size:16px;
+        }
+
+        body
+        {
+            font-family: arial;
+            font-size:9px;
+        }
+
+        th,td
+        {
+            margin: 0;
+            text-align: center;
+            border-collapse: collapse;
+            outline: 1px solid #e3e3e3;
+        }
+
+        td
+        {
+            padding: 5px 10px;
+        }
+
+        th
+        {
+            font-weight:400;
+            background: #3c8dbc;
+            color: white;
+            padding: 5px 10px;
+        }
+
+        td:hover
+        {
+            cursor: pointer;
+            background: #3c8dbc;
+            color: white;
+        }
+        .panel-default > .panel-heading {
+            color: #333;
+            border-color: #ddd;
+        }	
+
+        
+        .head-nav{
+            font-size:14px;
+        }
+
+        .head-nav>a{
+            color:white;
+        }
+        .head-nav>a:hover{
+            background:#36153c;
+            color:black;
+        }
+        .navbar-header.navbar-nav:hover{
+            background:#36153c;
+        }
+        #nav{
+            background-color:white;
+        }
+
+        #nav > .col-md-3,.col-md-3 {
+            padding:10px;
+        }
+        #page-row-start{
+            background:#3c8dbc;
+        }
+        .icon-bar{
+            background-color:#33CC00;
+            color:red;
+        }
+         .signature{
+		display: none;
+	}
+	.timelog{
+		display: none;
+	}
+    </style>
+<!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+<!--[if lt IE 9]>
+<script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+<script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+<![endif]-->
+</head>
+<body><a href="https://timetable.lgu.edu.pk/cdn-cgi/content?id=SDbj8V1cD1tcbr8d0CtPPzWPuwKSBbqozlTCxKjWvzE-1788096639.9255257-1.2.1.1-NtQdzBgE136vArVasOWp6_ghuCp1XweGdNBsbH.OLI8mVIySNGBca9EzzLpO04FF" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"></a> 
+	<header id="fh5co-header" role="banner" style="margin-top:-2px; background-color:white">
+		<div class="container"  >
+			<div class="row" >
+				<div class="col-md-12">
+                    <div class="col-md-4 " style="margin-left:-5%" >
+               	        <img src="../../Room/logotopf2.png" class="img-responsive">
+                    </div>
+		            <a class="navbar-brand" href="" style="color:Green;">TimeTable</a>	
+			    </div>
+		    </div>
+        </div>
+	</header>
+	<!-- END .header -->
+	
+	<div class="row" >
+		<div class="col-xs-12" id="page-row-start">
+	        <div class="container">
+                <div class="navbar-header ">
+                    <button type="button" class="navbar-toggle"  data-toggle="collapse" data-target="#myNavbar">
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>                        
+                    </button>
+                </div>
+                <div class="collapse navbar-collapse" id="myNavbar">
+                    <ul class="nav navbar-nav">
+                        <li  class="head-nav"><a href="../../Task/TimeTable/index.php">Home</a></li>
+                        <li class="head-nav"><a href="../../CS_Department/Departments.php">Teacher Timetable</a></li>
+                        <li class="head-nav"><a href="../../Room/Room_slots.php">Room Timetable</a></li>
+                        <li class="head-nav"><a href="../Semester_pannel.php">Semester Timetable</a></li>
+                      <li  class="head-nav"><a href="../../Task/TimeTable/contact.php">Contact Us</a></li>
+    <li  class="head-nav"><a href="../../Task/TimeTable/About_us.php">About Us</a></li>
+                    </ul>
+                    <ul class="nav navbar-nav navbar-right">
+                        <ul class="nav navbar-nav navbar-right">
+      
+
+          <button type="button" class="btn btn-info btn btn-sm dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" style="margin-top: 10px;">Settings<span class="caret"></span></button>
+          <ul class="dropdown-menu">
+                						 <center> <small style="color:grey"> <i> <u>REDACTED</u></i></small></center>
+						 <center> <small style="color:green"><i><u>Timetable Project Incharge</u></i></small></center>
+                    <hr></li>
+                 	     
+              
+                <li class="head-nav"><a  style="color:Green; font-weight:500;">REDACTED</a></li>
+            
+                     <li class="head-nav"><a style="color:#000000; font-weight:500;"  href="../../Changepassword.php" >Change Password</a></li>
+                                        <li class="head-nav"><a style="color:#000000; font-weight:500;"  href="../../Logout.php" >Log Out</a></li>
+      
+      
+      </ul>
+ 
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row" id="container4">
+               <div class="col-md-12 timelog" >    
+                    <div class="col-md-4" style="margin-left:0%" >
+                        <img src="../../Room/logotopf2.png" class="img-responsive" width="350" height="350"><br>
+						<center><h2>Time Table Spring 2026</h2></center>
+                    </div>
+		 </div>
+            <div class="col-md-12">
+				<br>
+                <div class="panel panel-primary " >
+					
+                                         <div class="panel-heading color" ><h3 style="margin-left:35%; color:white;">Time Table of BSCS - 1st Semester Fa-2026 / Fa-2026 (Sec B)</h3></div>
+						<div class="panel-body">
+                    	<div class="col-md-10">
+					 
+                <button onclick="printContent('container4')"  class="btn btn-success btn-sm" id="btn">Print </button></div>
+					<div class="col-md-2">
+				
+				<h5>Semeter Total Contact Hours:<b>20</b></h5></div>
+                        <div class="panel-body">
+                            <div class="row">
+                                <div class="table-responsive container-fluid" style="overflow-x:auto;" >
+                                    <table width="98%" align="center"  id="table-time">
+                                        <tr>
+    	                                    <th width="3%" height="24">Time</th>
+                                            <th width="60px" style="text-align:center"  >8:00 - 8:30</th>
+                                            <th width="60px" style="text-align:center" >8:30 - 9:00</th>
+                                            <th width="60px" style="text-align:center"  >9:00 - 9:30</th>
+                                            <th width="60px" style="text-align:center" >9:30 - 10:00</th>
+                                            <th width="60px" style="text-align:center"  >10:00 - 10:30</th>
+                                            <th width="60px" style="text-align:center" >10:30 - 11:00</th>
+                                            <th width="60px" style="text-align:center"  >11:00 - 11:30</th>
+                                            <th width="60px" style="text-align:center" >11:30 - 12:00</th>
+                                            <th width="60px" style="text-align:center"  >12:00 - 12:30</th>
+                                            <th width="60px" style="text-align:center" >12:30 - 1:00</th>
+                                            <th width="60px" style="text-align:center"  >1:00 - 1:30</th>
+                                            <th width="60px" style="text-align:center" >1:30 - 2:00</th>
+                                            <th width="60px" style="text-align:center"  >2:00 - 2:30</th>
+                                            <th width="60px" style="text-align:center" >2:30 - 3:00</th>
+                                            <th width="60px" style="text-align:center"  >3:00 - 3:30</th>
+                                            <th width="60px" style="text-align:center" >3:30 - 4:00</th>
+											<th width="60px" style="text-align:center"  >4:00 - 4:30</th>
+										  <th width="60px" style="text-align:center"  >4:30 - 5:00</th>
+                                       <th width="60px" style="text-align:center" >5:00 - 5:30</th>
+										<th width="60px" style="text-align:center"  >5:30 - 6:00</th>
+										<th width="60px" style="text-align:center" >6:00 - 6:30</th>
+										<th width="60px" style="text-align:center"  >6:30 - 7:00</th>
+										<th width="60px" style="text-align:center"  >7:00 - 7:30</th>
+										<th width="60px" style="text-align:center"  >7:30 - 8:00</th>
+                                        
+                                        </tr>
+                                                                                        <tr>
+                                                    <th height="33">Monday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=3>X</td><td colspan=3><span class='style2'>Programming Fundamentals</span><br /><span class='style3'>Room 23 NB </span><br /><span class='style4'>Khola Farooq </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>09:30 - 11:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Discrete Structures</span><br /><span class='style3'>Room 26 NB </span><br /><span class='style4'>Nousheen Ilyas </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>11:00 - 12:30</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Functional English</span><br /><span class='style3'>Room 28 NB </span><br /><span class='style4'>Uzma Shaheen </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>12:30 - 14:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Programming Fundamentals Lab</span><br /><span class='style3'>Lab 80 OB </span><br /><span class='style4'>M Talha Javed </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>14:00 - 15:30</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=9>X</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Tuesday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=2>X</td><td colspan=4><span class='style2'>Applied Physics </span><br /><span class='style3'>Room 24 NB </span><br /><span class='style4'>Muhammad Rizwan sami </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>09:00 - 11:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Discrete Structures</span><br /><span class='style3'>Room 26 NB </span><br /><span class='style4'>Nousheen Ilyas </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>11:00 - 12:30</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Functional English</span><br /><span class='style3'>Room 28 NB </span><br /><span class='style4'>Uzma Shaheen </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>12:30 - 14:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=12>X</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Wednesday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=3>X</td><td colspan=3><span class='style2'>Application of Information &amp; Communication Technologies-Lab</span><br /><span class='style3'>Lab 18 OB </span><br /><span class='style4'>Zahra Seemab </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>09:30 - 11:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3><span class='style2'>Programming Fundamentals Lab</span><br /><span class='style3'>Lab 80 OB </span><br /><span class='style4'>M Talha Javed </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>11:00 - 12:30</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3>X</td><td colspan=3><span class='style2'>Application of Information &amp; Communication Technologies-Lab</span><br /><span class='style3'>Lab 21 OB </span><br /><span class='style4'>Zahra Seemab </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>14:00 - 15:30</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=9>X</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Thursday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=3>X</td><td colspan=3><span class='style2'>Programming Fundamentals</span><br /><span class='style3'>Room 19 NB </span><br /><span class='style4'>Khola Farooq </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>09:30 - 11:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=4><span class='style2'>Application of Information &amp; Communication Technologies</span><br /><span class='style3'>Room 26 NB </span><br /><span class='style4'>Zahra Seemab </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>11:00 - 13:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=3>X</td><td colspan=3><span class='style2'>Applied Physics-Lab</span><br /><span class='style3'>Lab 82 OB General Lab Physics </span><br /><span class='style4'>Muhammad Rizwan sami </span><br /><span class='style5'>BSCS 1st Semester Fa-2026 / Fa-2026 Sec B</span><br /><span class='style3'>14:30 - 16:00</span><br /><span class='style7'>Google Code <u class='style6'></u></span></td><td colspan=8>X</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Friday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=24>All slots are free</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Saturday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=24>All slots are free</td>                                                </tr>
+                                                                                        <tr>
+                                                    <th height="33">Sunday</th>
+                                                <style>
+    .style2 {
+        color: #FF9900;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style3 {
+        color: #0033CC;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    .style4 {
+        color:#0A6806;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	 .style5 {
+        color: #000000;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style6 {
+        color: mediumvioletred;
+        font-weight: bold;
+        font-size: 10px;
+    }
+	.style7 {
+        color: royalblue;
+        font-weight: bold;
+        font-size: 10px;
+    }
+    td {
+        vertical-align: middle;
+    }
+</style>
+
+<td colspan=24>All slots are free</td>                                                </tr>
+                                                                            </table>
+                                
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="footer-copyright">
+        <div class="container-fluid" id="footer1" style="color:black">
+           <h4> © 2018 Copyright: LGU </h4>
+        <!--   <p class="fh5co-social-icons" style="float:right; margin-top:-30px; font-size:14px;">
+						<a href="#"><i class="icon-twitter"></i></a>
+						<a href="#"><i class="icon-facebook"></i></a>
+						<a href="#"><i class="icon-instagram"></i></a>
+						<a href="#"><i class="icon-dribbble"></i></a>
+						<a href="#"><i class="icon-youtube"></i></a>
+					</p>-->
+        </div>
+    </div>
+<script src="js/jquery-1.11.3.min.js"></script>
+<script src="js/bootstrap.js"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a33426bf8d78fd07',t:'MTc4ODA5NjYzOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925" integrity="sha512-d9sL6GJLXn6fInD1+TVXhTcQOsmxeHfmHAvwGDIxp5TO+uo1fiWW7mHomMj4MLRlCsJDTqXzWLHJFFlPCEIj/A==" data-cf-beacon='{"version":"2024.11.0","token":"ae67729c60f948e5af6ccfdede4553cb","r":1}' crossorigin="anonymous"></script>
+</body>
+</html>
+<script>
+	function printContent(el){
+	     $(".timelog").show();
+	//	$(".signature").show();
+		$(".btn").hide();
+		var restorepage=document.body.innerHTML;
+		var printcontent=document.getElementById(el).innerHTML;
+		document.body.innerHTML=printcontent;
+		window.print();
+		document.body.innerHTML=restorepage;
+				$(".btn").show();
+		$(".timelog").hide();
+		$(".signature").hide();
+	}
+	
+/*	
+var takeScreenShot = function() {
+    html2canvas(document.getElementById("container"), {
+        onrendered: function (canvas) {
+            var tempcanvas=document.createElement('canvas');
+            tempcanvas.width=550;
+            tempcanvas.height=600;
+            var context=tempcanvas.getContext('2d');
+            context.drawImage(canvas,112,0,288,150,0,0,1836,3264);
+            var link=document.createElement("a");
+            link.href=tempcanvas.toDataURL('image/jpg');   //function blocks CORS
+            link.download = 'screenshot.jpg';
+            link.click();
+        }
+    });
+}*/
+	
+	
+	
+	
+</script>
