@@ -1,111 +1,83 @@
 # Recording LGU timetable fixtures
 
-CI and tests **never** hit the live network — they replay recorded fixtures.
-Recording is a **manual, local, one-time-ish** step that **you** run; the agent
-never touches the university's servers. This doc is the exact procedure.
+CI and tests **never** hit the network — they replay recorded fixtures.
+Recording is a **manual, local** step **you** run against the live portal; the
+agent never touches it (live sites are the human's side of the boundary).
 
-> The wire shapes currently in the adapter (`src/schemas.ts`, the endpoints in
-> `src/fetch.ts`, and the URL→file mapping in `src/http.ts`) were **hand-written**
-> from the documented behaviour, not from live traffic. Treat them as provisional
-> until you record real responses and reconcile (Step 5).
+> The public developer API (`lgutimetable.vercel.app`) is permanently dead (the
+> site was sold — see `Zain-ul-din/LGU-Timetable#40`). Fixtures now come from the
+> **real portal**, `https://timetable.lgu.edu.pk`. The wire protocol below was
+> ported from the MIT-licensed `IIvexII/LGU-TimetableAPI` (see NOTICES.md).
 
-## 0. Look at the developer API first
+## Wire protocol (what the recorder does)
 
-Open <https://lgutimetable.vercel.app/developer> and note the real endpoints and
-response shapes (paths, query params, JSON structure). The adapter assumes:
+All portal endpoints are **POST** with `Cookie: PHPSESSID=<session>` and a
+form-urlencoded body; responses are **HTML**.
 
-- `GET {LGU_BASE_URL}/api/metadata` → `{ "combos": [{ semester, program, section }] }`
-- `GET {LGU_BASE_URL}/api/timetable?semester=&program=&section=` → `{ "slots": [...] }`
+| Step      | Path                                             | Body                             | Response                          |
+| --------- | ------------------------------------------------ | -------------------------------- | --------------------------------- |
+| semesters | `Semesters/Semester_pannel.php`                  | _(none)_                         | page with `#semester` `<option>`s |
+| degrees   | `Semesters/ajax.php`                             | `semester`                       | `<option>`s                       |
+| sections  | `Semesters/ajax.php`                             | `semester`, `program`            | `<option>`s                       |
+| timetable | `Semesters/semester_info/SEMESTER_TIMETABLE.php` | `semester`, `program`, `section` | `#table-time` table               |
 
-If reality differs, you'll adjust the adapter in Step 5 — that's expected.
+The timetable table has one `<tr>` per weekday (`<th>` = day name); each `<td>`
+is a 30-minute session and a class spans `colspan` sessions from 08:00, with
+`span:nth-child(1|3|5)` = subject / room / teacher.
 
-## 1. Record
+## The session (required)
 
-From the repo root:
+The portal serves **nothing** without an authenticated login, so recording (and
+live mode) need a real `PHPSESSID`:
+
+1. Log in to `https://timetable.lgu.edu.pk` in a browser.
+2. DevTools → Application → Cookies → copy the value of **`PHPSESSID`**.
+3. Put it in `.env` as `LGU_PHPSESSID=…` (git-ignored; never paste it in chat).
+   Sessions expire — re-copy when recording fails with "session invalid/expired".
+
+## Record
 
 ```bash
-SOURCE_MODE=live pnpm --filter @campusos/adapter-timetable-lgu record:fixtures
+LGU_PHPSESSID=<in .env>  SOURCE_MODE=live \
+  pnpm --filter @campusos/adapter-timetable-lgu record:fixtures
 ```
 
-Optional overrides (env or `.env`):
-
-```bash
-LGU_BASE_URL=https://lgutimetable.vercel.app \
-LGU_PHPSESSID=<only if the portal requires a session> \
-SOURCE_MODE=live pnpm --filter @campusos/adapter-timetable-lgu record:fixtures
-```
-
-The recorder establishes a session (bootstrap → env fallback → abort), fetches
-metadata, then each combo's timetable with the bounded queue, and writes raw
-responses to disk. It prints the session path it used and one line per combo.
-
-## 2. Where the files land
+The recorder reads `LGU_PHPSESSID` from `.env`, makes a small polite set of
+requests (semester panel → one semester's degrees → one degree's sections →
+2–3 section timetables), with an honest User-Agent and delays between requests,
+and writes raw responses to:
 
 ```
 packages/adapters/timetable-lgu/tests/fixtures/
-  metadata.json
-  timetable-<semester>-<program>-<section>.json   # one per combo
+  semester-panel.html
+  degrees__<semester>.html
+  sections__<semester>__<program>.html
+  timetable__<semester>__<program>__<section>.html   # ×2–3
 ```
 
-The per-combo filename is the sanitized `semester__program__section` key
-(lowercased, non-alphanumerics collapsed to `-`) — see `fixtureFileFor` in
-`src/http.ts`. The hand-written placeholders already there will be overwritten /
-joined by your recorded ones.
+## Scrub before committing (required)
 
-## 3. Scrub before committing (required)
+- The recorder redacts `PHPSESSID=…` and **aborts** if any session value would
+  be committed.
+- It cannot reliably detect **PII in the page chrome** (e.g. your name in a
+  header/nav). **Review each `.html`** and delete any personal data before it is
+  committed. Public course/teacher/room/section labels are fine to keep.
 
-Fixtures are committed to the repo, so they must contain **no secrets and no
-PII**:
-
-- **Session values** — remove any `PHPSESSID`, cookies, `Authorization`/`token`
-  fields, or CSRF values if they appear in a response body. (Never commit your
-  `.env`; it's git-ignored.)
-- **PII** — teacher emails, phone numbers, CNIC/ID numbers, or any personal
-  contact detail. Keep names only if they're already public on the portal;
-  otherwise replace with a placeholder (e.g. `Teacher A`). We store the minimum
-  (CLAUDE.md §8).
-- Prefer a **small, representative** slice (a few combos) over a full dump — big
-  enough to cover lecture/lab/tutorial/exam and a missing teacher/room.
-
-Grep to sanity-check:
+Grep as a sanity check:
 
 ```bash
-grep -riE "phpsessid|authorization|token|cookie|@.*\.(edu|com)" \
+grep -riE "phpsessid=(?!redacted)|logged in as|welcome," \
   packages/adapters/timetable-lgu/tests/fixtures
 ```
 
-## 4. Re-run the offline tests
+## Hand back → the agent reconciles (unattended)
 
-```bash
-pnpm --filter @campusos/adapter-timetable-lgu test
-```
+Once recorded and reviewed, hand the results back. The agent then verifies the
+files on disk and reconciles the adapter to the real shapes:
 
-These run in `SOURCE_MODE=fixture` and assert zero network calls. If they pass,
-the recorded shapes match the parser.
-
-## 5. Reconcile the parser with reality (only if Step 4 fails)
-
-Recorded responses usually reveal shape differences. Update, in order:
-
-1. `src/schemas.ts` — the zod shapes for `metadata` and `timetable` responses.
-2. `src/fetch.ts` — endpoint paths / query params, if different.
-3. `src/http.ts` (`fixtureFileFor`) — the URL→fixture mapping, if endpoints changed.
-4. `src/normalize.ts` — the mapping onto our terms/programs/sections/entries
-   (e.g. how `type` maps to `kind`, how course codes/teachers are derived).
-
-Re-run Step 4 until green, then run the full end-to-end against your local DB:
-
-```bash
-pnpm db:migrate:all && pnpm db:seed
-SOURCE_MODE=fixture pnpm ingest:lgu   # then again → inserted=0 closed=0
-```
-
-Check `unmapped_source_values` for anything the normalizer couldn't map — those
-are created `pending` for admin review, not dropped.
-
-## 6. Commit
-
-```bash
-git add packages/adapters/timetable-lgu/tests/fixtures src/…   # + any parser changes
-git commit -m "test(adapter-timetable-lgu): record real LGU fixtures"
-```
+1. Replace the provisional JSON fixtures with the recorded HTML.
+2. Update `schemas.ts` (HTML validation), `fetch.ts` (POST endpoints + params),
+   `http.ts` (fixture lookup by path+params), and `normalize.ts` (parse
+   `#table-time` → entries; map dropdowns → terms/programs/sections).
+3. Update `normalize.test.ts` / `source.test.ts` to the HTML fixtures.
+4. Run all gates and a fixture-mode ingest against `campusos_dev`.

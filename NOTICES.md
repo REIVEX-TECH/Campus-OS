@@ -1,29 +1,25 @@
 # Third-Party Notices
 
 Campus OS is MIT-licensed (see [LICENSE](LICENSE)). This file records
-attributions for external work that informed the project.
+attributions for external work incorporated into or informing the project.
 
-## LGU timetable — prior art
+## LGU timetable portal — ported wire protocol (MIT)
 
-The `@campusos/adapter-timetable-lgu` package interoperates with Lahore Garrison
-University's public timetable source. Its design was **informed by** the
-community project [`Zain-ul-din/lgu-crawler`](https://github.com/Zain-ul-din/lgu-crawler),
-which first documented the portal's behaviour (the PHPSESSID session
-requirement, the dropdown metadata endpoint, and the
-`sha256("{semester} {program} {section}")` keying scheme).
+`@campusos/adapter-timetable-lgu` interoperates with Lahore Garrison
+University's timetable portal (`https://timetable.lgu.edu.pk`). Its wire
+protocol — the POST endpoints (`Semester_pannel.php`, `Semesters/ajax.php`,
+`SEMESTER_TIMETABLE.php`), the form-encoded request shapes, the PHPSESSID
+session behaviour, and the `#table-time` HTML structure with 30-minute
+`colspan` sessions — is **ported from**
+[`IIvexII/LGU-TimetableAPI`](https://github.com/IIvexII/LGU-TimetableAPI),
+which is **MIT-licensed**. Copyright © its authors; used under the MIT License.
 
-**Attribution is a courtesy, not a licence grant.** At the time of writing that
-repository publishes **no licence**, which under default copyright law reserves
-all rights to its author. Accordingly:
+We are grateful to that project for mapping the portal.
 
-- No source code from `lgu-crawler` has been copied, ported, adapted, or
-  vendored into this repository.
-- Our adapter is a clean-room implementation written against **publicly
-  observable behaviour** — the public developer API response shapes and the
-  live HTTP responses of the portal — which are functional facts, not
-  copyrightable expression.
+## `Zain-ul-din/lgu-crawler` — not used
 
-If the upstream project later adopts an OSI-approved licence (e.g. MIT), this
-notice will be updated; our implementation does not depend on that happening.
-
-We are grateful to the upstream author for mapping the portal's quirks.
+The sibling project
+[`Zain-ul-din/lgu-crawler`](https://github.com/Zain-ul-din/lgu-crawler)
+covers similar ground but publishes **no licence** (all rights reserved by
+default). Its source is **not** read, copied, ported, or vendored here. If it
+later adopts an OSI licence this note will be revisited; nothing depends on that.
