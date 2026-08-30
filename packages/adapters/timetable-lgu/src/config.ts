@@ -10,7 +10,11 @@ export const USER_AGENT =
 const envSchema = z.object({
   SOURCE_MODE: z.enum(['live', 'fixture']).default('fixture'),
   LGU_BASE_URL: z.string().url().default('https://lgutimetable.vercel.app'),
-  LGU_PHPSESSID: z.string().min(1).optional(),
+  // Treat an empty env value (LGU_PHPSESSID=) as unset.
+  LGU_PHPSESSID: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   LGU_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
 });
 
