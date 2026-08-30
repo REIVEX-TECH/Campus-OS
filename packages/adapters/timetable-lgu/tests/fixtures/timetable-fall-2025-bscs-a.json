@@ -1,0 +1,34 @@
+{
+  "slots": [
+    {
+      "day": 1,
+      "start": "09:00",
+      "end": "10:30",
+      "course": "Data Structures",
+      "courseCode": "CS201",
+      "teacher": "Dr. Ayesha Khan",
+      "room": "R-101",
+      "type": "Lecture"
+    },
+    {
+      "day": 3,
+      "start": "11:00",
+      "end": "13:00",
+      "course": "Data Structures Lab",
+      "courseCode": "CS201L",
+      "teacher": "Dr. Ayesha Khan",
+      "room": "Lab-1",
+      "type": "Lab"
+    },
+    {
+      "day": 5,
+      "start": "09:00",
+      "end": "10:30",
+      "course": "Calculus II",
+      "courseCode": "MTH102",
+      "teacher": "Mr. Bilal Ahmed",
+      "room": "R-102",
+      "type": "Seminar"
+    }
+  ]
+}

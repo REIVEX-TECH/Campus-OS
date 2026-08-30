@@ -1,0 +1,9 @@
+{
+  "//": "Root tsconfig for editor tooling only. Each package has its own tsconfig.",
+  "extends": "@campusos/config/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": [],
+  "include": []
+}

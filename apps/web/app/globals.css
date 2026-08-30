@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '../../../packages/ui/src/styles/globals.css';
+
+/* Include the design-system package in Tailwind's content scan. */
+@source '../../../packages/ui/src/**/*.{ts,tsx}';

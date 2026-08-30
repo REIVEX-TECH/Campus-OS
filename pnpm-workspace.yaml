@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/modules/*
+  - packages/adapters/*
+  - tenants
+
+# Dependencies allowed to run install/build scripts (blocked by default).
+allowBuilds:
+  esbuild: true
