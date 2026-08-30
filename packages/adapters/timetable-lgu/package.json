@@ -11,10 +11,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "record:fixtures": "tsx src/record-fixtures.ts"
+    "record:fixtures": "tsx src/record-fixtures.ts",
+    "probe:session": "tsx src/session-probe.ts"
   },
   "dependencies": {
     "@campusos/core": "workspace:*",
+    "node-html-parser": "^6.1.13",
     "zod": "^3.24.1"
   },
   "devDependencies": {

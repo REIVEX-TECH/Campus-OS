@@ -1,83 +1,56 @@
-import type { AdapterConfig } from './config';
-import type { HttpClient } from './http';
+// Autonomous portal session. The portal shows a "Continue to Home Page" landing
+// (a <form method="POST" action="index.php"> with a `login-btn` submit) that
+// upgrades a fresh anonymous PHPSESSID from unactivated → data-allowed. No login
+// is required (the old auth wall is gone). An env-supplied session is only an
+// optional override (see source.ts).
 
-export type SessionPath = 'bootstrap' | 'env' | 'fixture';
+type Jar = Record<string, string>;
 
-export class SessionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'SessionError';
+function absorb(jar: Jar, res: Response): void {
+  const getSetCookie = (res.headers as { getSetCookie?: () => string[] }).getSetCookie;
+  for (const sc of getSetCookie ? getSetCookie.call(res.headers) : []) {
+    const pair = sc.split(';')[0] ?? '';
+    const eq = pair.indexOf('=');
+    if (eq > 0) jar[pair.slice(0, eq).trim()] = pair.slice(eq + 1);
   }
 }
 
-export function recoveryMessage(baseUrl: string): string {
-  return [
-    'LGU session could not be established. The run aborted without writing anything.',
-    'Recovery:',
-    `  1. Open ${baseUrl} in a browser and confirm the timetable portal loads.`,
-    "  2. Copy a fresh PHPSESSID cookie from your browser's dev tools.",
-    '  3. Set it: export LGU_PHPSESSID=<value> (or add it to .env), then re-run.',
-    '  4. If the portal itself is down, retry later.',
-  ].join('\n');
+function cookieHeader(jar: Jar): string {
+  return Object.entries(jar)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ');
 }
 
-function extractPhpSessId(setCookie: string | null): string | null {
-  if (!setCookie) return null;
-  return /PHPSESSID=([^;]+)/i.exec(setCookie)?.[1] ?? null;
+export interface PortalSession {
+  cookie: string;
+  kind: 'autonomous' | 'env-override';
 }
 
-function cookieHeader(id: string | null): Record<string, string> {
-  return id ? { cookie: `PHPSESSID=${id}` } : {};
-}
+/** Mint an anonymous session and activate it via the "Continue" POST. */
+export async function createAutonomousSession(
+  baseUrl: string,
+  userAgent: string,
+): Promise<PortalSession> {
+  const jar: Jar = {};
+  const headers = { 'User-Agent': userAgent, Accept: 'text/html,application/xhtml+xml,*/*' };
 
-export interface EstablishedSession {
-  cookie: string | null;
-  path: 'bootstrap' | 'env';
-}
+  const root = await fetch(`${baseUrl}/index.php`, { headers, redirect: 'manual' });
+  await root.text();
+  absorb(jar, root);
 
-/**
- * Establish a live session in the documented order (CLAUDE.md §4 / requirement):
- *   (a) bootstrap — mint a PHPSESSID at the portal root, verify with a cheap
- *       metadata probe;
- *   (b) fallback — use LGU_PHPSESSID from env, verified the same way;
- *   (c) failure — abort before writing anything (throws SessionError with a
- *       recovery procedure).
- * The chosen path is logged so we learn whether the portal needs auth at all.
- */
-export async function establishSession(
-  http: HttpClient,
-  config: AdapterConfig,
-  log: (message: string) => void,
-): Promise<EstablishedSession> {
-  const headers = { 'user-agent': config.userAgent };
+  const cont = await fetch(`${baseUrl}/index.php`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      Cookie: cookieHeader(jar),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ 'login-btn': '' }).toString(),
+    redirect: 'manual',
+  });
+  await cont.text();
+  absorb(jar, cont);
 
-  try {
-    const root = await http.get(config.baseUrl, { headers });
-    const minted = extractPhpSessId(root.headers.get('set-cookie'));
-    const probe = await http.get(`${config.baseUrl}/api/metadata`, {
-      headers: { ...headers, ...cookieHeader(minted) },
-    });
-    if (probe.ok) {
-      log(`session path=bootstrap (minted=${minted ? 'yes' : 'no'})`);
-      return { cookie: minted, path: 'bootstrap' };
-    }
-  } catch {
-    // fall through to the env fallback
-  }
-
-  if (config.phpSessId) {
-    try {
-      const probe = await http.get(`${config.baseUrl}/api/metadata`, {
-        headers: { ...headers, ...cookieHeader(config.phpSessId) },
-      });
-      if (probe.ok) {
-        log('session path=env');
-        return { cookie: config.phpSessId, path: 'env' };
-      }
-    } catch {
-      // fall through to abort
-    }
-  }
-
-  throw new SessionError(recoveryMessage(config.baseUrl));
+  if (!jar['PHPSESSID']) throw new Error('failed to mint PHPSESSID from portal');
+  return { cookie: cookieHeader(jar), kind: 'autonomous' };
 }

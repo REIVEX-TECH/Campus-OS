@@ -7,8 +7,8 @@ import { LguTimetableSource } from '../src/source';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
-describe('LguTimetableSource (fixture mode)', () => {
-  it('fetches and normalizes from fixtures with zero live network calls', async () => {
+describe('LguTimetableSource (fixture mode, real portal HTML)', () => {
+  it('crawls and normalizes the recorded fixtures with zero network calls', async () => {
     const http = createFixtureHttpClient(fixturesDir);
     const source = new LguTimetableSource({
       config: loadConfig({ SOURCE_MODE: 'fixture' }, fixturesDir),
@@ -25,18 +25,12 @@ describe('LguTimetableSource (fixture mode)', () => {
     if (!normalized.ok) return;
 
     const batch = normalized.value;
-    expect(batch.terms.map((t) => t.code)).toEqual(['Fall 2025']);
-    expect(batch.programs.map((p) => p.code)).toEqual(['BSCS']);
-    expect(batch.departments).toEqual([{ code: 'UNASSIGNED', name: 'Unassigned' }]);
-    expect(batch.sections).toHaveLength(2);
-    expect(batch.entries).toHaveLength(4);
-    // "Seminar" is an unknown kind → recorded (never dropped), defaulted to lecture.
-    expect(batch.unknowns).toContainEqual({ kind: 'entry_kind', rawValue: 'Seminar' });
-
-    // Zero-network assertion: only the injected fixture client was used.
-    expect(http.calls.length).toBeGreaterThan(0);
-    expect(http.calls).toContain(
-      `${loadConfig({ SOURCE_MODE: 'fixture' }, fixturesDir).baseUrl}/api/metadata`,
-    );
+    expect(batch.programs[0]?.name).toBe('BSCS');
+    expect(batch.sections).toHaveLength(3);
+    expect(batch.entries.length).toBeGreaterThan(0);
+    expect(batch.terms[0]?.code).toContain('Semester');
+    // zero-network proof: only the injected fixture client was read.
+    expect(http.calls).toContain('semester-panel.html');
+    expect(http.calls.length).toBeGreaterThan(3);
   });
 });

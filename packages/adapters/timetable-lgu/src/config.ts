@@ -9,7 +9,7 @@ export const USER_AGENT =
 
 const envSchema = z.object({
   SOURCE_MODE: z.enum(['live', 'fixture']).default('fixture'),
-  LGU_BASE_URL: z.string().url().default('https://lgutimetable.vercel.app'),
+  LGU_BASE_URL: z.string().url().default('https://timetable.lgu.edu.pk'),
   // Treat an empty env value (LGU_PHPSESSID=) as unset.
   LGU_PHPSESSID: z
     .string()
