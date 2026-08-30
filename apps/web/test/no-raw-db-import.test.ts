@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-// Belt-and-suspenders for the ESLint no-restricted-imports rule: scan app source
-// for any import of the raw db client. App code must go through repositories,
-// which set the tenant context so RLS applies.
+// Belt-and-suspenders for the ESLint no-restricted-imports rule. App code must
+// go through repositories (which set the tenant context so RLS applies) and must
+// never import a data-source adapter (ingestion-only).
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function collect(dir: string, acc: string[]): void {
@@ -32,11 +32,17 @@ try {
   // optional
 }
 
-const BANNED = /from\s+['"]@campusos\/db\/client['"]/;
+const BANNED_DB_CLIENT = /from\s+['"]@campusos\/db\/client['"]/;
+const BANNED_ADAPTER = /from\s+['"]@campusos\/adapter-[^'"]+['"]/;
 
-describe('no raw db client import in app', () => {
-  it('no app source imports @campusos/db/client', () => {
-    const offenders = files.filter((file) => BANNED.test(readFileSync(file, 'utf8')));
+describe('app import guard', () => {
+  it('no app source imports the raw db client', () => {
+    const offenders = files.filter((file) => BANNED_DB_CLIENT.test(readFileSync(file, 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  it('no app source imports a data-source adapter', () => {
+    const offenders = files.filter((file) => BANNED_ADAPTER.test(readFileSync(file, 'utf8')));
     expect(offenders).toEqual([]);
   });
 });

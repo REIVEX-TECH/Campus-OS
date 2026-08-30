@@ -15,6 +15,11 @@ export default [
               message:
                 'Do not import the raw db client in app code. Use a repository from @campusos/db — it sets the tenant context so RLS applies.',
             },
+            {
+              name: '@campusos/adapter-timetable-lgu',
+              message:
+                'The app must not import data-source adapters. Adapters are ingestion-only; the UI reads @campusos/db and @campusos/module-timetable.',
+            },
           ],
           patterns: [
             {
@@ -25,6 +30,11 @@ export default [
               ],
               message:
                 'The raw db client is off-limits in app code. Use a repository from @campusos/db.',
+            },
+            {
+              group: ['@campusos/adapter-*', '**/packages/adapters/**'],
+              message:
+                'The app must not import data-source adapters (ingestion-only). Use @campusos/module-timetable.',
             },
           ],
         },
