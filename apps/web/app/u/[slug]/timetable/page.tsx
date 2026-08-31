@@ -8,6 +8,7 @@ import { PendingBadge } from '@/app/_components/timetable-grid';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return pageMetadata({
     tenant,
     title: translator(tenant.locale)('timetable.heading'),
-    path: `/u/${slug}/timetable`,
+    path: `${await tenantBase(slug)}/timetable`,
   });
 }
 
@@ -28,6 +29,7 @@ export default async function TimetablePicker({ params }: Params) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
+  const base = await tenantBase(slug);
   const queries = getQueries(slug);
 
   const [terms, freshness] = await Promise.all([queries.listTerms(), queries.freshness()]);
@@ -64,7 +66,7 @@ export default async function TimetablePicker({ params }: Params) {
                   <li key={section.id} className="flex items-center gap-1.5">
                     <Link
                       className="inline-flex rounded-md bg-surface px-3 py-2 text-sm text-surface-foreground shadow-[var(--shadow-raised)] transition-[box-shadow,transform] hover:brightness-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:translate-y-px active:shadow-[var(--shadow-pressed)]"
-                      href={`/u/${slug}/sections/${section.id}`}
+                      href={`${base}/sections/${section.id}`}
                     >
                       {code} {section.name}
                     </Link>

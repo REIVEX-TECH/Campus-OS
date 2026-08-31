@@ -9,6 +9,7 @@ import { PendingBadge, TimetableGrid } from '@/app/_components/timetable-grid';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +21,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!tenant) return {};
   const teacher = await getQueries(slug).getTeacher(teacherId);
   const title = teacher?.name ?? translator(tenant.locale)('timetable.teacherTimetable');
-  return pageMetadata({ tenant, title, path: `/u/${slug}/teachers/${teacherId}` });
+  return pageMetadata({ tenant, title, path: `${await tenantBase(slug)}/teachers/${teacherId}` });
 }
 
 export default async function TeacherTimetable({ params }: Params) {
   const { slug, teacherId } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
+  const base = await tenantBase(slug);
   const queries = getQueries(slug);
 
   const teacher = await queries.getTeacher(teacherId);
@@ -42,7 +44,7 @@ export default async function TeacherTimetable({ params }: Params) {
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground">
-            <Link href={`/u/${slug}/timetable`} className="hover:underline">
+            <Link href={`${base}/timetable`} className="hover:underline">
               {tenant.displayName}
             </Link>{' '}
             · {t('timetable.teacherTimetable')}
@@ -55,7 +57,7 @@ export default async function TeacherTimetable({ params }: Params) {
         </div>
         <Link
           className={buttonVariants({ variant: 'outline' })}
-          href={`/u/${slug}/teachers/${teacherId}/timetable.ics`}
+          href={`${base}/teachers/${teacherId}/timetable.ics`}
         >
           {t('timetable.subscribe')}
         </Link>

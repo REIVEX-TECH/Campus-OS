@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isAdminAuthed } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
+import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,7 @@ const schema = z.object({
 
 export async function POST(request: Request, { params }: Params): Promise<Response> {
   const { slug } = await params;
-  const base = `/u/${slug}/admin/rooms`;
+  const base = `${tenantBaseForHost(request.headers.get('host') ?? '', slug)}/admin/rooms`;
 
   // Server-side authorization on the mutation itself, not just the page.
   if (!(await isAdminAuthed(slug))) {

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { signAdminToken, verifyAdminToken } from './admin-token';
+import { tenantBase } from './tenant-url';
 
 // Server-side admin gate. Enforced on every admin page (requireAdmin) AND every
 // admin mutation (assertAdmin in the route handlers), so the protection is real,
@@ -36,5 +37,5 @@ export async function isAdminAuthed(slug: string): Promise<boolean> {
 
 /** For server components: redirect to the tenant admin login unless authed. */
 export async function requireAdmin(slug: string): Promise<void> {
-  if (!(await isAdminAuthed(slug))) redirect(`/u/${slug}/admin/login`);
+  if (!(await isAdminAuthed(slug))) redirect(`${await tenantBase(slug)}/admin/login`);
 }

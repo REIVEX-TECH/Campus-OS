@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
 import { translator } from '@/lib/i18n';
 import { requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
   await requireAdmin(slug);
+  const base = await tenantBase(slug);
 
   const repo = getAdminRooms(slug);
   const [pending, rooms] = await Promise.all([repo.listPendingRooms(), repo.listRooms()]);
@@ -30,7 +32,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight">{t('admin.rooms.heading')}</h1>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('admin.rooms.intro')}</p>
         </div>
-        <form method="post" action={`/u/${slug}/admin/logout`}>
+        <form method="post" action={`${base}/admin/logout`}>
           <Button type="submit" variant="ghost" size="sm">
             {t('admin.rooms.signOut')}
           </Button>
@@ -69,7 +71,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
 
                 <form
                   method="post"
-                  action={`/u/${slug}/admin/rooms/resolve`}
+                  action={`${base}/admin/rooms/resolve`}
                   className="flex flex-col gap-3"
                 >
                   <input type="hidden" name="rawValue" value={room.rawValue} />
