@@ -58,4 +58,11 @@ Chronological notes, one block per phase. Newest appended at the bottom.
   only APP_DOMAIN=reivex.io.
 - next build succeeds with no DB at build time (lazy client; CI verify job
   proves it).
-- PR #6. Merge SHA: <filled after merge>.
+- PR #6 merged. Merge SHA: 327b05bc24e71a02177dfd6e18fdd1492e90ae68. CI green
+  first run.
+
+## Run complete
+
+All three phases merged to main (@ 327b05b). Final report in
+docs/overnight/REPORT.md. Only paused item: the live full crawl / fresh full
+real data (Phase 2), blocked by portal host flakiness (DECISIONS.md).
