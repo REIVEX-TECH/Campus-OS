@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
 import { ADMIN_COOKIE, adminConfigured, issueAdminToken } from '@/lib/admin-auth';
 import { checkAdminPassword } from '@/lib/admin-token';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
+import { relativeRedirect } from '@/lib/redirects';
 import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
@@ -12,21 +12,21 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   const { slug } = await params;
   const base = `${tenantBaseForHost(request.headers.get('host') ?? '', slug)}/admin`;
   if (!adminConfigured()) {
-    return NextResponse.redirect(new URL(`${base}/login`, request.url), 303);
+    return relativeRedirect(`${base}/login`);
   }
   if (!rateLimit(`admin-login:${clientKey(new Headers(request.headers))}`, 5, 60_000)) {
-    return NextResponse.redirect(new URL(`${base}/login?error=rate`, request.url), 303);
+    return relativeRedirect(`${base}/login?error=rate`);
   }
 
   const form = await request.formData();
   const secret = String(form.get('secret') ?? '');
   const adminSecret = process.env.ADMIN_SECRET ?? '';
   if (!secret || !checkAdminPassword(secret, adminSecret)) {
-    return NextResponse.redirect(new URL(`${base}/login?error=invalid`, request.url), 303);
+    return relativeRedirect(`${base}/login?error=invalid`);
   }
 
   const token = issueAdminToken(slug);
-  const res = NextResponse.redirect(new URL(`${base}/rooms`, request.url), 303);
+  const res = relativeRedirect(`${base}/rooms`);
   if (token) {
     res.cookies.set(ADMIN_COOKIE, token, {
       httpOnly: true,

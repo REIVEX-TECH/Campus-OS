@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isAdminAuthed } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
+import { relativeRedirect } from '@/lib/redirects';
 import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +32,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     existingRoomId: form.get('existingRoomId') || undefined,
   });
   if (!parsed.success) {
-    return NextResponse.redirect(new URL(`${base}?error=1`, request.url), 303);
+    return relativeRedirect(`${base}?error=1`);
   }
 
   const { rawValue, mode, newRoomName, existingRoomId } = parsed.data;
@@ -43,12 +43,10 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
         ? { rawValue, existingRoomId }
         : { rawValue, newRoomName: newRoomName ?? rawValue };
     const result = await repo.resolveRoom(input);
-    const url = new URL(
+    return relativeRedirect(
       `${base}?resolved=${result.resolvedEntries}&name=${encodeURIComponent(result.roomName)}`,
-      request.url,
     );
-    return NextResponse.redirect(url, 303);
   } catch {
-    return NextResponse.redirect(new URL(`${base}?error=1`, request.url), 303);
+    return relativeRedirect(`${base}?error=1`);
   }
 }

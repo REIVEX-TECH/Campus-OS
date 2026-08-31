@@ -13,6 +13,10 @@ export function middleware(req: NextRequest): NextResponse {
   const plan = planRoute(req.headers.get('host') ?? '', url.pathname);
 
   if (plan.action === 'redirect') {
+    // Middleware requires an absolute URL. `req.nextUrl` is built from the
+    // forwarded Host header (the public host), NOT the upstream socket, so this
+    // is correct behind the proxy. (Route handlers use request.url, which IS the
+    // socket, so they emit relative Locations instead; see lib/redirects.ts.)
     const to = new URL(plan.pathname, url);
     to.search = url.search;
     return NextResponse.redirect(to, 308);
