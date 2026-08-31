@@ -168,21 +168,35 @@ set for the monorepo; skip it unless you later want a smaller deploy.)
 
 ## 5. nginx + TLS 🟥 SHARED INFRA (your hands)
 
-Add one vhost for `lgu.reivex.io` proxying to `127.0.0.1:3003`, then issue the
-cert with certbot. This matches the common certbot-managed pattern; adjust to
-your house style if your other vhosts use shared SSL snippets.
+Matches your certbot-managed convention (as in `acc.reivex.io`): write a minimal
+**port-80** `server_name` block, run `certbot --nginx`, and certbot rewrites it
+into the `listen 443 ssl` block (with `options-ssl-nginx.conf` + `ssl-dhparam`)
+and adds the port-80 -> 443 redirect. The only difference from your static vhosts
+is that `location /` proxies to the app instead of serving files.
 
 > **Critical for tenant routing**: the vhost MUST forward the real `Host` header
 > (`proxy_set_header Host $host;`) or the app cannot resolve the `lgu` tenant.
-> `X-Forwarded-Proto` keeps admin-login redirects on https.
+> `X-Forwarded-Proto` keeps admin-login redirects on https. The `Upgrade` /
+> `Connection` headers pass websockets through (not needed by `next start` today,
+> but future-proof and harmless).
 
-Create `/etc/nginx/sites-available/lgu.reivex.io` (http only for now; certbot adds
-the TLS block):
+First, add the websocket upgrade `map` once (http context). Skip if you already
+have a `$connection_upgrade` map from another proxied app (the `grep` guards it):
+
+```bash
+grep -rqs 'connection_upgrade' /etc/nginx/ || sudo tee /etc/nginx/conf.d/websocket_upgrade.conf >/dev/null <<'EOF'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+EOF
+```
+
+Create the minimal pre-certbot vhost `/etc/nginx/sites-available/lgu.reivex.io`:
 
 ```nginx
 server {
     listen 80;
-    listen [::]:80;
     server_name lgu.reivex.io;
 
     location / {
@@ -192,25 +206,29 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_read_timeout 60s;
     }
 }
 ```
 
-Enable, test, reload, then get the cert:
+Enable, test, reload, then let certbot add TLS (same as your other vhosts):
 
 ```bash
-ln -s /etc/nginx/sites-available/lgu.reivex.io /etc/nginx/sites-enabled/lgu.reivex.io
-nginx -t                              # ALWAYS test before reload
-systemctl reload nginx
+sudo ln -s /etc/nginx/sites-available/lgu.reivex.io /etc/nginx/sites-enabled/lgu.reivex.io
+sudo nginx -t                         # ALWAYS test before reload
+sudo systemctl reload nginx
 
 # DNS A record for lgu.reivex.io must already point at this VPS. Then:
-certbot --nginx -d lgu.reivex.io      # certbot inserts the 443 server block + redirect
-nginx -t && systemctl reload nginx
+sudo certbot --nginx -d lgu.reivex.io # rewrites the block to 443 + adds the redirect
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-After certbot, `proxy_set_header X-Forwarded-Proto $scheme;` reports `https` on
-the TLS server block, so app redirects stay on https.
+After certbot, the `location /` proxy lives in the `listen 443 ssl` block and
+`X-Forwarded-Proto` reports `https`, so app redirects stay on https. The
+generated file will mirror your `acc.reivex.io` layout (443 block + a port-80
+`return 301` block).
 
 ---
 
