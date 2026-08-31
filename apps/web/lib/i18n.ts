@@ -22,7 +22,7 @@ export function t(locale: string, key: MessageKey, params?: TParams): string {
 
 export type Translate = (key: MessageKey, params?: TParams) => string;
 
-/** A translator bound to a locale — pass it down through server components. */
+/** A translator bound to a locale, passed down through server components. */
 export function translator(locale: string): Translate {
   return (key, params) => t(locale, key, params);
 }

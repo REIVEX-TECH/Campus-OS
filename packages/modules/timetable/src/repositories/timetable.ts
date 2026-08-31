@@ -138,6 +138,7 @@ export class TimetableRepository extends TenantScopedRepository {
             endsAt: e.endsAt,
             kind: e.kind,
             sourceRef: e.sourceRef ?? null,
+            roomSource: e.roomSource ?? null,
             contentHash: e.contentHash,
           })),
         );

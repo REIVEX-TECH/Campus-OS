@@ -24,6 +24,6 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
     tenant,
     views,
     term,
-    calendarName: `${tenant.displayName} — ${section.program.code}-${section.name}`,
+    calendarName: `${tenant.displayName}, ${section.program.code} ${section.name}`,
   });
 }

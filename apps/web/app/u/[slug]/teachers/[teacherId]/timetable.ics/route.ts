@@ -20,6 +20,6 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
     tenant,
     views,
     term: null,
-    calendarName: `${tenant.displayName} — ${teacher.name}`,
+    calendarName: `${tenant.displayName}, ${teacher.name}`,
   });
 }
