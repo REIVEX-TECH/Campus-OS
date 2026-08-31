@@ -15,6 +15,9 @@ export interface TimetableEntryInput {
   kind: TimetableEntryKind;
   /** Provenance from the source system; excluded from the content hash. */
   sourceRef?: string | null;
+  /** Raw source room string; excluded from the content hash. Enables counting
+   * and back-filling a pending room when it is later mapped. */
+  roomSource?: string | null;
 }
 
 export interface HashedEntry extends TimetableEntryInput {

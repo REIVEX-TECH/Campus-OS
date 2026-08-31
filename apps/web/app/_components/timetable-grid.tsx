@@ -46,8 +46,8 @@ function EntryCell({ view, locale, t }: { view: TimetableView; locale: string; t
     room: roomName ?? t('timetable.tba'),
   });
   return (
-    <div className="rounded-md border p-2 text-xs" aria-label={aria}>
-      <div className="font-medium text-foreground">{view.course.title}</div>
+    <div className="rounded-md bg-surface p-2 text-xs text-surface-foreground" aria-label={aria}>
+      <div className="font-medium">{view.course.title}</div>
       <div className="text-muted-foreground">{kindName(locale, view.kind)}</div>
       <div>
         {t('timetable.teacher')}: {teacherName ?? <Tba t={t} kind="teacher" />}
@@ -93,7 +93,7 @@ export function TimetableGrid({
         {grid.rows.map((row) => (
           <TableRow key={`${row.startsAt}-${row.endsAt}`}>
             <TableHead scope="row" className="whitespace-nowrap font-normal text-foreground">
-              {row.startsAt}–{row.endsAt}
+              {t('timetable.timeRange', { start: row.startsAt, end: row.endsAt })}
             </TableHead>
             {grid.days.map((day) => (
               <TableCell key={day}>

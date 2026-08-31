@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!tenant) return {};
   const section = await getQueries(slug).getSection(sectionId);
   const title = section
-    ? `${section.program.code}-${section.name}`
+    ? `${section.program.code} ${section.name}`
     : translator(tenant.locale)('timetable.heading');
   return pageMetadata({ tenant, title, path: `/u/${slug}/sections/${sectionId}` });
 }
@@ -39,7 +39,7 @@ export default async function SectionTimetable({ params }: Params) {
     queries.getTerm(section.termId),
     queries.freshness(),
   ]);
-  const title = `${section.program.code}-${section.name}`;
+  const title = `${section.program.code} ${section.name}`;
 
   return (
     <main className="mx-auto max-w-5xl p-8">

@@ -43,6 +43,10 @@ export const timetableEntries = pgTable(
     endsAt: time('ends_at').notNull(),
     kind: timetableEntryKind('kind').notNull(),
     sourceRef: text('source_ref'),
+    // The raw room string from the source (e.g. "Room 25 NB"), kept so a pending
+    // room value can be counted and back-filled when an admin maps it. Excluded
+    // from content_hash (which hashes room_id), so populating it does not churn.
+    roomSource: text('room_source'),
     contentHash: text('content_hash').notNull(),
     validFrom: timestamp('valid_from', { withTimezone: true }).notNull().defaultNow(),
     validTo: timestamp('valid_to', { withTimezone: true }),

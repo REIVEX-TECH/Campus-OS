@@ -240,6 +240,27 @@ export class TimetableSink implements IngestionSink {
     const roomRows = await tx.select({ id: rooms.id, name: rooms.name }).from(rooms);
     const roomByName = new Map(roomRows.map((r) => [r.name.toLowerCase(), r.id]));
 
+    // Self-heal: a raw room string an admin already mapped (status 'resolved',
+    // resolved_id set) resolves to that room even if its canonical name differs,
+    // so a re-crawl does not re-flag it as pending or undo the admin's work.
+    const resolvedRoomRows = await tx
+      .select({
+        rawValue: unmappedSourceValues.rawValue,
+        resolvedId: unmappedSourceValues.resolvedId,
+      })
+      .from(unmappedSourceValues)
+      .where(
+        and(
+          eq(unmappedSourceValues.tenantId, tid),
+          eq(unmappedSourceValues.kind, 'room'),
+          eq(unmappedSourceValues.status, 'resolved'),
+        ),
+      );
+    const roomByAlias = new Map<string, string>();
+    for (const r of resolvedRoomRows) {
+      if (r.resolvedId) roomByAlias.set(r.rawValue.toLowerCase(), r.resolvedId);
+    }
+
     const byTerm = new Map<string, TimetableEntryInput[]>();
     for (const e of batch.entries) {
       const termId = termIds.get(e.termCode);
@@ -252,7 +273,8 @@ export class TimetableSink implements IngestionSink {
       const teacherId = e.teacherName ? (teacherIds.get(e.teacherName) ?? null) : null;
       let roomId: string | null = null;
       if (e.roomName) {
-        roomId = roomByName.get(e.roomName.toLowerCase()) ?? null;
+        const key = e.roomName.toLowerCase();
+        roomId = roomByName.get(key) ?? roomByAlias.get(key) ?? null;
         if (!roomId) await recordUnmapped('room', e.roomName);
       }
       const input: TimetableEntryInput = {
@@ -266,6 +288,7 @@ export class TimetableSink implements IngestionSink {
         endsAt: e.endsAt,
         kind: e.kind,
         sourceRef: e.sourceRef ?? null,
+        roomSource: e.roomName ?? null,
       };
       const list = byTerm.get(termId) ?? [];
       list.push(input);
@@ -305,6 +328,7 @@ export class TimetableSink implements IngestionSink {
             endsAt: e.endsAt,
             kind: e.kind,
             sourceRef: e.sourceRef ?? null,
+            roomSource: e.roomSource ?? null,
             contentHash: e.contentHash,
           })),
         );

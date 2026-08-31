@@ -6,6 +6,21 @@ export default [
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
+      // Hard rule 1 (docs/design.md): no dash punctuation in UI copy. Catch em
+      // and en dashes and the spaced-hyphen connector in JSX text nodes (real
+      // JSXText, so no false positives on arithmetic). The messages/*.ts catalog
+      // is additionally covered by test/no-dash.test.ts.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXText[value=/[\\u2013\\u2014]/]',
+          message: 'No em or en dash in UI copy. Use words or restructure (see docs/design.md).',
+        },
+        {
+          selector: 'JSXText[value=/ - /]',
+          message: 'No spaced hyphen connector in UI copy. Use a comma or the word "to".',
+        },
+      ],
       'no-restricted-imports': [
         'error',
         {

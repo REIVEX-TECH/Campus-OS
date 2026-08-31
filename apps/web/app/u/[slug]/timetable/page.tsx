@@ -44,9 +44,8 @@ export default async function TimetablePicker({ params }: Params) {
   return (
     <main className="mx-auto max-w-3xl p-8">
       <header className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {tenant.displayName} — {t('timetable.heading')}
-        </h1>
+        <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
+        <h1 className="text-3xl font-semibold tracking-tight">{t('timetable.heading')}</h1>
         <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
       </header>
 
@@ -64,10 +63,10 @@ export default async function TimetablePicker({ params }: Params) {
                 {list.map((section) => (
                   <li key={section.id} className="flex items-center gap-1.5">
                     <Link
-                      className="inline-flex rounded-md border px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="inline-flex rounded-md bg-surface px-3 py-2 text-sm text-surface-foreground shadow-[var(--shadow-raised)] transition-[box-shadow,transform] hover:brightness-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:translate-y-px active:shadow-[var(--shadow-pressed)]"
                       href={`/u/${slug}/sections/${section.id}`}
                     >
-                      {code}-{section.name}
+                      {code} {section.name}
                     </Link>
                     {section.status === 'pending' ? <PendingBadge t={t} /> : null}
                   </li>

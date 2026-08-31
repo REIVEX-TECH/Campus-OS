@@ -9,6 +9,7 @@
     "./manifest": "./src/manifest.ts",
     "./domain": "./src/domain/index.ts",
     "./read": "./src/read/index.ts",
+    "./repositories": "./src/repositories/index.ts",
     "./ics": "./src/read/ics/index.ts",
     "./schema": "./src/schema/index.ts",
     "./sink": "./src/ingestion/sink.ts"

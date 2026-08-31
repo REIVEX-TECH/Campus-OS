@@ -1,13 +1,27 @@
 import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../lib/utils';
 
-export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)}
-      {...props}
-    />
+// Cards are containers. `flat` (default) is static content: a plain filled
+// surface, no divider line. `pressable` is an interactive/selectable surface
+// (e.g. a picker item) and gets the neumorphic affordance.
+const cardVariants = cva('rounded-lg text-surface-foreground', {
+  variants: {
+    variant: {
+      flat: 'bg-surface',
+      pressable:
+        'bg-surface shadow-[var(--shadow-raised)] transition-[box-shadow,transform] hover:brightness-[0.99] active:shadow-[var(--shadow-pressed)] active:translate-y-px',
+    },
+  },
+  defaultVariants: { variant: 'flat' },
+});
+
+export interface CardProps
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof cardVariants> {}
+
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div ref={ref} className={cn(cardVariants({ variant }), className)} {...props} />
   ),
 );
 Card.displayName = 'Card';
@@ -44,3 +58,12 @@ export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes
   ),
 );
 CardContent.displayName = 'CardContent';
+
+export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex items-center gap-3 p-6 pt-0', className)} {...props} />
+  ),
+);
+CardFooter.displayName = 'CardFooter';
+
+export { cardVariants };

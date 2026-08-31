@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
+import { accentStyle } from '@/lib/branding';
 
 type Params = { params: Promise<{ slug: string }> };
 
@@ -20,5 +21,11 @@ export default async function TenantLayout({ children, params }: Params & { chil
   const { slug } = await params;
   const tenant = tenantRegistry.resolveBySlug(slug);
   if (!tenant) notFound();
-  return <div data-tenant={tenant.slug}>{children}</div>;
+  // Inject the tenant accent server-side (no FOUC). Overrides --primary for the
+  // whole subtree; tokens cascade from here.
+  return (
+    <div data-tenant={tenant.slug} style={accentStyle(tenant.branding.colors.primary)}>
+      {children}
+    </div>
+  );
 }
