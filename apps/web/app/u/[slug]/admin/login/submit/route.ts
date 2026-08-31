@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ADMIN_COOKIE, adminConfigured, issueAdminToken } from '@/lib/admin-auth';
 import { checkAdminPassword } from '@/lib/admin-token';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
+import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function POST(request: Request, { params }: Params): Promise<Response> {
   const { slug } = await params;
-  const base = `/u/${slug}/admin`;
+  const base = `${tenantBaseForHost(request.headers.get('host') ?? '', slug)}/admin`;
   if (!adminConfigured()) {
     return NextResponse.redirect(new URL(`${base}/login`, request.url), 303);
   }

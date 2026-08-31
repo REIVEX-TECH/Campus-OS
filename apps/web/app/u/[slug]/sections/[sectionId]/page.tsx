@@ -9,6 +9,7 @@ import { PendingBadge, TimetableGrid } from '@/app/_components/timetable-grid';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +23,18 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const title = section
     ? `${section.program.code} ${section.name}`
     : translator(tenant.locale)('timetable.heading');
-  return pageMetadata({ tenant, title, path: `/u/${slug}/sections/${sectionId}` });
+  return pageMetadata({
+    tenant,
+    title,
+    path: `${await tenantBase(slug)}/sections/${sectionId}`,
+  });
 }
 
 export default async function SectionTimetable({ params }: Params) {
   const { slug, sectionId } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
+  const base = await tenantBase(slug);
   const queries = getQueries(slug);
 
   const section = await queries.getSection(sectionId);
@@ -46,7 +52,7 @@ export default async function SectionTimetable({ params }: Params) {
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground">
-            <Link href={`/u/${slug}/timetable`} className="hover:underline">
+            <Link href={`${base}/timetable`} className="hover:underline">
               {tenant.displayName}
             </Link>
           </p>
@@ -58,7 +64,7 @@ export default async function SectionTimetable({ params }: Params) {
         </div>
         <Link
           className={buttonVariants({ variant: 'outline' })}
-          href={`/u/${slug}/sections/${sectionId}/timetable.ics`}
+          href={`${base}/sections/${sectionId}/timetable.ics`}
         >
           {t('timetable.subscribe')}
         </Link>

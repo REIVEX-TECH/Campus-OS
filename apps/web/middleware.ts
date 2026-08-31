@@ -1,36 +1,34 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { subdomainOf } from '@campusos/core/tenant';
-
-const APP_DOMAIN = process.env.APP_DOMAIN ?? 'localhost:3000';
+import { planRoute } from './lib/tenant-routing';
 
 /**
- * Resolve the tenant once, here, and pass it down explicitly via a request
- * header (no global mutable state). Subdomain tenancy is canonical; the
- * /u/{slug} path is a local-dev fallback. Unknown tenants are still routed to
- * the /u/[slug] page, which renders a proper 404 rather than crashing.
+ * Resolve the tenant once, here, from the request host (subdomain) or the
+ * /u/{slug} path (dev fallback), and pass the slug down via a request header.
+ * See lib/tenant-routing.ts for the (unit-tested) decision logic. On a tenant
+ * subdomain, /u/{slug}/... is redirected to the canonical clean URL so links and
+ * form actions have exactly one shape per environment.
  */
 export function middleware(req: NextRequest): NextResponse {
   const url = req.nextUrl;
-  const host = req.headers.get('host') ?? '';
-  const label = subdomainOf(host, APP_DOMAIN);
+  const plan = planRoute(req.headers.get('host') ?? '', url.pathname);
 
-  if (label) {
-    const rest = url.pathname === '/' ? '' : url.pathname;
-    const rewrite = new URL(`/u/${label}${rest}`, url);
-    rewrite.search = url.search;
-    const headers = new Headers(req.headers);
-    headers.set('x-tenant-slug', label);
-    return NextResponse.rewrite(rewrite, { request: { headers } });
+  if (plan.action === 'redirect') {
+    const to = new URL(plan.pathname, url);
+    to.search = url.search;
+    return NextResponse.redirect(to, 308);
   }
 
-  if (url.pathname.startsWith('/u/')) {
-    const slug = url.pathname.split('/')[2] ?? '';
+  if (plan.action === 'rewrite') {
+    const to = new URL(plan.pathname, url);
+    to.search = url.search;
     const headers = new Headers(req.headers);
-    if (slug) headers.set('x-tenant-slug', slug);
-    return NextResponse.next({ request: { headers } });
+    headers.set('x-tenant-slug', plan.slug);
+    return NextResponse.rewrite(to, { request: { headers } });
   }
 
-  return NextResponse.next();
+  const headers = new Headers(req.headers);
+  if (plan.slug) headers.set('x-tenant-slug', plan.slug);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

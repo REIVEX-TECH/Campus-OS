@@ -3,6 +3,7 @@ import { Button, Field, Input } from '@campusos/ui';
 import { adminConfigured, isAdminAuthed } from '@/lib/admin-auth';
 import { translator } from '@/lib/i18n';
 import { requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,8 @@ export default async function AdminLoginPage({ params, searchParams }: Props) {
   const { error } = await searchParams;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  if (await isAdminAuthed(slug)) redirect(`/u/${slug}/admin/rooms`);
+  const base = await tenantBase(slug);
+  if (await isAdminAuthed(slug)) redirect(`${base}/admin/rooms`);
 
   const errorText =
     error === 'invalid'
@@ -39,11 +41,7 @@ export default async function AdminLoginPage({ params, searchParams }: Props) {
           {t('admin.login.disabled')}
         </p>
       ) : (
-        <form
-          method="post"
-          action={`/u/${slug}/admin/login/submit`}
-          className="flex flex-col gap-4"
-        >
+        <form method="post" action={`${base}/admin/login/submit`} className="flex flex-col gap-4">
           <Field label={t('admin.login.passwordLabel')} htmlFor="secret" error={errorText}>
             <Input
               id="secret"
