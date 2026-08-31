@@ -40,4 +40,22 @@ Chronological notes, one block per phase. Newest appended at the bottom.
   (timetable.lgu.edu.pk round-robins to a Vercel 404 edge in bursts; not a
   block, but not crawlable). Paused the live portion per the rules; recorded in
   docs/overnight/DECISIONS.md. Fixture-mode ingest unchanged (41 entries clean).
-- PR #5. Merge SHA: <filled at Phase 3 start>.
+- PR #5 merged. Merge SHA: aa45f9180a634e1d1db74d61e855ec0b0ab830d3. CI green
+  first run.
+
+## Phase 3 — Deploy preparation (config only)
+
+- Branch `chore/deploy-prep` off `main` @ aa45f918.
+- vercel.json (Turborepo build for web, Next framework, lazy-DB build).
+- docs/DEPLOY.md: full runbook (Neon project + role + URL; migrate + seed +
+  full ingest; Vercel project + env vars; lgu.reivex.io DNS; enable scheduled
+  ingest) + production readiness checklist.
+- Enabled the scheduled ingest workflow, gated by repo var HOSTED_DB_ENABLED
+  (scheduled runs only when set; manual dispatch always). Autonomous session,
+  full crawl, migrate step, twice-daily cron.
+- Confirmed multi-tenant host routing: subdomainOf('lgu.reivex.io','reivex.io')
+  -> 'lgu'; SEO/robots/sitemap/canonical derive from the live host. Prod needs
+  only APP_DOMAIN=reivex.io.
+- next build succeeds with no DB at build time (lazy client; CI verify job
+  proves it).
+- PR #6. Merge SHA: <filled after merge>.
