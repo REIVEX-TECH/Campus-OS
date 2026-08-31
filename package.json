@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "turbo run test",
-    "test:integration": "turbo run test:integration",
+    "test:integration": "turbo run test:integration --concurrency=1",
     "db:migrate:all": "tsx scripts/migrate-all.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",
