@@ -1,8 +1,15 @@
 export { LguTimetableSource, createLguSource, type LguSourceOptions } from './source';
 export { loadConfig, SOURCE_ID, USER_AGENT, type AdapterConfig } from './config';
 export { createAutonomousSession, type PortalSession } from './session';
-export { createFixtureHttpClient, createLiveHttpClient, type HttpClient } from './http';
-export { crawl, type RawRecords, type RawTimetableRecord } from './fetch';
+export {
+  createFixtureHttpClient,
+  createLiveHttpClient,
+  createRecordingHttpClient,
+  FixtureMissingError,
+  PortalBlockedError,
+  type HttpClient,
+} from './http';
+export { crawl, type RawRecords, type RawSectionTimetable, type CrawlAnomaly } from './fetch';
 export { normalizeRecords, parseTimetable } from './normalize';
 export {
   parseOptions,

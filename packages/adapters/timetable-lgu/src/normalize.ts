@@ -3,10 +3,12 @@ import type {
   NormalizedBatch,
   NormalizedCourse,
   NormalizedEntry,
+  NormalizedProgram,
   NormalizedSection,
   NormalizedTeacher,
   NormalizedTerm,
   TimetableKind,
+  UnmappedValue,
 } from '@campusos/core/ingestion';
 import type { RawRecords } from './fetch';
 import { parsedSlotSchema, type ParsedSlot } from './schemas';
@@ -91,24 +93,29 @@ export function parseTimetable(html: string): ParsedSlot[] {
   return slots;
 }
 
-/** Map crawled portal records onto the normalized batch. */
+/** Map crawled portal records (all semesters/degrees/sections) onto a batch. */
 export function normalizeRecords(raw: RawRecords): NormalizedBatch {
-  const term: NormalizedTerm = {
-    code: raw.semester.value,
-    name: raw.semester.label || raw.semester.value,
-  };
+  const terms = new Map<string, NormalizedTerm>();
+  const programs = new Map<string, NormalizedProgram>();
   const courses = new Map<string, NormalizedCourse>();
   const teachers = new Map<string, NormalizedTeacher>();
   const sections: NormalizedSection[] = [];
   const entries: NormalizedEntry[] = [];
 
-  for (const { section, html } of raw.timetables) {
-    const sectionCode = `${raw.degree.value}::${raw.semester.value}::${section.value}`;
+  for (const { semester, degree, section, html } of raw.sections) {
+    terms.set(semester.value, { code: semester.value, name: semester.label || semester.value });
+    programs.set(degree.value, {
+      code: degree.value,
+      name: degree.label || degree.value,
+      departmentCode: DEFAULT_DEPARTMENT.code,
+    });
+
+    const sectionCode = `${degree.value}::${semester.value}::${section.value}`;
     sections.push({
       code: sectionCode,
       name: section.label || section.value,
-      programCode: raw.degree.value,
-      termCode: raw.semester.value,
+      programCode: degree.value,
+      termCode: semester.value,
     });
 
     for (const slot of parseTimetable(html)) {
@@ -116,7 +123,7 @@ export function normalizeRecords(raw: RawRecords): NormalizedBatch {
       courses.set(courseCode, { code: courseCode, title: slot.subject });
       if (slot.teacher) teachers.set(slot.teacher, { name: slot.teacher });
       entries.push({
-        termCode: raw.semester.value,
+        termCode: semester.value,
         sectionCode,
         courseCode,
         teacherName: slot.teacher,
@@ -125,25 +132,25 @@ export function normalizeRecords(raw: RawRecords): NormalizedBatch {
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
         kind: kindFor(slot.subject),
-        sourceRef: `${raw.semester.value}|${raw.degree.value}|${section.value}`,
+        sourceRef: `${semester.value}|${degree.value}|${section.value}`,
       });
     }
   }
 
+  // Anomalous fetches become unmapped records for admin review (never dropped).
+  const unknowns: UnmappedValue[] = raw.anomalies.map((a) => ({
+    kind: a.stage === 'degrees' ? 'program' : 'section',
+    rawValue: [a.semester, a.degree, a.section].filter(Boolean).join('|') || a.stage,
+  }));
+
   return {
-    terms: [term],
+    terms: [...terms.values()],
     departments: [DEFAULT_DEPARTMENT],
-    programs: [
-      {
-        code: raw.degree.value,
-        name: raw.degree.label || raw.degree.value,
-        departmentCode: DEFAULT_DEPARTMENT.code,
-      },
-    ],
+    programs: [...programs.values()],
     courses: [...courses.values()],
     teachers: [...teachers.values()],
     sections,
     entries,
-    unknowns: [],
+    unknowns,
   };
 }

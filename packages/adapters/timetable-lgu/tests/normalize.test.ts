@@ -43,10 +43,18 @@ describe('parseTimetable', () => {
 
 describe('normalizeRecords', () => {
   const raw: RawRecords = {
-    semester: { value: '1st Semester Fa-2026 / Fa-2026', label: '1st Semester Fa-2026 / Fa-2026' },
-    degree: { value: '1', label: 'BSCS' },
-    sections: [{ value: '1', label: 'Sec A' }],
-    timetables: [{ section: { value: '1', label: 'Sec A' }, html: timetableHtml }],
+    sections: [
+      {
+        semester: {
+          value: '1st Semester Fa-2026 / Fa-2026',
+          label: '1st Semester Fa-2026 / Fa-2026',
+        },
+        degree: { value: '1', label: 'BSCS' },
+        section: { value: '1', label: 'Sec A' },
+        html: timetableHtml,
+      },
+    ],
+    anomalies: [],
   };
 
   it('builds a batch and infers lab vs lecture from the title', () => {
@@ -62,5 +70,30 @@ describe('normalizeRecords', () => {
       'lecture',
     );
     expect(batch.departments).toEqual([{ code: 'UNASSIGNED', name: 'Unassigned' }]);
+  });
+
+  it('spans multiple semesters and degrees and maps anomalies to unmapped records', () => {
+    const multi: RawRecords = {
+      sections: [
+        ...raw.sections,
+        {
+          semester: { value: 'Sp-2026', label: 'Spring 2026' },
+          degree: { value: '2', label: 'BSSE' },
+          section: { value: '1', label: 'Sec A' },
+          html: timetableHtml,
+        },
+      ],
+      anomalies: [
+        { stage: 'timetable', semester: 'Sp-2026', degree: '2', section: '9', message: 'HTTP 500' },
+        { stage: 'degrees', semester: 'Broken', message: 'HTTP 500' },
+      ],
+    };
+    const batch = normalizeRecords(multi);
+    expect(batch.terms.map((t) => t.code).sort()).toEqual(
+      ['1st Semester Fa-2026 / Fa-2026', 'Sp-2026'].sort(),
+    );
+    expect(batch.programs.map((p) => p.code).sort()).toEqual(['1', '2']);
+    expect(batch.unknowns).toContainEqual({ kind: 'section', rawValue: 'Sp-2026|2|9' });
+    expect(batch.unknowns).toContainEqual({ kind: 'program', rawValue: 'Broken' });
   });
 });

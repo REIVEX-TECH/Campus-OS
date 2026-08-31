@@ -1,134 +1,96 @@
 import 'dotenv/config';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadConfig } from './config';
-import { PORTAL_PATHS, fixtureName, parseOptions } from './portal';
+import { crawl } from './fetch';
+import {
+  createLiveHttpClient,
+  createRecordingHttpClient,
+  PortalBlockedError,
+  type HttpClient,
+} from './http';
 import { createAutonomousSession } from './session';
 
-// Records real portal responses into tests/fixtures so dev and CI run offline.
-// The flow is autonomous (mint anonymous session → Continue → fetch), so no
-// human cookie is needed. An env LGU_PHPSESSID is only an optional override.
-// Hits the live portal politely (honest UA, delays); run locally, never in CI.
-
-const DELAY_MS = 1500;
-const MAX_SECTIONS = 3;
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
-async function post(
-  baseUrl: string,
-  path: string,
-  cookie: string,
-  ua: string,
-  params: Record<string, string>,
-): Promise<string> {
-  const res = await fetch(`${baseUrl}/${path}`, {
-    method: 'POST',
-    headers: {
-      Cookie: cookie,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': ua,
-      Accept: 'text/html,application/xhtml+xml,*/*',
-    },
-    body: new URLSearchParams(params).toString(),
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`POST /${path} → HTTP ${res.status}`);
-  return res.text();
-}
+// Records the FULL portal (every semester x degree x section) into
+// tests/fixtures so dev and CI replay real data offline. Drives the SAME crawl()
+// the source uses, wrapped in a recording client, so the fixture set always
+// matches what fetch requests. Autonomous session (no human cookie needed; an
+// env LGU_PHPSESSID is an optional override). Polite: honest UA, delay, backoff,
+// and it aborts (never hammers) on a block. Run locally, never in CI.
+//
+// Note: chrome PII (a staff name in the site nav/footer) is scrubbed
+// structurally below, but the scrub is best-effort; REVIEW the saved pages
+// before committing.
 
 function scrub(html: string): string {
-  return html
-    .replace(/PHPSESSID=[^;"'\s]+/gi, 'PHPSESSID=REDACTED')
-    .replace(/cf_clearance=[^;"'\s]+/gi, 'cf_clearance=REDACTED');
+  return (
+    html
+      .replace(/PHPSESSID=[^;"'\s]+/gi, 'PHPSESSID=REDACTED')
+      .replace(/cf_clearance=[^;"'\s]+/gi, 'cf_clearance=REDACTED')
+      // The "Project Incharge" credit block in the settings dropdown.
+      .replace(
+        /(<center>\s*<small[^>]*>\s*<i>\s*<u>)[\s\S]*?(<\/u>\s*<\/i>\s*<\/small>\s*<\/center>)/gi,
+        '$1REDACTED$2',
+      )
+      // The green, href-less name link in the nav.
+      .replace(/(<a\s+style="color:Green;\s*font-weight:500;">)[^<]*(<\/a>)/gi, '$1REDACTED$2')
+  );
 }
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const log = (m: string): void => console.log(`[record] ${m}`);
 
-  let cookie: string;
+  let inner: HttpClient;
   if (config.phpSessId) {
     const cf = process.env.LGU_CF_CLEARANCE;
-    cookie = `PHPSESSID=${config.phpSessId}${cf ? `; cf_clearance=${cf}` : ''}`;
+    const cookie = `PHPSESSID=${config.phpSessId}${cf ? `; cf_clearance=${cf}` : ''}`;
+    inner = createLiveHttpClient(config.baseUrl, cookie, config.userAgent);
     log('session: env override (LGU_PHPSESSID)');
   } else {
     const session = await createAutonomousSession(config.baseUrl, config.userAgent);
-    cookie = session.cookie;
+    inner = createLiveHttpClient(config.baseUrl, session.cookie, config.userAgent);
     log('session: autonomous (mint + Continue)');
   }
 
   const dir = config.fixturesDir;
   await mkdir(dir, { recursive: true });
-  const save = async (name: string, html: string): Promise<void> => {
-    await writeFile(join(dir, name), scrub(html), 'utf8');
-    log(`saved ${name} (${html.length} bytes)`);
-  };
+  log(`portal: ${config.baseUrl}; recording FULL crawl to ${dir}`);
 
-  log(`portal: ${config.baseUrl}`);
-
-  const panel = await post(
-    config.baseUrl,
-    PORTAL_PATHS.semesterPanel,
-    cookie,
-    config.userAgent,
-    {},
+  const recorder = createRecordingHttpClient(inner, dir, scrub, (file, bytes) =>
+    log(`saved ${file} (${bytes} bytes)`),
   );
-  await save(fixtureName.semesterPanel(), panel);
-  const semesters = parseOptions(panel);
-  if (semesters.length === 0) throw new Error('no semesters parsed — session not activated');
-  const semester = semesters[0]!;
-  log(`semester: "${semester.label}" (value=${semester.value}); ${semesters.length} total`);
-  await sleep(DELAY_MS);
 
-  const degreesHtml = await post(config.baseUrl, PORTAL_PATHS.ajax, cookie, config.userAgent, {
-    semester: semester.value,
-  });
-  await save(fixtureName.degrees(semester.value), degreesHtml);
-  const degrees = parseOptions(degreesHtml);
-  if (degrees.length === 0) throw new Error('no degrees parsed');
-  const degree = degrees[0]!;
-  log(`degree: "${degree.label}" (value=${degree.value}); ${degrees.length} total`);
-  await sleep(DELAY_MS);
-
-  const sectionsHtml = await post(config.baseUrl, PORTAL_PATHS.ajax, cookie, config.userAgent, {
-    semester: semester.value,
-    program: degree.value,
-  });
-  await save(fixtureName.sections(semester.value, degree.value), sectionsHtml);
-  const sections = parseOptions(sectionsHtml).slice(0, MAX_SECTIONS);
-  if (sections.length === 0) throw new Error('no sections parsed');
-  log(
-    `sections (first ${sections.length}): ${sections.map((s) => `${s.label}=${s.value}`).join(', ')}`,
-  );
-  await sleep(DELAY_MS);
-
-  for (const section of sections) {
-    const html = await post(
-      config.baseUrl,
-      PORTAL_PATHS.sectionTimetable,
-      cookie,
-      config.userAgent,
-      {
-        semester: semester.value,
-        program: degree.value,
-        section: section.value,
-      },
-    );
-    await save(fixtureName.timetable(semester.value, degree.value, section.value), html);
-    await sleep(DELAY_MS);
+  let records;
+  try {
+    records = await crawl(recorder, config);
+  } catch (error) {
+    if (error instanceof PortalBlockedError) {
+      log(`ABORTED: ${error.message}`);
+      log('The portal looks rate-limited or blocked. Stopping without hammering.');
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
   }
 
+  // Belt and suspenders: no live session value may reach a committed fixture.
   for (const file of (await readdir(dir)).filter((f) => f.endsWith('.html'))) {
     if (/PHPSESSID=(?!REDACTED)/i.test(await readFile(join(dir, file), 'utf8'))) {
-      throw new Error(`session value leaked into ${file} — aborting`);
+      throw new Error(`session value leaked into ${file}; aborting`);
     }
   }
 
-  log(`done: recorded ${3 + sections.length} responses to ${dir}`);
-  log('REVIEW each .html for personal data (e.g. a name in the page header) before committing.');
+  log(`done: ${records.sections.length} section timetables, ${records.anomalies.length} anomalies`);
+  for (const a of records.anomalies.slice(0, 20)) {
+    log(
+      `  anomaly [${a.stage}] ${[a.semester, a.degree, a.section].filter(Boolean).join(' / ')}: ${a.message}`,
+    );
+  }
+  log('REVIEW each .html for personal data (a name in the page chrome) before committing.');
 }
 
 main().catch((error: unknown) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

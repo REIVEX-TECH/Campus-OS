@@ -27,6 +27,22 @@ activates a fresh anonymous session. The adapter mints its own:
 - `healthCheck()` mints a session to confirm portal reachability without fetching
   data.
 
+> **Host stability.** `timetable.lgu.edu.pk` intermittently round-robins between
+> the real Cloudflare-fronted portal and a Vercel edge that 404s in bursts. That
+> is not a block, so the session mint **retries through the blips** and the live
+> client retries transient failures with backoff. A genuine block (403/429/503)
+> throws `PortalBlockedError` and aborts the crawl rather than hammering.
+
+## Crawl (full)
+
+`crawl()` walks the **full cartesian product**: every semester, every degree
+within it, every section within that, fetching each section's `#table-time`. One
+bad section (or degree/section dropdown) is logged as an anomaly and skipped
+(surfaced as an unmapped record), never aborting the whole crawl. Optional
+politeness caps (`LGU_MAX_SEMESTERS` / `LGU_MAX_DEGREES` / `LGU_MAX_SECTIONS`)
+bound it. In fixture mode a not-recorded combo is skipped silently, so replaying
+a partial recorded slice yields exactly the recorded combos.
+
 ## Source modes
 
 - `SOURCE_MODE=fixture` (default) — replays recorded responses from
@@ -43,8 +59,11 @@ honest User-Agent (contact URL) and delays between requests.
 
 See [docs/recording-fixtures.md](../../../docs/recording-fixtures.md). In short:
 `SOURCE_MODE=live pnpm --filter @campusos/adapter-timetable-lgu record:fixtures`
-(autonomous — no cookie needed), review the saved `.html` for incidental chrome
-PII, and commit. Recorded HTML is byte-for-byte and excluded from Prettier.
+(autonomous — no cookie needed) records the **full** crawl via a recording HTTP
+client and prints anomaly counts. Review the saved `.html` for incidental chrome
+PII, and commit. Recorded HTML is byte-for-byte and excluded from Prettier. Run
+it during a stable portal window (it retries the session through the Vercel-edge
+blips described above).
 
 ## Ingesting
 
