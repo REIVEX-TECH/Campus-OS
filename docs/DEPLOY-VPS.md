@@ -175,8 +175,11 @@ and adds the port-80 -> 443 redirect. The only difference from your static vhost
 is that `location /` proxies to the app instead of serving files.
 
 > **Critical for tenant routing**: the vhost MUST forward the real `Host` header
-> (`proxy_set_header Host $host;`) or the app cannot resolve the `lgu` tenant.
-> `X-Forwarded-Proto` keeps admin-login redirects on https. The `Upgrade` /
+> (`proxy_set_header Host $host;`) or the app cannot resolve the `lgu` tenant, and
+> that forwarded `Host` is what canonical/SEO URLs are built from. `X-Forwarded-Proto`
+> keeps admin-login redirects on https. The app emits **relative** redirect
+> `Location` headers, so it never leaks the upstream `127.0.0.1:3003`;
+> `X-Forwarded-Host` is included for completeness but not required. The `Upgrade` /
 > `Connection` headers pass websockets through (not needed by `next start` today,
 > but future-proof and harmless).
 
@@ -206,6 +209,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_read_timeout 60s;

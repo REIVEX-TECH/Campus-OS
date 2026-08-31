@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { relativeRedirect } from './lib/redirects';
 import { planRoute } from './lib/tenant-routing';
 
 /**
@@ -13,9 +14,9 @@ export function middleware(req: NextRequest): NextResponse {
   const plan = planRoute(req.headers.get('host') ?? '', url.pathname);
 
   if (plan.action === 'redirect') {
-    const to = new URL(plan.pathname, url);
-    to.search = url.search;
-    return NextResponse.redirect(to, 308);
+    // Relative Location so the browser stays on the public origin (behind a
+    // proxy the upstream host differs), not localhost:PORT.
+    return relativeRedirect(`${plan.pathname}${url.search}`, 308);
   }
 
   if (plan.action === 'rewrite') {

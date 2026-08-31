@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const SUBDOMAIN = `lgu.localhost:${PORT}`;
 
-test('subdomain: admin login POST resolves at the clean path (no double /u/lgu 404)', async ({
+test('subdomain: admin login POST resolves and redirects with a RELATIVE Location', async ({
   request,
 }) => {
   const res = await request.post('/admin/login/submit', {
@@ -21,6 +21,13 @@ test('subdomain: admin login POST resolves at the clean path (no double /u/lgu 4
   // The route resolved: a 3xx redirect back to login (or rooms), never a 404.
   expect(res.status()).toBeGreaterThanOrEqual(300);
   expect(res.status()).toBeLessThan(400);
+  // The Location must be root-relative, so the browser stays on the public
+  // origin. Behind a proxy an absolute Location would point at the upstream
+  // (localhost:PORT) and fail with ERR_CONNECTION_REFUSED.
+  const location = res.headers()['location'] ?? '';
+  expect(location.startsWith('/')).toBe(true);
+  expect(location).not.toMatch(/^https?:\/\//);
+  expect(location).not.toContain('localhost');
 });
 
 test('subdomain: a duplicate /u/lgu path redirects to the canonical clean URL', async ({
