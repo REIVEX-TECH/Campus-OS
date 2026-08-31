@@ -26,31 +26,52 @@ export interface PortalSession {
   kind: 'autonomous' | 'env-override';
 }
 
-/** Mint an anonymous session and activate it via the "Continue" POST. */
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Mint an anonymous session and activate it via the "Continue" POST.
+ *
+ * The host is fronted by Cloudflare but intermittently round-robins to an edge
+ * that 404s without setting PHPSESSID. That is infrastructure flakiness, not a
+ * block, so we retry the initial GET (with backoff) until the real portal
+ * answers and sets the cookie, then activate. A genuine block would surface as a
+ * 403/429 handled elsewhere.
+ */
 export async function createAutonomousSession(
   baseUrl: string,
   userAgent: string,
+  maxAttempts = 6,
 ): Promise<PortalSession> {
-  const jar: Jar = {};
   const headers = { 'User-Agent': userAgent, Accept: 'text/html,application/xhtml+xml,*/*' };
 
-  const root = await fetch(`${baseUrl}/index.php`, { headers, redirect: 'manual' });
-  await root.text();
-  absorb(jar, root);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const jar: Jar = {};
+    try {
+      const root = await fetch(`${baseUrl}/index.php`, { headers, redirect: 'manual' });
+      await root.text();
+      absorb(jar, root);
+    } catch {
+      // network hiccup; fall through to backoff
+    }
 
-  const cont = await fetch(`${baseUrl}/index.php`, {
-    method: 'POST',
-    headers: {
-      ...headers,
-      Cookie: cookieHeader(jar),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ 'login-btn': '' }).toString(),
-    redirect: 'manual',
-  });
-  await cont.text();
-  absorb(jar, cont);
+    if (jar['PHPSESSID']) {
+      const cont = await fetch(`${baseUrl}/index.php`, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          Cookie: cookieHeader(jar),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ 'login-btn': '' }).toString(),
+        redirect: 'manual',
+      });
+      await cont.text();
+      absorb(jar, cont);
+      return { cookie: cookieHeader(jar), kind: 'autonomous' };
+    }
 
-  if (!jar['PHPSESSID']) throw new Error('failed to mint PHPSESSID from portal');
-  return { cookie: cookieHeader(jar), kind: 'autonomous' };
+    if (attempt < maxAttempts) await sleep(1500 * attempt);
+  }
+
+  throw new Error('failed to mint PHPSESSID from portal after retries');
 }

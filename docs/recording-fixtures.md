@@ -42,24 +42,33 @@ session from 08:00). Free slots render as `X` / "All slots are free" (no spans).
 Course titles containing "lab" (case-insensitive) are classified `lab`, else
 `lecture`.
 
-## Record
+## Record (full crawl)
 
 ```bash
 SOURCE_MODE=live pnpm --filter @campusos/adapter-timetable-lgu record:fixtures
 ```
 
-The recorder mints an autonomous session, then makes a small polite set of
-requests (semester panel → first semester's degrees → first degree's sections →
-first 2–3 section timetables), with an honest User-Agent and delays between
-requests, and writes raw responses to:
+The recorder mints an autonomous session, then drives the **full** `crawl()`
+(every semester × degree × section) through a recording HTTP client that writes
+every response to its fixture file. It is polite (honest User-Agent, delay,
+backoff), skips and logs one bad section rather than aborting, and stops on a
+real block. It prints the section and anomaly counts at the end. Files written:
 
 ```
 packages/adapters/timetable-lgu/tests/fixtures/
   semester-panel.html
-  degrees__<semester>.html
-  sections__<semester>__<program>.html
-  timetable__<semester>__<program>__<section>.html   # ×2–3
+  degrees__<semester>.html                            # per semester
+  sections__<semester>__<program>.html                # per (semester, program)
+  timetable__<semester>__<program>__<section>.html    # per (semester, program, section)
 ```
+
+Politeness caps (`LGU_MAX_SEMESTERS` / `LGU_MAX_DEGREES` / `LGU_MAX_SECTIONS`)
+can bound a recording run.
+
+> **Host stability.** `timetable.lgu.edu.pk` intermittently round-robins to a
+> Vercel edge that 404s in bursts (not a block). The session mint and live client
+> retry through the blips, but a full crawl during a bad burst will accumulate
+> anomalies. Record during a stable window; a genuine 403/429/503 aborts the run.
 
 ## Scrub before committing (required)
 

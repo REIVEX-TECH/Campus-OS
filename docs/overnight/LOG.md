@@ -23,4 +23,21 @@ Chronological notes, one block per phase. Newest appended at the bottom.
   alias self-heal, RLS isolation); authz unit + e2e (route + mutation blocked).
 - Verification (fixture ingest into campusos_dev, then map all pending rooms):
   BEFORE room=TBA 41/41 (15 pending rooms) -> AFTER room=TBA 0/41.
-- PR #4. Merge SHA: <filled at Phase 2 start>.
+- PR #4 merged. Merge SHA: 00b5489e73629555046960d0b420daa39e6b4258. CI green
+  on the first run (no flaky deadlock).
+
+## Phase 2 — Full LGU crawl
+
+- Branch `feat/full-crawl` off `main` @ 00b5489.
+- Shipped the full-crawl CODE: `crawl()` walks every semester x degree x
+  section; robust (bad section -> anomaly + skip; block -> abort; fixture
+  missing -> silent skip); backoff on transient failures; optional politeness
+  caps; resilient autonomous session; recorder drives crawl via a recording
+  client. normalize spans many semesters/degrees and maps anomalies to unmapped.
+- Tests: crawl.test.ts (cartesian + anomaly + caps), normalize (multi + anomaly),
+  source (clean fixture slice). 12 adapter tests; full gates 22/22 green.
+- ⚠️ LIVE full crawl + fresh full data BLOCKED by host instability
+  (timetable.lgu.edu.pk round-robins to a Vercel 404 edge in bursts; not a
+  block, but not crawlable). Paused the live portion per the rules; recorded in
+  docs/overnight/DECISIONS.md. Fixture-mode ingest unchanged (41 entries clean).
+- PR #5. Merge SHA: <filled at Phase 3 start>.

@@ -26,9 +26,13 @@ describe('LguTimetableSource (fixture mode, real portal HTML)', () => {
 
     const batch = normalized.value;
     expect(batch.programs[0]?.name).toBe('BSCS');
+    // The full crawl walks the whole panel; only the recorded slice (one
+    // semester, one degree, three sections) has fixtures, and not-recorded
+    // combos are skipped silently, so fixture mode is clean (no anomalies).
     expect(batch.sections).toHaveLength(3);
     expect(batch.entries.length).toBeGreaterThan(0);
     expect(batch.terms[0]?.code).toContain('Semester');
+    expect(batch.unknowns).toEqual([]);
     // zero-network proof: only the injected fixture client was read.
     expect(http.calls).toContain('semester-panel.html');
     expect(http.calls.length).toBeGreaterThan(3);

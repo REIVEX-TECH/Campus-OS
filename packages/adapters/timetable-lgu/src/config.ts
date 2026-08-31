@@ -16,7 +16,17 @@ const envSchema = z.object({
     .optional()
     .transform((value) => (value && value.length > 0 ? value : undefined)),
   LGU_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
+  // Optional politeness caps for the full crawl (unset = unlimited/full).
+  LGU_MAX_SEMESTERS: z.coerce.number().int().min(1).optional(),
+  LGU_MAX_DEGREES: z.coerce.number().int().min(1).optional(),
+  LGU_MAX_SECTIONS: z.coerce.number().int().min(1).optional(),
 });
+
+export interface CrawlLimits {
+  semesters?: number;
+  degrees?: number;
+  sections?: number;
+}
 
 export interface AdapterConfig {
   mode: 'live' | 'fixture';
@@ -25,6 +35,7 @@ export interface AdapterConfig {
   concurrency: number;
   userAgent: string;
   fixturesDir: string;
+  limits?: CrawlLimits;
 }
 
 const DEFAULT_FIXTURES_DIR = join(
@@ -40,6 +51,10 @@ export function loadConfig(
   fixturesDir: string = DEFAULT_FIXTURES_DIR,
 ): AdapterConfig {
   const parsed = envSchema.parse(env);
+  const limits: CrawlLimits = {};
+  if (parsed.LGU_MAX_SEMESTERS) limits.semesters = parsed.LGU_MAX_SEMESTERS;
+  if (parsed.LGU_MAX_DEGREES) limits.degrees = parsed.LGU_MAX_DEGREES;
+  if (parsed.LGU_MAX_SECTIONS) limits.sections = parsed.LGU_MAX_SECTIONS;
   return {
     mode: parsed.SOURCE_MODE,
     baseUrl: parsed.LGU_BASE_URL.replace(/\/$/, ''),
@@ -47,5 +62,6 @@ export function loadConfig(
     concurrency: parsed.LGU_CONCURRENCY,
     userAgent: USER_AGENT,
     fixturesDir,
+    limits: Object.keys(limits).length > 0 ? limits : undefined,
   };
 }
