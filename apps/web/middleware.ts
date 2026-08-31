@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { relativeRedirect } from './lib/redirects';
 import { planRoute } from './lib/tenant-routing';
 
 /**
@@ -14,9 +13,13 @@ export function middleware(req: NextRequest): NextResponse {
   const plan = planRoute(req.headers.get('host') ?? '', url.pathname);
 
   if (plan.action === 'redirect') {
-    // Relative Location so the browser stays on the public origin (behind a
-    // proxy the upstream host differs), not localhost:PORT.
-    return relativeRedirect(`${plan.pathname}${url.search}`, 308);
+    // Middleware requires an absolute URL. `req.nextUrl` is built from the
+    // forwarded Host header (the public host), NOT the upstream socket, so this
+    // is correct behind the proxy. (Route handlers use request.url, which IS the
+    // socket, so they emit relative Locations instead; see lib/redirects.ts.)
+    const to = new URL(plan.pathname, url);
+    to.search = url.search;
+    return NextResponse.redirect(to, 308);
   }
 
   if (plan.action === 'rewrite') {

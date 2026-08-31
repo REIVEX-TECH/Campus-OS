@@ -22,9 +22,11 @@ the public origin it is already on.
 - **Admin route handlers** (`login/submit`, `logout`, `rooms/resolve`): every
   `NextResponse.redirect(new URL(..., request.url))` is replaced with
   `relativeRedirect(...)`. Cookies (login/logout) are still set on the response.
-- **`middleware.ts`**: the canonicalising `/u/{label}/* -> /*` redirect is also
-  relative now (defence in depth; it was Host-based and correct, but consistency
-  removes any dependency on the proxied host).
+- **`middleware.ts`**: the canonicalising `/u/{label}/* -> /*` redirect stays
+  absolute (Next middleware requires an absolute URL), but it is built from
+  `req.nextUrl`, which comes from the forwarded `Host` header (the public host),
+  not the upstream socket, so it is correct behind the proxy. Only route handlers
+  (which use `request.url` = the socket) need the relative form.
 - The `redirect()` (next/navigation) calls in `requireAdmin` and the login page
   already pass relative string paths and were unaffected; audited and left as is.
 
