@@ -32,6 +32,9 @@ test('the tenant home carries CollegeOrUniversity structured data', async ({ req
   expect(html).toContain('application/ld+json');
   expect(html).toContain('"@type":"CollegeOrUniversity"');
   expect(html).toContain('Lahore Garrison University');
+  // A generated OpenGraph image is wired for the tenant.
+  expect(html).toContain('og:image');
+  expect(html).toContain('/opengraph-image');
 });
 
 test('the platform landing carries WebSite structured data and social cards', async ({ page }) => {
@@ -43,5 +46,9 @@ test('the platform landing carries WebSite structured data and social cards', as
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
     'content',
     'summary_large_image',
+  );
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+    'content',
+    /\/opengraph-image/,
   );
 });
