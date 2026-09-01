@@ -19,6 +19,7 @@
     "db:migrate:all": "tsx scripts/migrate-all.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",
+    "backfill:rooms": "tsx scripts/backfill-rooms.ts",
     "prepare": "husky"
   },
   "devDependencies": {

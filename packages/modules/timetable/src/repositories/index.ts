@@ -5,6 +5,7 @@ export { TimetableRepository, type ApplyDiffStats } from './timetable';
 export {
   AdminRoomsRepository,
   RoomResolveError,
+  type BackfillRoomsResult,
   type PendingRoom,
   type RoomOption,
   type ResolveRoomInput,

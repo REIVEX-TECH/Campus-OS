@@ -15,6 +15,13 @@
       "when": 1735689601000,
       "tag": "0001_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1735689602000,
+      "tag": "0002_room_dedup_key",
+      "breakpoints": true
     }
   ]
 }

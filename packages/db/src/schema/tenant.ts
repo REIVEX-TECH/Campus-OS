@@ -70,6 +70,12 @@ export const rooms = pgTable(
       .notNull()
       .references(() => buildings.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    // Normalized match key for dedup (see the timetable module's roomDedupKey):
+    // the sink auto-creates one room per (tenant, dedup_key). Decoupled from the
+    // renamable display `name`. Nullable for rooms created before this column; the
+    // backfill populates them. A partial unique index on (tenant_id, dedup_key)
+    // WHERE deleted_at IS NULL is added once existing rooms are deduped (PR B).
+    dedupKey: text('dedup_key'),
     capacity: integer('capacity'),
     ...timestamps,
     ...softDelete,

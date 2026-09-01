@@ -10,7 +10,13 @@ import type {
   RawTimetablePayload,
   UnmappedKind,
 } from '@campusos/core/ingestion';
-import { planTimetableDiff, type TimetableEntryInput } from '../domain/index';
+import {
+  planTimetableDiff,
+  roomDedupKey,
+  roomDisplayName,
+  type TimetableEntryInput,
+} from '../domain/index';
+import { ensureUnassignedBuilding } from './ensure-building';
 import {
   academicTerms,
   courses,
@@ -24,9 +30,12 @@ import { ingestionRuns, sourceSnapshots, unmappedSourceValues } from '../schema/
 
 /**
  * Persists a NormalizedBatch into the timetable schema for one tenant. New
- * dimension rows are created with status 'pending' for admin review (rather than
- * failing the run or dropping data). Entries are diffed per term and applied
- * with versioning. All work for a run's persist happens in one transaction.
+ * catalog rows (terms, programs, sections, teachers) are created with status
+ * 'pending' for admin review (rather than failing the run or dropping data).
+ * Rooms are the exception: a crawled room name is trusted data, so it
+ * auto-creates a canonical room (deduped by a normalized key) and links the
+ * entry, never leaving it TBA. Entries are diffed per term and applied with
+ * versioning. All work for a run's persist happens in one transaction.
  */
 export class TimetableSink implements IngestionSink {
   constructor(private readonly tenantId: string) {}
@@ -237,29 +246,21 @@ export class TimetableSink implements IngestionSink {
       if (id) sectionIds.set(s.code, id);
     }
 
-    const roomRows = await tx.select({ id: rooms.id, name: rooms.name }).from(rooms);
-    const roomByName = new Map(roomRows.map((r) => [r.name.toLowerCase(), r.id]));
-
-    // Self-heal: a raw room string an admin already mapped (status 'resolved',
-    // resolved_id set) resolves to that room even if its canonical name differs,
-    // so a re-crawl does not re-flag it as pending or undo the admin's work.
-    const resolvedRoomRows = await tx
-      .select({
-        rawValue: unmappedSourceValues.rawValue,
-        resolvedId: unmappedSourceValues.resolvedId,
-      })
-      .from(unmappedSourceValues)
-      .where(
-        and(
-          eq(unmappedSourceValues.tenantId, tid),
-          eq(unmappedSourceValues.kind, 'room'),
-          eq(unmappedSourceValues.status, 'resolved'),
-        ),
-      );
-    const roomByAlias = new Map<string, string>();
-    for (const r of resolvedRoomRows) {
-      if (r.resolvedId) roomByAlias.set(r.rawValue.toLowerCase(), r.resolvedId);
+    // Rooms auto-create from the trusted crawled name, deduped by a normalized
+    // key (mirrors teachers). A crawled room is trusted data, so rooms carry no
+    // pending status and never block an entry as TBA. Match existing rooms by
+    // their dedup key (computed from the name for rooms created before the
+    // dedup_key column was backfilled). New rooms are created lazily below.
+    const roomRows = await tx
+      .select({ id: rooms.id, name: rooms.name, dedupKey: rooms.dedupKey })
+      .from(rooms)
+      .where(isNull(rooms.deletedAt));
+    const roomByKey = new Map<string, string>();
+    for (const r of roomRows) {
+      const key = r.dedupKey ?? roomDedupKey(r.name);
+      if (key && !roomByKey.has(key)) roomByKey.set(key, r.id);
     }
+    let unassignedBuildingId: string | null = null;
 
     const byTerm = new Map<string, TimetableEntryInput[]>();
     for (const e of batch.entries) {
@@ -271,11 +272,29 @@ export class TimetableSink implements IngestionSink {
         continue;
       }
       const teacherId = e.teacherName ? (teacherIds.get(e.teacherName) ?? null) : null;
+      // Auto-create the room from the crawled string. The `if (key)` guard is the
+      // safety valve: a blank or punctuation-only source room yields no key, so
+      // room_id stays null and the slot renders TBA honestly.
       let roomId: string | null = null;
       if (e.roomName) {
-        const key = e.roomName.toLowerCase();
-        roomId = roomByName.get(key) ?? roomByAlias.get(key) ?? null;
-        if (!roomId) await recordUnmapped('room', e.roomName);
+        const key = roomDedupKey(e.roomName);
+        if (key) {
+          roomId = roomByKey.get(key) ?? null;
+          if (!roomId) {
+            unassignedBuildingId ??= await ensureUnassignedBuilding(tx, tid);
+            const ins = await tx
+              .insert(rooms)
+              .values({
+                tenantId: tid,
+                buildingId: unassignedBuildingId,
+                name: roomDisplayName(e.roomName),
+                dedupKey: key,
+              })
+              .returning({ id: rooms.id });
+            roomId = ins[0]?.id ?? null;
+            if (roomId) roomByKey.set(key, roomId);
+          }
+        }
       }
       const input: TimetableEntryInput = {
         termId,
