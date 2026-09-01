@@ -237,6 +237,16 @@ export class TimetableQueries extends TenantScopedRepository {
     });
   }
 
+  /** Distinct course ids that appear on a current entry (for the sitemap). */
+  listCourseIdsWithEntries(): Promise<{ id: string }[]> {
+    return this.run((tx) =>
+      tx
+        .selectDistinct({ id: timetableEntries.courseId })
+        .from(timetableEntries)
+        .where(isNull(timetableEntries.validTo)),
+    );
+  }
+
   /** Distinct room ids that appear on a current entry (for the sitemap). */
   listRoomIdsWithEntries(): Promise<{ id: string }[]> {
     return this.run(async (tx) => {

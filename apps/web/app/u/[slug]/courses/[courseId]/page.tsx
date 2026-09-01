@@ -1,12 +1,16 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { Card } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
+import { JsonLd } from '@/app/_components/json-ld';
 import { hhmm } from '@/app/_components/views/time-scale';
 import { dayName, kindName, translator } from '@/lib/i18n';
+import { courseLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
+import { baseUrlFromHost } from '@/lib/tenant';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -36,6 +40,10 @@ export default async function CoursePage({ params }: Params) {
   if (!course) notFound();
   const views = await queries.courseTimetable(courseId);
 
+  const host = (await headers()).get('host') ?? '';
+  const tenantUrl = `${baseUrlFromHost(host)}${base}`;
+  const courseUrl = `${tenantUrl}/courses/${courseId}`;
+
   const byDay = new Map<number, typeof views>();
   for (const v of views) {
     const list = byDay.get(v.dayOfWeek) ?? [];
@@ -46,6 +54,7 @@ export default async function CoursePage({ params }: Params) {
 
   return (
     <div className="flex flex-col gap-6">
+      <JsonLd data={courseLd({ course, url: courseUrl, tenant, tenantUrl, sessions: views })} />
       <header className="flex flex-col gap-1 px-1">
         <Link href={`${base}/search`} className="text-sm text-primary hover:underline">
           {course.code}

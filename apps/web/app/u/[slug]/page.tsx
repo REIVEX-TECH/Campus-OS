@@ -1,10 +1,14 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
+import { JsonLd } from '@/app/_components/json-ld';
 import { translator, type MessageKey } from '@/lib/i18n';
+import { universityLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
 import { MODULES } from '@/lib/modules';
+import { baseUrlFromHost } from '@/lib/tenant';
 import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +28,12 @@ export default async function TenantHome({ params }: Params) {
   if (!tenant) notFound();
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
+  const host = (await headers()).get('host') ?? '';
+  const tenantUrl = `${baseUrlFromHost(host)}${base}`;
 
   return (
     <div className="flex flex-col gap-8">
+      <JsonLd data={universityLd(tenant, tenantUrl)} />
       <header className="flex flex-col gap-2">
         <h1 className="text-4xl font-bold tracking-tight">{tenant.displayName}</h1>
         <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
