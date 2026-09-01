@@ -1,6 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
+
+// The mobile browser chrome colour, matched to each theme's page background.
+// (This tracks the OS scheme; a manual toggle override is a minor, accepted
+// mismatch limited to the browser UI bar.)
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
+};
 
 // A Search Console verification token, if configured, renders the
 // <meta name="google-site-verification"> tag on every page. Left unset by
