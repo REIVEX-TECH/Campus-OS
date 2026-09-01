@@ -85,6 +85,7 @@ export const en = {
   'nav.freeRooms': 'Free rooms',
   'nav.search': 'Search',
   'theme.toggle': 'Toggle light and dark',
+  'a11y.skipToContent': 'Skip to content',
 
   'modules.comingSoon': 'Coming soon',
   'modules.soonBody': 'This is on the way. Check back soon.',

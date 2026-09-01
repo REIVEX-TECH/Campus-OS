@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { translator } from '@/lib/i18n';
+import { SkipLink } from './skip-link';
 import { ThemeToggle } from './theme-toggle';
 
 /**
@@ -30,6 +31,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <SkipLink label={t('a11y.skipToContent')} />
       <header className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[120rem] items-center justify-between gap-4 px-4 sm:px-6">
           <Link
@@ -52,7 +54,13 @@ export function AppShell({
           </nav>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[120rem] flex-1 px-4 py-6 sm:px-6">{children}</main>
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-[120rem] flex-1 px-4 py-6 outline-none sm:px-6"
+      >
+        {children}
+      </main>
     </div>
   );
 }
