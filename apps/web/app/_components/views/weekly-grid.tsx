@@ -38,7 +38,15 @@ export function WeeklyGrid({
   const nowInRange = now !== null && now.minutes >= axisStart && now.minutes <= endHour * 60;
 
   return (
-    <div className="overflow-x-auto">
+    // Keyboard-focusable scroll region: on narrow screens the grid scrolls
+    // sideways, so it must be reachable and scrollable with the keyboard, and
+    // named for screen readers.
+    <div
+      className="overflow-x-auto rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      role="region"
+      aria-label={t('timetable.weekGrid')}
+      tabIndex={0}
+    >
       <div className="flex min-w-[44rem]">
         <div className="sticky left-0 z-10 w-12 shrink-0 bg-background">
           <div className="h-8" />
