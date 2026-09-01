@@ -329,9 +329,33 @@ Run after step 5 (and again after step 6/8):
 | `PORT`          | `3003`                                                 |
 | `DATABASE_URL`  | `postgres://campusos_app:<pw>@127.0.0.1:5432/campusos` |
 | `APP_DOMAIN`    | `reivex.io`                                            |
+| `PLATFORM_HOST` | `campusos.reivex.io` (the platform landing host)       |
 | `ADMIN_SECRET`  | a long random secret (`openssl rand -hex 32`)          |
 | `SOURCE_MODE`   | `fixture` now; the cron uses `live` regardless         |
 | `CAMPUSOS_NODE` | (shell only, for `pm2 start`) the `nvm which 22` path  |
+
+## Platform root (campusos.reivex.io)
+
+`campusos.reivex.io` is the platform landing (it lists the universities), NOT a
+tenant. Set `PLATFORM_HOST=campusos.reivex.io` in `.env` so the app serves the
+landing there instead of trying to resolve `campusos` as a tenant slug (which
+would 404). Tenant subdomains (`lgu.reivex.io`) are unaffected. Create a **fresh minimal
+port-80 vhost** for it exactly like step 5 (same `location /` proxy block to
+`127.0.0.1:3003`, just `server_name campusos.reivex.io`), then let certbot add
+TLS:
+
+```bash
+# /etc/nginx/sites-available/campusos.reivex.io  (same proxy block as step 5,
+# with server_name campusos.reivex.io), then:
+sudo ln -s /etc/nginx/sites-available/campusos.reivex.io /etc/nginx/sites-enabled/campusos.reivex.io
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d campusos.reivex.io      # DNS A record must resolve first
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Add `PLATFORM_HOST=campusos.reivex.io` to `.env` and `pm2 restart campusos`, and
+add a DNS A record for `campusos.reivex.io` -> this VPS. Both hosts run the same
+pm2 app on 3003; only the env and DNS differ.
 
 ## Updating later
 

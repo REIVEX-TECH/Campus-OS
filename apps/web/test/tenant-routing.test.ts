@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planRoute, tenantBaseForHost } from '../lib/tenant-routing';
+import { isPlatformHost, planRoute, tenantBaseForHost } from '../lib/tenant-routing';
 
 describe('tenantBaseForHost', () => {
   it('returns an empty base when the tenant is resolved from the subdomain', () => {
@@ -49,5 +49,35 @@ describe('planRoute', () => {
 
   it('passes through non-tenant requests', () => {
     expect(planRoute('localhost:3000', '/', 'localhost:3000')).toEqual({ action: 'next' });
+  });
+});
+
+describe('platform host', () => {
+  const D = 'reivex.io';
+  const P = 'campusos.reivex.io';
+
+  it('isPlatformHost matches the configured platform host (port-insensitive), not tenants', () => {
+    expect(isPlatformHost('campusos.reivex.io', P)).toBe(true);
+    expect(isPlatformHost('campusos.reivex.io:443', P)).toBe(true);
+    expect(isPlatformHost('lgu.reivex.io', P)).toBe(false);
+    expect(isPlatformHost('anything', null)).toBe(false);
+  });
+
+  it('serves the platform landing at / and never resolves the platform host as a tenant', () => {
+    expect(planRoute(P, '/', D, P)).toEqual({ action: 'next' });
+    // /u/{slug} on the platform host is still path-based tenant access:
+    expect(planRoute(P, '/u/lgu/timetable', D, P)).toEqual({ action: 'next', slug: 'lgu' });
+  });
+
+  it('still resolves a real tenant subdomain when the platform host is configured', () => {
+    expect(planRoute('lgu.reivex.io', '/timetable', D, P)).toEqual({
+      action: 'rewrite',
+      pathname: '/u/lgu/timetable',
+      slug: 'lgu',
+    });
+  });
+
+  it('tenant links from the platform host use the /u/{slug} path shape', () => {
+    expect(tenantBaseForHost(P, 'lgu', D, P)).toBe('/u/lgu');
   });
 });
