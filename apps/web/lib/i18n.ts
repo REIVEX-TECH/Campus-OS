@@ -31,6 +31,10 @@ export function dayName(locale: string, isoDay: number): string {
   return t(locale, `timetable.day.${isoDay}` as MessageKey);
 }
 
+export function dayShort(locale: string, isoDay: number): string {
+  return t(locale, `timetable.dayShort.${isoDay}` as MessageKey);
+}
+
 export function kindName(locale: string, kind: string): string {
   return t(locale, `timetable.kind.${kind}` as MessageKey);
 }
