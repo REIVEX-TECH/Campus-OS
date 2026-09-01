@@ -1,54 +1,56 @@
 /*
  * Campus OS design tokens (Tailwind v4, CSS-first). The visual law is documented
- * in docs/design.md. Colours are CSS variables so a tenant's accent can override
- * `--primary` at runtime (see the tenant layout) without a rebuild.
+ * in docs/design.md.
  *
- * Language: a flat, high-contrast, minimalist base. Neumorphism (the soft
- * `--shadow-raised` / `--shadow-pressed` pair) is applied ONLY to interactive
- * surfaces as a pressable affordance; static content stays flat. Text always
- * sits on a solid token, never on a shadow, so contrast is unaffected (every
- * pairing clears WCAG AA; ratios are computed in docs/design.md).
+ * Language: iOS / Apple, LIGHT. White cards on a light-grey grouped background,
+ * flat iOS elevation (a single subtle drop shadow, NOT neumorphism), the tenant
+ * accent (LGU green) as the single tint, SF-style type. Colours are CSS variables
+ * so a tenant's accent overrides `--primary` at runtime (see the tenant layout).
+ * Two hard rules hold: no dash punctuation in copy, no divider lines (grouped
+ * feel comes from spacing + white blocks, never hairlines). Text always sits on a
+ * solid token, so every pairing clears WCAG AA (ratios computed in docs/design.md).
+ * The app is forced light (<html class="light">); .dark is defined but dormant.
  */
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem; /* 12px, iOS grouped-cell corners */
 
-  /* Flat, high-contrast neutral base. */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  /* iOS light: systemGroupedBackground grey page, white cards. */
+  --background: oklch(0.965 0.004 270); /* ~ #F2F2F7 */
+  --foreground: oklch(0.16 0 0); /* label */
+  --card: oklch(1 0 0); /* white cards */
+  --card-foreground: oklch(0.16 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.16 0 0);
+  --primary: oklch(0.205 0 0); /* neutral default; tenant accent injected over this */
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.95 0 0); /* light grey fill */
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.44 0 0); /* darkened for AA on white (~7:1) */
-  --accent: oklch(0.97 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.44 0 0); /* secondary label; AA >= 7:1 on white and grey */
+  --accent: oklch(0.95 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.505 0.21 27.325); /* darkened for AA of white text (~5.3:1) */
+  --destructive: oklch(0.505 0.21 27.325); /* AA of white text (~6.5:1) */
   --destructive-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.92 0.045 90);
-  --warning-foreground: oklch(0.28 0.06 60); /* dark amber text on soft amber (~7:1) */
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --warning: oklch(0.92 0.045 90); /* Unverified badge: soft amber + dark amber text */
+  --warning-foreground: oklch(0.28 0.06 60);
+  --border: oklch(0.9 0 0); /* hairline, used sparingly (never as a section divider) */
+  --input: oklch(0.94 0 0); /* iOS filled field */
   --ring: oklch(0.5 0 0);
 
-  /* Neumorphic surface: a hair off the flat page so soft shadows read. Applied
-   * only to interactive elements. */
-  --surface: oklch(0.968 0 0);
-  --surface-foreground: oklch(0.145 0 0);
-  --shadow-raised: 4px 4px 10px rgba(15, 23, 42, 0.1), -4px -4px 10px rgba(255, 255, 255, 0.9);
-  --shadow-pressed:
-    inset 3px 3px 7px rgba(15, 23, 42, 0.13), inset -3px -3px 7px rgba(255, 255, 255, 0.85);
+  /* Cards / tiles are white on the grey page. */
+  --surface: oklch(1 0 0);
+  --surface-foreground: oklch(0.16 0 0);
+
+  /* Flat iOS elevation (replaces neumorphism). */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-card-strong: 0 2px 6px rgba(0, 0, 0, 0.06), 0 6px 16px rgba(0, 0, 0, 0.08);
 }
 
-/* Dark palette. Applied by the `.dark` class (explicit) AND by the system
- * preference below, so dark mode is live without a toggle. */
+/* Dark palette, defined but dormant (the app forces light). Kept coherent with
+ * the grouped model: near-black page, dark-grey cards. */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -71,46 +73,10 @@
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.708 0 0);
-
-  --surface: oklch(0.213 0 0);
+  --surface: oklch(0.205 0 0);
   --surface-foreground: oklch(0.985 0 0);
-  --shadow-raised: 4px 4px 10px rgba(0, 0, 0, 0.55), -4px -4px 10px rgba(255, 255, 255, 0.04);
-  --shadow-pressed:
-    inset 3px 3px 7px rgba(0, 0, 0, 0.6), inset -3px -3px 7px rgba(255, 255, 255, 0.045);
-}
-
-/* System dark preference activates the dark palette unless a `.light` ancestor
- * forces light. Keeps the neumorphic shadows correct per mode. */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.72 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --destructive-foreground: oklch(0.985 0 0);
-    --warning: oklch(0.42 0.09 85);
-    --warning-foreground: oklch(0.96 0.03 95);
-    --border: oklch(1 0 0 / 12%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.708 0 0);
-
-    --surface: oklch(0.213 0 0);
-    --surface-foreground: oklch(0.985 0 0);
-    --shadow-raised: 4px 4px 10px rgba(0, 0, 0, 0.55), -4px -4px 10px rgba(255, 255, 255, 0.04);
-    --shadow-pressed:
-      inset 3px 3px 7px rgba(0, 0, 0, 0.6), inset -3px -3px 7px rgba(255, 255, 255, 0.045);
-  }
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-card-strong: 0 2px 6px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {
@@ -138,40 +104,50 @@
   --color-surface: var(--surface);
   --color-surface-foreground: var(--surface-foreground);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Roboto,
+    system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 6px); /* 6 */
+  --radius-md: calc(var(--radius) - 4px); /* 8 */
+  --radius-lg: calc(var(--radius) - 2px); /* 10 */
+  --radius-xl: var(--radius); /* 12 */
+  --radius-2xl: calc(var(--radius) + 4px); /* 16 */
 }
 
 @layer base {
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 17px; /* iOS body */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
 /*
- * Neumorphism utilities. `.neu` is a raised interactive surface that presses in
- * on :active; `.neu-inset` is a permanently recessed surface (form inputs).
- * These are the ONLY place soft elevation is defined; static content never uses
- * them. Colours come from the solid --surface token so text contrast holds.
+ * Flat iOS elevation helpers (the ONLY place elevation is defined). Static
+ * content stays flat; a subtle card shadow marks grouped blocks and pressables.
  */
 @layer components {
-  .neu {
-    background-color: var(--color-surface);
-    color: var(--color-surface-foreground);
-    box-shadow: var(--shadow-raised);
+  .ios-card {
+    background-color: var(--color-card);
+    color: var(--color-card-foreground);
+    box-shadow: var(--shadow-card);
+  }
+  .ios-pressable {
     transition:
-      box-shadow 120ms ease,
-      transform 120ms ease;
+      box-shadow 150ms ease,
+      transform 100ms ease,
+      background-color 100ms ease;
   }
-  .neu:active {
-    box-shadow: var(--shadow-pressed);
+  .ios-pressable:active {
+    transform: scale(0.985);
   }
-  .neu-inset {
-    background-color: var(--color-surface);
-    color: var(--color-surface-foreground);
-    box-shadow: var(--shadow-pressed);
+  /* iOS filled field (replaces the neumorphic inset). */
+  .ios-field {
+    background-color: var(--color-input);
+    color: var(--color-foreground);
   }
 }

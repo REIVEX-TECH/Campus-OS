@@ -39,7 +39,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = `${baseUrl}${tenantBaseForHost(host, tenant.slug)}`;
   const queries = getQueries(tenant.slug);
   const terms = await queries.listTerms();
-  const sectionLists = await Promise.all(terms.map((term) => queries.listSectionsByTerm(term.id)));
+  const [sectionLists, teacherIds, roomIds] = await Promise.all([
+    Promise.all(terms.map((term) => queries.listSectionsByTerm(term.id))),
+    queries.listTeacherIdsWithEntries(),
+    queries.listRoomIdsWithEntries(),
+  ]);
 
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}/`, lastModified: now, changeFrequency: 'daily', priority: 1 },
@@ -54,6 +58,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
       });
     }
+  }
+  for (const { id } of teacherIds) {
+    entries.push({
+      url: `${base}/teachers/${id}`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.5,
+    });
+  }
+  for (const { id } of roomIds) {
+    entries.push({
+      url: `${base}/rooms/${id}`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.5,
+    });
   }
   return entries;
 }

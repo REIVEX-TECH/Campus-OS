@@ -10,7 +10,12 @@ export const en = {
 
   'timetable.heading': 'Timetable',
   'timetable.viewTimetable': 'View timetable',
+  'timetable.semester': 'Semester',
+  'timetable.program': 'Program',
+  'timetable.chooseSemester': 'Choose a semester',
+  'timetable.chooseProgram': 'Choose a program',
   'timetable.chooseSection': 'Choose a section',
+  'timetable.pickPrompt': 'Choose a semester, program, and section to see the timetable.',
   'timetable.section': 'Section',
   'timetable.teacher': 'Teacher',
   'timetable.room': 'Room',

@@ -17,6 +17,9 @@ next-env.d.ts
 
 # test / coverage
 coverage/
+test-results/
+playwright-report/
+.playwright/
 
 # session-probe artifacts (captured live HTML for inspection)
 .probe/

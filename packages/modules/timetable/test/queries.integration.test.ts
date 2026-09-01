@@ -57,6 +57,31 @@ async function seed() {
         status: 'active',
       })
       .returning();
+    // A second term with no sections: it must be excluded from the cascade's
+    // step 1 (listTermsWithSections) but still appear in the raw listTerms.
+    const [emptyTerm] = await tx
+      .insert(academicTerms)
+      .values({
+        tenantId: 'aaa',
+        code: 'S26',
+        name: 'Spring 2026',
+        startsOn: '2026-02-01',
+        endsOn: '2026-05-30',
+        status: 'active',
+      })
+      .returning();
+    // A second program in the SAME term, to prove step 2/3 of the cascade
+    // filter by program. Its code sorts after BSCS so existing ordering holds.
+    const [prog2] = await tx
+      .insert(programs)
+      .values({
+        tenantId: 'aaa',
+        code: 'BSSE',
+        name: 'BS Software Engineering',
+        departmentId: dept!.id,
+        status: 'active',
+      })
+      .returning();
     const [sec] = await tx
       .insert(sections)
       .values({
@@ -65,6 +90,17 @@ async function seed() {
         termId: term!.id,
         name: 'A',
         semester: 5,
+        status: 'active',
+      })
+      .returning();
+    const [secB] = await tx
+      .insert(sections)
+      .values({
+        tenantId: 'aaa',
+        programId: prog2!.id,
+        termId: term!.id,
+        name: 'B',
+        semester: 3,
         status: 'active',
       })
       .returning();
@@ -119,7 +155,16 @@ async function seed() {
     await tx
       .insert(ingestionRuns)
       .values({ tenantId: 'aaa', source: 'test', status: 'success', finishedAt: new Date() });
-    return { sectionId: sec!.id, termId: term!.id, teacherId: teacher!.id, roomId: room!.id };
+    return {
+      sectionId: sec!.id,
+      sectionBId: secB!.id,
+      termId: term!.id,
+      emptyTermId: emptyTerm!.id,
+      bscsProgramId: prog!.id,
+      sseProgramId: prog2!.id,
+      teacherId: teacher!.id,
+      roomId: room!.id,
+    };
   });
 }
 
@@ -130,7 +175,16 @@ async function universitiesRepoUpsert() {
     .onConflictDoNothing();
 }
 
-let ids: { sectionId: string; termId: string; teacherId: string; roomId: string };
+let ids: {
+  sectionId: string;
+  sectionBId: string;
+  termId: string;
+  emptyTermId: string;
+  bscsProgramId: string;
+  sseProgramId: string;
+  teacherId: string;
+  roomId: string;
+};
 
 beforeEach(async () => {
   ids = await seed();
@@ -163,5 +217,42 @@ describe('TimetableQueries (enriched reads)', () => {
     const q = createTimetableQueries('aaa');
     expect(await q.teacherTimetable(ids.teacherId)).toHaveLength(1);
     expect(await q.roomTimetable(ids.roomId)).toHaveLength(1);
+  });
+});
+
+describe('TimetableQueries (cascade picker: term to program to section)', () => {
+  it('step 1: lists only terms that have sections', async () => {
+    const q = createTimetableQueries('aaa');
+    const all = (await q.listTerms()).map((t) => t.code);
+    expect(all).toEqual(expect.arrayContaining(['F25', 'S26']));
+
+    const withSections = (await q.listTermsWithSections()).map((t) => t.code);
+    expect(withSections).toContain('F25');
+    expect(withSections).not.toContain('S26'); // the empty term is dropped
+  });
+
+  it('step 2: lists the distinct programs (including pending) that have sections in a term', async () => {
+    const q = createTimetableQueries('aaa');
+    const programs = await q.listProgramsByTerm(ids.termId);
+    expect(programs.map((p) => p.code)).toEqual(['BSCS', 'BSSE']); // ordered by code
+    // BSCS is a pending program yet must still surface (honesty over hiding).
+
+    expect(await q.listProgramsByTerm(ids.emptyTermId)).toHaveLength(0);
+  });
+
+  it('step 3: lists only the sections of one program within one term', async () => {
+    const q = createTimetableQueries('aaa');
+    const bscs = await q.listSectionsByProgramTerm(ids.termId, ids.bscsProgramId);
+    expect(bscs.map((s) => s.name)).toEqual(['A']);
+    expect(bscs[0]?.program.code).toBe('BSCS');
+
+    const sse = await q.listSectionsByProgramTerm(ids.termId, ids.sseProgramId);
+    expect(sse.map((s) => s.name)).toEqual(['B']);
+  });
+
+  it('sitemap: lists distinct teacher and room ids that appear on current entries', async () => {
+    const q = createTimetableQueries('aaa');
+    expect(await q.listTeacherIdsWithEntries()).toEqual([{ id: ids.teacherId }]);
+    expect(await q.listRoomIdsWithEntries()).toEqual([{ id: ids.roomId }]);
   });
 });

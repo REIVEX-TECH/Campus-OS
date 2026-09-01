@@ -48,22 +48,20 @@ export default async function SectionTimetable({ params }: Params) {
   const title = `${section.program.code} ${section.name}`;
 
   return (
-    <main className="mx-auto max-w-5xl p-8">
-      <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            <Link href={`${base}/timetable`} className="hover:underline">
-              {tenant.displayName}
-            </Link>
-          </p>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
+      <header className="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div className="flex flex-col gap-1">
+          <Link href={`${base}/timetable`} className="text-sm text-primary hover:underline">
+            {tenant.displayName}
+          </Link>
+          <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
             {title}
             {section.status === 'pending' ? <PendingBadge t={t} /> : null}
           </h1>
           <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
         </div>
         <Link
-          className={buttonVariants({ variant: 'outline' })}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
           href={`${base}/sections/${sectionId}/timetable.ics`}
         >
           {t('timetable.subscribe')}
@@ -73,13 +71,13 @@ export default async function SectionTimetable({ params }: Params) {
       {views.length === 0 ? (
         <EmptyState title={t('timetable.empty.noEntries')} />
       ) : (
-        <TimetableGrid views={views} title={title} locale={tenant.locale} t={t} />
+        <TimetableGrid views={views} title={title} locale={tenant.locale} base={base} t={t} />
       )}
 
       {!term?.startsOn ? (
-        <p className="mt-4 text-xs text-muted-foreground">{t('timetable.termDatesPending')}</p>
+        <p className="px-1 text-xs text-muted-foreground">{t('timetable.termDatesPending')}</p>
       ) : null}
-      <p className="mt-2 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
+      <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
     </main>
   );
 }

@@ -2,15 +2,14 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../lib/utils';
 
-// Cards are containers. `flat` (default) is static content: a plain filled
-// surface, no divider line. `pressable` is an interactive/selectable surface
-// (e.g. a picker item) and gets the neumorphic affordance.
-const cardVariants = cva('rounded-lg text-surface-foreground', {
+// iOS grouped-list card: a white block on the grey page with soft rounded
+// corners and a single subtle drop shadow (flat iOS elevation, not neumorphism).
+// `pressable` adds a tap affordance for selectable items.
+const cardVariants = cva('ios-card rounded-2xl', {
   variants: {
     variant: {
-      flat: 'bg-surface',
-      pressable:
-        'bg-surface shadow-[var(--shadow-raised)] transition-[box-shadow,transform] hover:brightness-[0.99] active:shadow-[var(--shadow-pressed)] active:translate-y-px',
+      flat: '',
+      pressable: 'ios-pressable hover:shadow-[var(--shadow-card-strong)]',
     },
   },
   defaultVariants: { variant: 'flat' },
@@ -28,18 +27,14 @@ Card.displayName = 'Card';
 
 export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex flex-col gap-1.5 p-6', className)} {...props} />
+    <div ref={ref} className={cn('flex flex-col gap-1.5 p-5', className)} {...props} />
   ),
 );
 CardHeader.displayName = 'CardHeader';
 
 export const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3
-      ref={ref}
-      className={cn('font-semibold leading-none tracking-tight', className)}
-      {...props}
-    />
+    <h3 ref={ref} className={cn('text-lg font-semibold tracking-tight', className)} {...props} />
   ),
 );
 CardTitle.displayName = 'CardTitle';
@@ -54,14 +49,14 @@ CardDescription.displayName = 'CardDescription';
 
 export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+    <div ref={ref} className={cn('p-5 pt-0', className)} {...props} />
   ),
 );
 CardContent.displayName = 'CardContent';
 
 export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('flex items-center gap-3 p-6 pt-0', className)} {...props} />
+    <div ref={ref} className={cn('flex items-center gap-3 p-5 pt-0', className)} {...props} />
   ),
 );
 CardFooter.displayName = 'CardFooter';
