@@ -18,4 +18,8 @@ test('admin area is gated server-side on both the route and the mutation', async
     form: { roomId: '00000000-0000-0000-0000-000000000000', name: 'Room 25 NB' },
   });
   expect(res.status()).toBe(401);
+
+  // The admin area is not indexable, even the publicly reachable login.
+  const login = await request.get('/u/lgu/admin/login');
+  expect(await login.text()).toContain('noindex');
 });
