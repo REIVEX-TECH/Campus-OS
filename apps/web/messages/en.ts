@@ -65,7 +65,18 @@ export const en = {
   'timetable.dayShort.7': 'Sun',
 
   'nav.timetable': 'Timetable',
+  'nav.freeRooms': 'Free rooms',
   'theme.toggle': 'Toggle light and dark',
+
+  'freeRooms.heading': 'Free rooms',
+  'freeRooms.intro': 'Pick a day and time to see which rooms are free. Defaults to right now.',
+  'freeRooms.day': 'Day',
+  'freeRooms.from': 'From',
+  'freeRooms.to': 'To',
+  'freeRooms.now': 'Free now',
+  'freeRooms.count': '{count} free, {day} {from} to {to}',
+  'freeRooms.none': 'No rooms are free in that window.',
+  'freeRooms.noTimetable': 'No timetable has been published yet.',
 
   'timetable.view.label': 'View',
   'timetable.view.grid': 'Grid',
