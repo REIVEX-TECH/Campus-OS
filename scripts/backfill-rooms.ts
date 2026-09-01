@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     const r = await new AdminRoomsRepository(tenant.slug).backfillRooms();
     console.log(
       `✓ backfill ${tenant.slug} keys=${r.keysBackfilled} rooms=${r.roomsCreated} ` +
-        `relinked=${r.entriesRelinked} resolved=${r.pendingResolved}`,
+        `relinked=${r.entriesRelinked} closed=${r.entriesClosed} resolved=${r.pendingResolved}`,
     );
   }
 }

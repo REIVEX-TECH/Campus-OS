@@ -45,7 +45,12 @@ now do too.
   then for each pending `kind='room'` value finds-or-creates the canonical room by
   key, relinks the current TBA entries carrying that raw string (recomputing
   `content_hash` in place so a following ingest is a no-op), and marks the value
-  resolved. Touches only `status='pending'` rows; idempotent.
+  resolved. Touches only `status='pending'` rows; idempotent. If a relink would
+  land on a `content_hash` a current entry already holds (the same slot was
+  crawled under two spellings, one of which had already matched the room by its
+  old case-insensitive name), the duplicate is closed instead of relinked, so it
+  never collides with the `tt_entries_current_hash_uq` partial unique index. This
+  was found by an adversarial review of the change.
 
 The read layer needs no change: a real `room_id` renders the room name instead of
 TBA, and rooms carry no status so they never trigger a pending badge.

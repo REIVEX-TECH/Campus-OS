@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { TenantScopedRepository } from '@campusos/db';
 import { rooms } from '@campusos/db/schema';
 import { computeContentHash, roomDedupKey, roomDisplayName } from '../domain/index';
@@ -35,6 +35,8 @@ export interface BackfillRoomsResult {
   roomsCreated: number;
   /** TBA entries relinked to a room. */
   entriesRelinked: number;
+  /** Duplicate TBA entries closed because a current entry already held the slot. */
+  entriesClosed: number;
   /** Pending room values marked resolved. */
   pendingResolved: number;
 }
@@ -228,6 +230,7 @@ export class AdminRoomsRepository extends TenantScopedRepository {
 
       let roomsCreated = 0;
       let entriesRelinked = 0;
+      let entriesClosed = 0;
       let pendingResolved = 0;
       let unassignedBuildingId: string | null = null;
 
@@ -284,11 +287,37 @@ export class AdminRoomsRepository extends TenantScopedRepository {
             endsAt: e.endsAt,
             kind: e.kind,
           });
-          await tx
-            .update(timetableEntries)
-            .set({ roomId, contentHash })
-            .where(eq(timetableEntries.id, e.id));
-          entriesRelinked += 1;
+          // Guard the partial unique index tt_entries_current_hash_uq: if another
+          // CURRENT entry already carries this exact slot+room hash (e.g. the same
+          // slot was crawled under two spellings, one of which had already matched
+          // the room by its old case-insensitive name), relinking this one would
+          // collide. It is a redundant duplicate of an already-correct current
+          // row, so close it instead of relinking (what planTimetableDiff would
+          // do on the next ingest). Otherwise relink in place.
+          const clash = await tx
+            .select({ id: timetableEntries.id })
+            .from(timetableEntries)
+            .where(
+              and(
+                isNull(timetableEntries.validTo),
+                eq(timetableEntries.contentHash, contentHash),
+                ne(timetableEntries.id, e.id),
+              ),
+            )
+            .limit(1);
+          if (clash[0]) {
+            await tx
+              .update(timetableEntries)
+              .set({ validTo: new Date() })
+              .where(eq(timetableEntries.id, e.id));
+            entriesClosed += 1;
+          } else {
+            await tx
+              .update(timetableEntries)
+              .set({ roomId, contentHash })
+              .where(eq(timetableEntries.id, e.id));
+            entriesRelinked += 1;
+          }
         }
 
         await tx
@@ -303,7 +332,7 @@ export class AdminRoomsRepository extends TenantScopedRepository {
         pendingResolved += 1;
       }
 
-      return { keysBackfilled, roomsCreated, entriesRelinked, pendingResolved };
+      return { keysBackfilled, roomsCreated, entriesRelinked, entriesClosed, pendingResolved };
     });
   }
 }
