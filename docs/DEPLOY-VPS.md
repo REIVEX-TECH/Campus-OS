@@ -267,17 +267,24 @@ After certbot, the `location /` proxy lives in the `listen 443 ssl` block and
 
 ---
 
-## 6. Map rooms 🟩 CAMPUSOS-LOCAL
+## 6. Rooms 🟩 CAMPUSOS-LOCAL
 
-Clear the `room=TBA` on the fixture data via the admin flow.
+Rooms are trusted crawl data: the ingest sink auto-creates a canonical room from
+each crawled room name (deduped by a normalized key) and links the class, so
+`room=TBA` only ever means the source itself had no room. There is no manual
+room-mapping step.
 
-1. Visit `https://lgu.campusos.reivex.io/admin/login`.
-2. Enter the `ADMIN_SECRET` from `.env`.
-3. At `https://lgu.campusos.reivex.io/admin/rooms`, map each pending room (the
-   default "Create a new room" named after the source string is one click each).
-   `room=TBA` drops toward 0 as you go.
+If you are upgrading a database that was ingested BEFORE room auto-create landed,
+run the one-shot backfill once (after `pnpm db:migrate:all`, before the next
+ingest) to clear the old TBA rows that prior crawls left pending:
 
-The mapping survives the next ingest (the sink self-heals via resolved aliases).
+```bash
+pnpm backfill:rooms          # every configured tenant; idempotent, safe to re-run
+# INGEST_TENANT=lgu pnpm backfill:rooms   # limit to one tenant
+```
+
+It prints a per-tenant summary (rooms created, entries relinked, pending
+resolved). A fresh install has nothing to backfill and does not need this.
 
 ---
 
@@ -400,4 +407,11 @@ pnpm install --frozen-lockfile
 pnpm db:migrate:all                   # if a new migration landed
 pnpm turbo run build --filter=web
 pm2 restart campusos
+```
+
+One-time after the room auto-create upgrade, run the backfill between migrate and
+rebuild so existing entries stop showing TBA (see step 6):
+
+```bash
+pnpm db:migrate:all && pnpm backfill:rooms && pnpm turbo run build --filter=web && pm2 restart campusos
 ```
