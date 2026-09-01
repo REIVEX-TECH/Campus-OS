@@ -184,4 +184,5 @@ export const en = {
 
   'notFound.title': '404',
   'notFound.body': 'This tenant or page could not be found.',
+  'notFound.home': 'Back to homepage',
 } as const;
