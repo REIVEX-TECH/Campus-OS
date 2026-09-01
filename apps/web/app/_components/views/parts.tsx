@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { TimetableView } from '@campusos/module-timetable/read';
 import { dayName, kindName, type Translate } from '../../../lib/i18n';
-import { hhmm } from './time-scale';
+import { eventColorClass, hhmm } from './time-scale';
 
 export interface ViewProps {
   views: TimetableView[];
@@ -84,7 +84,13 @@ export function ClassRow({
   return (
     <li className="flex flex-col gap-1" aria-label={cellAria(view, locale, t)}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-semibold">{view.course.title}</span>
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span
+            className={`evt-dot mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${eventColorClass(view.course.id)}`}
+            aria-hidden="true"
+          />
+          <span className="font-semibold">{view.course.title}</span>
+        </span>
         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
           {timeRange(view, t)}
         </span>
@@ -113,7 +119,7 @@ export function ClassBlock({
 }) {
   return (
     <div
-      className="ios-card absolute overflow-hidden rounded-lg p-1.5"
+      className={`evt absolute overflow-hidden rounded-lg p-1.5 shadow-[var(--shadow-card)] ${eventColorClass(view.course.id)}`}
       style={style}
       aria-label={cellAria(view, locale, t)}
     >
@@ -123,7 +129,7 @@ export function ClassBlock({
       </p>
       {view.room ? (
         <p className="truncate text-[11px] leading-tight">
-          <Link href={`${base}/rooms/${view.room.id}`} className="text-primary hover:underline">
+          <Link href={`${base}/rooms/${view.room.id}`} className="hover:underline">
             {view.room.name}
           </Link>
         </p>

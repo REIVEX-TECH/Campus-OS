@@ -1,6 +1,16 @@
 // Pure time helpers for the proportional timetable views (weekly grid, timeline).
 // Client-safe (no imports). Wall-clock "HH:MM" / "HH:MM:SS" strings only.
 
+/**
+ * Map a stable key (a course id) to one of the eight event colour classes, so
+ * every session of a course shares a colour across the week. Deterministic hash.
+ */
+export function eventColorClass(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return `evt-${h % 8}`;
+}
+
 /** Minutes since midnight for a wall-clock time string. */
 export function minutes(time: string): number {
   const [h = '0', m = '0'] = time.split(':');

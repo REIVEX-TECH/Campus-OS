@@ -22,7 +22,13 @@ async function firstSectionId(page: Page): Promise<string> {
     for (const sv of await realOptions(section)) {
       await section.selectOption(sv);
       await page.waitForURL((u) => u.searchParams.get('section') === sv);
-      if (await page.locator('section h3').first().isVisible()) return sv;
+      if (
+        await page
+          .getByRole('group', { name: 'View' })
+          .isVisible()
+          .catch(() => false)
+      )
+        return sv;
     }
   }
   throw new Error('no populated section found in the fixture');
@@ -37,22 +43,24 @@ test('section view switcher toggles four views and drops the per-class Unverifie
   // De-noised: the per-class "Unverified" badge is gone; a single header note remains.
   await expect(page.getByText('Unverified')).toHaveCount(0);
 
-  // The switcher offers exactly four views; List is the default.
+  // The switcher offers exactly four views (default is responsive, so it is not
+  // asserted here). Each activates on click (instant toggle); the day-scoped
+  // views (Days, Timeline) reveal a day tablist, Grid does not.
   const group = page.getByRole('group', { name: 'View' });
   await expect(group.getByRole('button')).toHaveCount(4);
-  await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
 
-  // Instant toggle: each view activates on click. The day-scoped views (Days,
-  // Timeline) reveal a day tablist; Grid does not.
   await page.getByRole('button', { name: 'Grid', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
   await expect(page.getByRole('tablist')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'List', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 
   await page.getByRole('button', { name: 'Days', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Days', exact: true })).toHaveAttribute(
