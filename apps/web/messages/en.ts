@@ -4,6 +4,23 @@ export const en = {
   'platform.tagline': 'An open-source, multi-tenant campus platform.',
   'platform.description':
     'Live timetables and campus tools for universities. Self-hosted, free, and open-source.',
+  'platform.hero.title': 'Campus tools that stay current.',
+  'platform.hero.body':
+    'Live timetables, free rooms, and search for your university. Free to use, open-source, and built to self-host.',
+  'platform.hero.browse': 'Browse universities',
+  'platform.features.heading': 'What you get',
+  'platform.feature.timetable.title': 'Live timetables',
+  'platform.feature.timetable.body':
+    'Class schedules by section, teacher, or room, kept current from the source.',
+  'platform.feature.find.title': 'Find rooms and classes',
+  'platform.feature.find.body':
+    'See which rooms are free right now, and search teachers and courses.',
+  'platform.feature.modular.title': 'Modular by design',
+  'platform.feature.modular.body':
+    'Each campus turns on only the modules it needs. New ones drop in cleanly.',
+  'platform.feature.open.title': 'Free and open-source',
+  'platform.feature.open.body':
+    'No paid tiers, no lock-in. Use this instance or self-host your own.',
   'platform.universities': 'Universities',
   'platform.openInstance': 'Open {name}',
   'platform.github': 'View on GitHub',
