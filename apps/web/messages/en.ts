@@ -7,6 +7,10 @@ export const en = {
   'platform.universities': 'Universities',
   'platform.openInstance': 'Open {name}',
   'platform.github': 'View on GitHub',
+  'platform.admin.heading': 'Platform administration',
+  'platform.admin.body':
+    'Tools for managing universities and their branding will live here. This is part of the identity module, which is still in progress.',
+  'platform.admin.home': 'Back to home',
 
   'timetable.heading': 'Timetable',
   'timetable.viewTimetable': 'View timetable',
