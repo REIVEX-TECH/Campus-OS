@@ -20,6 +20,17 @@ const SCHEMA_DAY: readonly string[] = [
   'https://schema.org/Sunday',
 ];
 
+/** The platform itself as a WebSite, for the platform landing. */
+export function websiteLd(opts: { url: string; description: string }): object {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'CampusOS',
+    url: opts.url,
+    description: opts.description,
+  };
+}
+
 /** The tenant as a CollegeOrUniversity, for the tenant home page. */
 export function universityLd(tenant: TenantConfig, url: string): object {
   const sameAs = tenant.seo.aliases.map((host) => `https://${host}`);

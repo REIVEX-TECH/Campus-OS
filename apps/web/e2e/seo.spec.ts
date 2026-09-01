@@ -33,3 +33,15 @@ test('the tenant home carries CollegeOrUniversity structured data', async ({ req
   expect(html).toContain('"@type":"CollegeOrUniversity"');
   expect(html).toContain('Lahore Garrison University');
 });
+
+test('the platform landing carries WebSite structured data and social cards', async ({ page }) => {
+  // The default baseURL is the platform host (localhost:<port>).
+  await page.goto('/');
+  const html = await page.content();
+  expect(html).toContain('"@type":"WebSite"');
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', 'CampusOS');
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+    'content',
+    'summary_large_image',
+  );
+});
