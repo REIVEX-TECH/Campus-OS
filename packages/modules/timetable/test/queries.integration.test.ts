@@ -257,6 +257,25 @@ describe('TimetableQueries (cascade picker: term to program to section)', () => 
   });
 });
 
+describe('TimetableQueries search', () => {
+  it('finds teachers by name and courses by title or code (current entries only)', async () => {
+    const q = createTimetableQueries('aaa');
+    expect((await q.searchTeachers('ayesha')).map((t) => t.name)).toContain('Dr Ayesha');
+    expect(await q.searchTeachers('zzz-nobody')).toEqual([]);
+    expect((await q.searchCourses('data')).map((c) => c.code)).toContain('CS201');
+    expect((await q.searchCourses('cs201')).map((c) => c.title)).toContain('Data Structures');
+  });
+
+  it('courseTimetable returns the course sessions with section, teacher, room', async () => {
+    const q = createTimetableQueries('aaa');
+    const course = (await q.searchCourses('data'))[0]!;
+    expect((await q.getCourse(course.id))?.code).toBe('CS201');
+    const views = await q.courseTimetable(course.id);
+    expect(views.length).toBeGreaterThan(0);
+    expect(views[0]!.section.name).toBe('A');
+  });
+});
+
 describe('TimetableQueries.freeRooms', () => {
   it('excludes a room busy in the window and includes it (with building) when free', async () => {
     const q = createTimetableQueries('aaa');
