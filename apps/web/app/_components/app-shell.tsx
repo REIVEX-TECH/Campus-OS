@@ -22,7 +22,10 @@ export function AppShell({
   children: ReactNode;
 }) {
   const t = translator(locale);
-  const nav = [{ href: `${base}/timetable`, label: t('nav.timetable') }];
+  const nav = [
+    { href: `${base}/timetable`, label: t('nav.timetable') },
+    { href: `${base}/free-rooms`, label: t('nav.freeRooms') },
+  ];
 
   return (
     <div className="flex min-h-screen flex-col">

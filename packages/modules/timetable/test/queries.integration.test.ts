@@ -256,3 +256,26 @@ describe('TimetableQueries (cascade picker: term to program to section)', () => 
     expect(await q.listRoomIdsWithEntries()).toEqual([{ id: ids.roomId }]);
   });
 });
+
+describe('TimetableQueries.freeRooms', () => {
+  it('excludes a room busy in the window and includes it (with building) when free', async () => {
+    const q = createTimetableQueries('aaa');
+    // R-101 has a Monday (dayOfWeek 1) 09:00 to 10:30 class in the seed.
+    const busy = await q.freeRooms({
+      termId: ids.termId,
+      dayOfWeek: 1,
+      startsAt: '09:00',
+      endsAt: '10:00',
+    });
+    expect(busy.map((r) => r.id)).not.toContain(ids.roomId);
+
+    const free = await q.freeRooms({
+      termId: ids.termId,
+      dayOfWeek: 1,
+      startsAt: '14:00',
+      endsAt: '15:00',
+    });
+    const r101 = free.find((r) => r.id === ids.roomId);
+    expect(r101).toEqual({ id: ids.roomId, name: 'R-101', building: 'A Block' });
+  });
+});

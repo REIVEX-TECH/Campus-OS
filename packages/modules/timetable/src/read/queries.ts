@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, isNull, sql, type SQL } from 'drizzle-orm';
 import { TenantScopedRepository, type TenantTransaction } from '@campusos/db';
-import { rooms } from '@campusos/db/schema';
+import { buildings, rooms } from '@campusos/db/schema';
+import { freeRooms as computeFreeRooms, type TimeWindow } from '../domain/index';
 import { academicTerms, courses, programs, sections, teachers } from '../schema/catalog';
 import { timetableEntries } from '../schema/entries';
 import { ingestionRuns } from '../schema/ingestion';
@@ -274,6 +275,54 @@ export class TimetableQueries extends TenantScopedRepository {
         .limit(1),
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Public "free rooms": live rooms with no current entry overlapping the given
+   * day + time window in a term. Returns room name + building, sorted by name.
+   */
+  freeRooms(
+    query: { termId: string } & TimeWindow,
+  ): Promise<{ id: string; name: string; building: string }[]> {
+    return this.run(async (tx) => {
+      const roomRows = await tx
+        .select({ id: rooms.id, name: rooms.name, building: buildings.name })
+        .from(rooms)
+        .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
+        .where(isNull(rooms.deletedAt))
+        .orderBy(rooms.name);
+      const occupied = await tx
+        .select({
+          roomId: timetableEntries.roomId,
+          dayOfWeek: timetableEntries.dayOfWeek,
+          startsAt: timetableEntries.startsAt,
+          endsAt: timetableEntries.endsAt,
+        })
+        .from(timetableEntries)
+        .where(
+          and(
+            eq(timetableEntries.termId, query.termId),
+            eq(timetableEntries.dayOfWeek, query.dayOfWeek),
+            isNull(timetableEntries.validTo),
+          ),
+        );
+      const slots = occupied
+        .filter((o): o is typeof o & { roomId: string } => o.roomId !== null)
+        .map((o) => ({
+          roomId: o.roomId,
+          dayOfWeek: o.dayOfWeek,
+          startsAt: o.startsAt,
+          endsAt: o.endsAt,
+        }));
+      const free = new Set(
+        computeFreeRooms(
+          roomRows.map((r) => r.id),
+          slots,
+          query,
+        ),
+      );
+      return roomRows.filter((r) => free.has(r.id));
+    });
   }
 
   async getRoom(roomId: string): Promise<RoomSummary | null> {
