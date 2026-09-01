@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { buttonVariants } from '@campusos/ui';
 import { tenantRegistry } from '@campusos/tenants';
-import { translator } from '@/lib/i18n';
+import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
+import { MODULES } from '@/lib/modules';
 import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
@@ -26,12 +26,39 @@ export default async function TenantHome({ params }: Params) {
   const base = await tenantBase(slug);
 
   return (
-    <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 text-center">
-      <h1 className="text-4xl font-semibold tracking-tight">{tenant.displayName}</h1>
-      <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
-      <Link className={buttonVariants()} href={`${base}/timetable`}>
-        {t('timetable.viewTimetable')}
-      </Link>
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-4xl font-bold tracking-tight">{tenant.displayName}</h1>
+        <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
+      </header>
+
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {MODULES.map((m) => (
+          <li key={m.key}>
+            <Link
+              href={m.soon ? `${base}/soon/${m.key}` : `${base}${m.path}`}
+              className="ios-card ios-pressable flex h-full flex-col gap-2 rounded-2xl p-5 hover:shadow-[var(--shadow-card-strong)]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-2xl" aria-hidden="true">
+                  {m.icon}
+                </span>
+                {m.soon ? (
+                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {t('modules.comingSoon')}
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-lg font-semibold">
+                {t(`module.${m.key}.label` as MessageKey)}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {t(`module.${m.key}.desc` as MessageKey)}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
