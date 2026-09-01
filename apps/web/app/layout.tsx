@@ -7,13 +7,17 @@ export const metadata: Metadata = {
   description: 'An open-source, multi-tenant campus platform.',
 };
 
+// Resolve the theme before first paint (no flash): a stored choice wins, else the
+// OS prefers-color-scheme. Toggling `.dark` on <html> switches the token palette.
+const THEME_SCRIPT = `(function(){try{var s=localStorage.getItem('theme');var d=s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
-  // Force the light theme platform-wide (the design language is iOS light). The
-  // `light` class opts out of the prefers-color-scheme dark fallback in
-  // globals.css, so a dark-OS visitor still gets the intended light UI.
   return (
-    <html lang="en" className="light" suppressHydrationWarning>
-      <body className="min-h-screen bg-background text-foreground antialiased">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen bg-background text-foreground antialiased">
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {children}
+      </body>
     </html>
   );
 }

@@ -52,7 +52,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
   const sectionSummary = section ? sections.find((s) => s.id === section) : undefined;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
+    <div className="flex flex-col gap-6">
       <header className="px-1">
         <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
         <h1 className="text-3xl font-bold tracking-tight">{t('timetable.heading')}</h1>
@@ -63,7 +63,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
         <EmptyState title={t('timetable.empty.noTerms')} />
       ) : (
         <>
-          <Card className="p-5">
+          <Card className="w-full max-w-xl p-5">
             <TimetablePicker
               terms={terms.map((x) => ({ id: x.id, label: x.name }))}
               programs={programs.map((p) => ({ id: p.id, label: p.name }))}
@@ -97,6 +97,6 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
       )}
 
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
-    </main>
+    </div>
   );
 }

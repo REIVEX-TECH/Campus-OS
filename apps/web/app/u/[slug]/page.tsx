@@ -26,12 +26,12 @@ export default async function TenantHome({ params }: Params) {
   const base = await tenantBase(slug);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-6 p-8 text-center">
+    <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center gap-6 text-center">
       <h1 className="text-4xl font-semibold tracking-tight">{tenant.displayName}</h1>
-      <p className="text-muted-foreground max-w-prose">{tenant.seo.description}</p>
+      <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
       <Link className={buttonVariants()} href={`${base}/timetable`}>
         {t('timetable.viewTimetable')}
       </Link>
-    </main>
+    </div>
   );
 }

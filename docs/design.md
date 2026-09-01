@@ -166,3 +166,40 @@ rings) are unaffected.
   labelled controls.
 - **EmptyState** static: a flat white `ios-card`, centred, used for "choose a
   section" and "no entries" states.
+
+## Dark mode
+
+Both themes ship. LIGHT is the `:root` default; DARK is the `.dark` class on
+`<html>`, switching the token palette (near-black `--background` oklch(0.145),
+dark-grey `--card` oklch(0.205), near-white text). A tiny inline script in the
+app layout resolves the theme before first paint (a stored choice in
+`localStorage['theme']`, else `prefers-color-scheme`) and toggles `.dark`, so
+there is no flash; the header `ThemeToggle` flips and persists it. `color-scheme`
+is set per theme so native form controls and scrollbars match.
+
+The tenant accent is theme-aware. The raw accent (LGU green `#0b5d3b`) is dark
+enough that it fails AA as link text on the near-black page, so `lib/branding.ts`
+also emits a lightened variant (blended toward white until AA-bright), applied in
+dark via `.dark [data-tenant] { --primary: var(--primary-dark) }`. For LGU the
+dark accent resolves to `#aac6ba`.
+
+Dark pairings (same OKLCH-to-Y method as the light table); WCAG AA is 4.5:1:
+
+| Pairing (dark)                     | Ratio | Verdict |
+| ---------------------------------- | ----- | ------- |
+| foreground on background           | 18.96 | AAA     |
+| foreground on card                 | 17.16 | AAA     |
+| muted-foreground on background     | 7.98  | AAA     |
+| muted-foreground on card           | 7.22  | AAA     |
+| lightened accent `#aac6ba` on card | 9.81  | AAA     |
+| lightened accent on background     | 10.84 | AAA     |
+
+## Full-width app shell
+
+Tenant pages render inside `AppShell`: a sticky, frosted, full-width header
+(tenant name, nav, the theme toggle) over a full-width `<main>` capped at a wide
+`max-w-[120rem]` with page padding. There is no narrow centred column and no
+header divider line (the header separates by a translucent backdrop and a soft
+elevation shadow, per hard rule 2). Pages use the whole width; grids and tables
+breathe across the viewport, and narrow internal max-widths are added only where
+reading comfort needs them (form cards, prose).

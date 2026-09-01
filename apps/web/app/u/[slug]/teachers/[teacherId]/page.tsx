@@ -40,7 +40,7 @@ export default async function TeacherTimetable({ params }: Params) {
   ]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted-foreground">
@@ -75,6 +75,6 @@ export default async function TeacherTimetable({ params }: Params) {
         />
       )}
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
-    </main>
+    </div>
   );
 }

@@ -2,19 +2,25 @@
  * Campus OS design tokens (Tailwind v4, CSS-first). The visual law is documented
  * in docs/design.md.
  *
- * Language: iOS / Apple, LIGHT. White cards on a light-grey grouped background,
- * flat iOS elevation (a single subtle drop shadow, NOT neumorphism), the tenant
- * accent (LGU green) as the single tint, SF-style type. Colours are CSS variables
- * so a tenant's accent overrides `--primary` at runtime (see the tenant layout).
- * Two hard rules hold: no dash punctuation in copy, no divider lines (grouped
- * feel comes from spacing + white blocks, never hairlines). Text always sits on a
- * solid token, so every pairing clears WCAG AA (ratios computed in docs/design.md).
- * The app is forced light (<html class="light">); .dark is defined but dormant.
+ * Language: iOS / Apple. White cards on a light-grey grouped background in LIGHT,
+ * near-black page with dark-grey cards in DARK; flat iOS elevation (a single
+ * subtle drop shadow, NOT neumorphism), the tenant accent as the single tint,
+ * SF-style type. Colours are CSS variables so a tenant's accent overrides
+ * `--primary` at runtime (see the tenant layout). Two hard rules hold: no dash
+ * punctuation in copy, no divider lines (grouped feel comes from spacing + card
+ * blocks, never hairlines). Text always sits on a solid token, so every pairing
+ * clears WCAG AA in both themes (ratios in docs/design.md).
+ *
+ * Theme: LIGHT is the `:root` default; `.dark` on <html> switches to dark. A tiny
+ * inline script in the app layout resolves the theme (stored choice, else
+ * prefers-color-scheme) before paint and toggles `.dark`, so there is no flash;
+ * the header toggle flips it. `.dark *` also powers Tailwind's `dark:` variant.
  */
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --radius: 0.75rem; /* 12px, iOS grouped-cell corners */
 
   /* iOS light: systemGroupedBackground grey page, white cards. */
@@ -52,6 +58,7 @@
 /* Dark palette, defined but dormant (the app forces light). Kept coherent with
  * the grouped model: near-black page, dark-grey cards. */
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -150,4 +157,16 @@
     background-color: var(--color-input);
     color: var(--color-foreground);
   }
+}
+
+/*
+ * Tenant accent in DARK. The accent (e.g. LGU green #0b5d3b) is injected on the
+ * tenant wrapper for LIGHT; that same dark green would fail AA as link text on a
+ * near-black page. So in dark mode the wrapper's pre-computed lightened accent
+ * (--primary-dark / --primary-foreground-dark from lib/branding.ts) takes over.
+ * The rule sits on the wrapper element itself, so the vars it reads are in scope.
+ */
+.dark [data-tenant] {
+  --primary: var(--primary-dark, var(--primary));
+  --primary-foreground: var(--primary-foreground-dark, var(--primary-foreground));
 }
