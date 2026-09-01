@@ -2,15 +2,7 @@ import { AdminRoomsRepository } from './admin-rooms';
 import { TimetableRepository } from './timetable';
 
 export { TimetableRepository, type ApplyDiffStats } from './timetable';
-export {
-  AdminRoomsRepository,
-  RoomResolveError,
-  type BackfillRoomsResult,
-  type PendingRoom,
-  type RoomOption,
-  type ResolveRoomInput,
-  type ResolveRoomResult,
-} from './admin-rooms';
+export { AdminRoomsRepository, type BackfillRoomsResult, type RoomListItem } from './admin-rooms';
 
 /** Construct the timetable repositories bound to a tenant. */
 export function createTimetableRepositories(tenantId: string) {

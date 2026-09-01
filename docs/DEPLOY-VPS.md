@@ -283,8 +283,17 @@ pnpm backfill:rooms          # every configured tenant; idempotent, safe to re-r
 # INGEST_TENANT=lgu pnpm backfill:rooms   # limit to one tenant
 ```
 
-It prints a per-tenant summary (rooms created, entries relinked, pending
-resolved). A fresh install has nothing to backfill and does not need this.
+It prints a per-tenant summary (rooms created, entries relinked, entries closed,
+pending resolved, duplicate keys). It also ensures the partial unique index on
+`(tenant_id, dedup_key)` once the data is unique by key; if it reports duplicate
+keys it skips the index and names them (resolve those via the admin room list,
+then re-run). A fresh install has nothing to backfill and gets the index from the
+base migration instead. Re-run `pnpm backfill:rooms` after this upgrade so the
+index is created on the existing database.
+
+Rooms can be renamed (label cleanup only) in the admin room list at
+`/admin/rooms`; a rename never changes the match key, so imports keep landing on
+the same room.
 
 ---
 

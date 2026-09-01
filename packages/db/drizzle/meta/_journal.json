@@ -22,6 +22,13 @@
       "when": 1735689602000,
       "tag": "0002_room_dedup_key",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1735689603000,
+      "tag": "0003_room_dedup_unique",
+      "breakpoints": true
     }
   ]
 }

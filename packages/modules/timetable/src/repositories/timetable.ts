@@ -73,7 +73,7 @@ export class TimetableRepository extends TenantScopedRepository {
   /** Rooms with no current entry overlapping the given day and time window. */
   findFreeRooms(query: { termId: string } & TimeWindow): Promise<string[]> {
     return this.run(async (tx) => {
-      const roomRows = await tx.select({ id: rooms.id }).from(rooms);
+      const roomRows = await tx.select({ id: rooms.id }).from(rooms).where(isNull(rooms.deletedAt));
       const occupied = await tx
         .select({
           roomId: timetableEntries.roomId,

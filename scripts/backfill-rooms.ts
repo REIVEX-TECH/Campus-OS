@@ -33,11 +33,29 @@ async function main(): Promise<void> {
   // so create it idempotently here before the per-tenant backfill runs.
   await getSqlClient()`alter table rooms add column if not exists dedup_key text`;
 
+  let duplicateKeys = 0;
   for (const tenant of tenants) {
     const r = await new AdminRoomsRepository(tenant.slug).backfillRooms();
+    duplicateKeys += r.duplicateKeys;
     console.log(
       `✓ backfill ${tenant.slug} keys=${r.keysBackfilled} rooms=${r.roomsCreated} ` +
-        `relinked=${r.entriesRelinked} closed=${r.entriesClosed} resolved=${r.pendingResolved}`,
+        `relinked=${r.entriesRelinked} closed=${r.entriesClosed} resolved=${r.pendingResolved} ` +
+        `dupkeys=${r.duplicateKeys}`,
+    );
+  }
+
+  // Enforce room dedup at the database level. The index build scans all rows
+  // regardless of RLS, so it is created here (once, idempotently) after the data
+  // is unique by key. Skipped if any tenant still has duplicate dedup keys, which
+  // need a room merge first (a fresh database gets the index from the base
+  // migration instead).
+  if (duplicateKeys === 0) {
+    await getSqlClient()`create unique index if not exists rooms_tenant_dedup_uq on rooms (tenant_id, dedup_key) where deleted_at is null`;
+    console.log('✓ unique index rooms_tenant_dedup_uq ensured');
+  } else {
+    console.log(
+      `! skipped unique index: ${duplicateKeys} duplicate dedup key(s) across tenants; ` +
+        `resolve via a room merge, then re-run`,
     );
   }
 }

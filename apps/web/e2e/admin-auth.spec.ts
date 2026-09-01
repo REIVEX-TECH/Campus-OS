@@ -11,9 +11,9 @@ test('admin area is gated server-side on both the route and the mutation', async
   await page.goto('/u/lgu/admin/rooms');
   await expect(page).toHaveURL(/\/u\/lgu\/admin\/login/);
 
-  // Mutation: the resolve endpoint rejects an unauthenticated POST outright.
-  const res = await request.post('/u/lgu/admin/rooms/resolve', {
-    form: { rawValue: 'Room 25 NB', mode: 'new', newRoomName: 'Room 25 NB' },
+  // Mutation: the rename endpoint rejects an unauthenticated POST outright.
+  const res = await request.post('/u/lgu/admin/rooms/rename', {
+    form: { roomId: '00000000-0000-0000-0000-000000000000', name: 'Room 25 NB' },
   });
   expect(res.status()).toBe(401);
 });

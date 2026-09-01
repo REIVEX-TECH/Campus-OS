@@ -281,7 +281,7 @@ export class TimetableQueries extends TenantScopedRepository {
       tx
         .select({ id: rooms.id, name: rooms.name })
         .from(rooms)
-        .where(eq(rooms.id, roomId))
+        .where(and(eq(rooms.id, roomId), isNull(rooms.deletedAt)))
         .limit(1),
     );
     return rows[0] ?? null;

@@ -1,4 +1,5 @@
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -72,9 +73,10 @@ export const rooms = pgTable(
     name: text('name').notNull(),
     // Normalized match key for dedup (see the timetable module's roomDedupKey):
     // the sink auto-creates one room per (tenant, dedup_key). Decoupled from the
-    // renamable display `name`. Nullable for rooms created before this column; the
-    // backfill populates them. A partial unique index on (tenant_id, dedup_key)
-    // WHERE deleted_at IS NULL is added once existing rooms are deduped (PR B).
+    // renamable display `name`, so renaming a room never causes a re-crawl to
+    // create a duplicate. Nullable for rooms created before this column existed;
+    // the backfill populates them. Uniqueness is enforced by the partial index
+    // below (excluding soft-deleted rooms, so a merged-away name can recur).
     dedupKey: text('dedup_key'),
     capacity: integer('capacity'),
     ...timestamps,
@@ -83,6 +85,9 @@ export const rooms = pgTable(
   (t) => [
     index('rooms_tenant_idx').on(t.tenantId),
     index('rooms_tenant_building_idx').on(t.tenantId, t.buildingId),
+    uniqueIndex('rooms_tenant_dedup_uq')
+      .on(t.tenantId, t.dedupKey)
+      .where(sql`${t.deletedAt} is null`),
   ],
 );
 
