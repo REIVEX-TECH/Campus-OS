@@ -22,8 +22,18 @@ export const lgu: TenantConfigInput = {
   enabledModules: ['timetable'],
   seo: {
     titleTemplate: '%s · LGU Timetable',
-    description: 'Class timetables for Lahore Garrison University — sections, teachers, and rooms.',
-    keywords: ['LGU', 'Lahore Garrison University', 'timetable', 'class schedule'],
+    description:
+      'Live class timetables for Lahore Garrison University. Find your section, teacher, and room schedule, and free rooms on campus.',
+    keywords: [
+      'LGU timetable',
+      'LGU',
+      'Lahore Garrison University',
+      'Lahore Garrison University timetable',
+      'LGU class schedule',
+      'LGU free rooms',
+      'timetable',
+      'class schedule',
+    ],
     aliases: ['lgu.edu.pk'],
   },
 };

@@ -18,20 +18,28 @@ export async function pageMetadata(opts: {
   path: string;
 }): Promise<Metadata> {
   const host = (await headers()).get('host') ?? APP_DOMAIN;
-  const url = `${baseUrlFromHost(host)}${opts.path}`;
+  const baseUrl = baseUrlFromHost(host);
+  const url = `${baseUrl}${opts.path}`;
   const description = opts.description ?? opts.tenant.seo.description;
+  const ogTitle = `${opts.title} · ${opts.tenant.displayName}`;
   return {
+    metadataBase: new URL(baseUrl),
     title: opts.title,
     description,
     keywords: opts.tenant.seo.keywords,
     alternates: { canonical: url },
     openGraph: {
-      title: `${opts.title} · ${opts.tenant.displayName}`,
+      title: ogTitle,
       description,
       url,
       siteName: opts.tenant.displayName,
       locale: opts.tenant.locale,
       type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: ogTitle,
+      description,
     },
   };
 }

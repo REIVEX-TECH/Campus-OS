@@ -255,6 +255,13 @@ describe('TimetableQueries (cascade picker: term to program to section)', () => 
     expect(await q.listTeacherIdsWithEntries()).toEqual([{ id: ids.teacherId }]);
     expect(await q.listRoomIdsWithEntries()).toEqual([{ id: ids.roomId }]);
   });
+
+  it('sitemap: lists distinct course ids that appear on current entries', async () => {
+    const q = createTimetableQueries('aaa');
+    const course = (await q.searchCourses('data'))[0]!;
+    // Both seed entries share CS201, so it appears once.
+    expect(await q.listCourseIdsWithEntries()).toEqual([{ id: course.id }]);
+  });
 });
 
 describe('TimetableQueries search', () => {
