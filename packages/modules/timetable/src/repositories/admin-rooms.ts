@@ -1,31 +1,18 @@
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { TenantScopedRepository } from '@campusos/db';
-import { rooms } from '@campusos/db/schema';
+import { buildings, rooms } from '@campusos/db/schema';
 import { computeContentHash, roomDedupKey, roomDisplayName } from '../domain/index';
 import { ensureUnassignedBuilding } from '../ingestion/ensure-building';
 import { timetableEntries } from '../schema/entries';
 import { unmappedSourceValues } from '../schema/ingestion';
 
-export interface PendingRoom {
-  /** The raw source room string (e.g. "Room 25 NB"). */
-  rawValue: string;
-  /** Current TBA entries this value blocks (room_id null, valid_to null). */
-  blockedEntries: number;
-}
-
-export interface RoomOption {
+export interface RoomListItem {
   id: string;
   name: string;
-}
-
-export type ResolveRoomInput = { rawValue: string } & (
-  { existingRoomId: string } | { newRoomName: string }
-);
-
-export interface ResolveRoomResult {
-  roomId: string;
-  roomName: string;
-  resolvedEntries: number;
+  buildingName: string;
+  capacity: number | null;
+  /** Current entries scheduled in this room. */
+  entryCount: number;
 }
 
 export interface BackfillRoomsResult {
@@ -39,153 +26,68 @@ export interface BackfillRoomsResult {
   entriesClosed: number;
   /** Pending room values marked resolved. */
   pendingResolved: number;
-}
-
-export class RoomResolveError extends Error {
-  constructor(
-    readonly code: 'room_not_found' | 'invalid_input',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'RoomResolveError';
-  }
+  /** `dedup_key` values held by more than one live room (would block the unique index). */
+  duplicateKeys: number;
 }
 
 /**
- * Admin operations that resolve pending room strings into canonical rooms.
- * Tenant-scoped through TenantScopedRepository -> withTenant, so RLS applies to
- * every statement. Resolving is one transaction: create/attach the room,
- * back-fill the blocked entries in place (set room_id and recompute content_hash
- * for the current TBA rows), and mark the unmapped value resolved so future
- * crawls self-heal via the sink's alias map.
- *
- * Filling in a missing room is data enrichment, not a schedule change, so the
- * current row is updated in place rather than versioned. Crucially, the
- * recomputed content_hash equals what the next ingest computes for the same slot
- * (roomId now resolves by name or alias), so the map-then-reingest cycle
- * produces ZERO new versions (idempotent).
+ * Tenant-scoped (RLS, via TenantScopedRepository -> withTenant) admin reads and
+ * edits for rooms. Rooms are trusted crawl data that auto-create on ingest, so
+ * this is read-mostly: list the rooms and rename a display label. Renaming never
+ * touches `dedup_key`, so a re-crawl of the original source string still resolves
+ * to the same room. `backfillRooms` is the one-shot rollout migration used by
+ * scripts/backfill-rooms.ts.
  */
 export class AdminRoomsRepository extends TenantScopedRepository {
-  listPendingRooms(): Promise<PendingRoom[]> {
+  /** All live rooms with their building, capacity, and current class count. */
+  listRooms(): Promise<RoomListItem[]> {
     return this.run(async (tx) => {
-      const pending = await tx
-        .select({ rawValue: unmappedSourceValues.rawValue })
-        .from(unmappedSourceValues)
-        .where(
-          and(eq(unmappedSourceValues.kind, 'room'), eq(unmappedSourceValues.status, 'pending')),
-        )
-        .orderBy(unmappedSourceValues.rawValue);
+      const roomRows = await tx
+        .select({
+          id: rooms.id,
+          name: rooms.name,
+          capacity: rooms.capacity,
+          buildingName: buildings.name,
+        })
+        .from(rooms)
+        .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
+        .where(isNull(rooms.deletedAt))
+        .orderBy(rooms.name);
 
       const counts = await tx
-        .select({
-          key: sql<string>`lower(${timetableEntries.roomSource})`.as('key'),
-          n: sql<number>`count(*)::int`,
-        })
+        .select({ roomId: timetableEntries.roomId, n: sql<number>`count(*)::int` })
         .from(timetableEntries)
-        .where(
-          and(
-            isNull(timetableEntries.validTo),
-            isNull(timetableEntries.roomId),
-            sql`${timetableEntries.roomSource} is not null`,
-          ),
-        )
-        .groupBy(sql`lower(${timetableEntries.roomSource})`);
+        .where(isNull(timetableEntries.validTo))
+        .groupBy(timetableEntries.roomId);
+      const byRoom = new Map<string, number>();
+      for (const c of counts) if (c.roomId) byRoom.set(c.roomId, Number(c.n));
 
-      const byKey = new Map(counts.map((c) => [c.key, Number(c.n)]));
-      return pending.map((p) => ({
-        rawValue: p.rawValue,
-        blockedEntries: byKey.get(p.rawValue.toLowerCase()) ?? 0,
+      return roomRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        buildingName: r.buildingName,
+        capacity: r.capacity,
+        entryCount: byRoom.get(r.id) ?? 0,
       }));
     });
   }
 
-  listRooms(): Promise<RoomOption[]> {
-    return this.run((tx) =>
-      tx.select({ id: rooms.id, name: rooms.name }).from(rooms).orderBy(rooms.name),
-    );
-  }
-
-  resolveRoom(input: ResolveRoomInput): Promise<ResolveRoomResult> {
+  /**
+   * Rename a room's DISPLAY name only. `dedup_key` is deliberately left unchanged
+   * so a re-crawl of the original source string still resolves to this room (no
+   * duplicate). Returns the updated `{ id, name }`, or null if the room does not
+   * exist or the name is blank.
+   */
+  async renameRoom(roomId: string, name: string): Promise<{ id: string; name: string } | null> {
+    const display = roomDisplayName(name);
+    if (!display) return null;
     return this.run(async (tx) => {
-      const rawValue = input.rawValue.trim();
-      if (!rawValue) throw new RoomResolveError('invalid_input', 'rawValue is required');
-
-      // Resolve the target room: an existing one, or a new canonical row.
-      let roomId: string;
-      let roomName: string;
-      if ('existingRoomId' in input) {
-        const found = await tx
-          .select({ id: rooms.id, name: rooms.name })
-          .from(rooms)
-          .where(eq(rooms.id, input.existingRoomId))
-          .limit(1);
-        const row = found[0];
-        if (!row) throw new RoomResolveError('room_not_found', 'target room not found in tenant');
-        roomId = row.id;
-        roomName = row.name;
-      } else {
-        const name = input.newRoomName.trim();
-        if (!name) throw new RoomResolveError('invalid_input', 'newRoomName is required');
-        const buildingId = await ensureUnassignedBuilding(tx, this.tenantId);
-        const created = await tx
-          .insert(rooms)
-          .values({ tenantId: this.tenantId, buildingId, name, dedupKey: roomDedupKey(name) })
-          .returning({ id: rooms.id, name: rooms.name });
-        const row = created[0];
-        if (!row) throw new RoomResolveError('invalid_input', 'room insert returned no row');
-        roomId = row.id;
-        roomName = row.name;
-      }
-
-      // Back-fill the current TBA entries carrying this raw string.
-      const blocked = await tx
-        .select({
-          id: timetableEntries.id,
-          termId: timetableEntries.termId,
-          sectionId: timetableEntries.sectionId,
-          courseId: timetableEntries.courseId,
-          teacherId: timetableEntries.teacherId,
-          dayOfWeek: timetableEntries.dayOfWeek,
-          startsAt: timetableEntries.startsAt,
-          endsAt: timetableEntries.endsAt,
-          kind: timetableEntries.kind,
-        })
-        .from(timetableEntries)
-        .where(
-          and(
-            isNull(timetableEntries.validTo),
-            isNull(timetableEntries.roomId),
-            sql`lower(${timetableEntries.roomSource}) = ${rawValue.toLowerCase()}`,
-          ),
-        );
-
-      for (const e of blocked) {
-        const contentHash = computeContentHash({
-          termId: e.termId,
-          sectionId: e.sectionId,
-          courseId: e.courseId,
-          teacherId: e.teacherId,
-          roomId,
-          dayOfWeek: e.dayOfWeek,
-          startsAt: e.startsAt,
-          endsAt: e.endsAt,
-          kind: e.kind,
-        });
-        await tx
-          .update(timetableEntries)
-          .set({ roomId, contentHash })
-          .where(eq(timetableEntries.id, e.id));
-      }
-
-      // Mark the unmapped value resolved so re-crawls self-heal (sink alias map).
-      await tx
-        .update(unmappedSourceValues)
-        .set({ status: 'resolved', resolvedId: roomId, updatedAt: new Date() })
-        .where(
-          and(eq(unmappedSourceValues.kind, 'room'), eq(unmappedSourceValues.rawValue, rawValue)),
-        );
-
-      return { roomId, roomName, resolvedEntries: blocked.length };
+      const updated = await tx
+        .update(rooms)
+        .set({ name: display, updatedAt: new Date() })
+        .where(and(eq(rooms.id, roomId), isNull(rooms.deletedAt)))
+        .returning({ id: rooms.id, name: rooms.name });
+      return updated[0] ?? null;
     });
   }
 
@@ -198,8 +100,8 @@ export class AdminRoomsRepository extends TenantScopedRepository {
    * current TBA entries carrying that raw string (recomputing content_hash in
    * place so a re-ingest is a no-op), and marks the value resolved. Touches only
    * status='pending' rows, so prior admin-resolved mappings are preserved.
-   * Idempotent: a second run finds every room already keyed and every value
-   * already resolved.
+   * Idempotent. Also reports `duplicateKeys` so the caller can decide whether the
+   * partial unique index on (tenant_id, dedup_key) can be created.
    */
   backfillRooms(): Promise<BackfillRoomsResult> {
     return this.run(async (tx) => {
@@ -332,7 +234,23 @@ export class AdminRoomsRepository extends TenantScopedRepository {
         pendingResolved += 1;
       }
 
-      return { keysBackfilled, roomsCreated, entriesRelinked, entriesClosed, pendingResolved };
+      // Live rooms whose dedup_key is shared with another live room. The partial
+      // unique index cannot be created while any exist (they need a room merge).
+      const dupRows = await tx
+        .select({ key: rooms.dedupKey })
+        .from(rooms)
+        .where(and(isNull(rooms.deletedAt), sql`${rooms.dedupKey} is not null`))
+        .groupBy(rooms.dedupKey)
+        .having(sql`count(*) > 1`);
+
+      return {
+        keysBackfilled,
+        roomsCreated,
+        entriesRelinked,
+        entriesClosed,
+        pendingResolved,
+        duplicateKeys: dupRows.length,
+      };
     });
   }
 }

@@ -8,12 +8,7 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string }> };
 
-const schema = z.object({
-  rawValue: z.string().min(1),
-  mode: z.enum(['new', 'existing']),
-  newRoomName: z.string().optional(),
-  existingRoomId: z.string().uuid().optional(),
-});
+const schema = z.object({ roomId: z.string().uuid(), name: z.string().min(1) });
 
 export async function POST(request: Request, { params }: Params): Promise<Response> {
   const { slug } = await params;
@@ -25,28 +20,14 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   }
 
   const form = await request.formData();
-  const parsed = schema.safeParse({
-    rawValue: form.get('rawValue'),
-    mode: form.get('mode'),
-    newRoomName: form.get('newRoomName') || undefined,
-    existingRoomId: form.get('existingRoomId') || undefined,
-  });
+  const parsed = schema.safeParse({ roomId: form.get('roomId'), name: form.get('name') });
   if (!parsed.success) {
     return relativeRedirect(`${base}?error=1`);
   }
 
-  const { rawValue, mode, newRoomName, existingRoomId } = parsed.data;
-  try {
-    const repo = getAdminRooms(slug);
-    const input =
-      mode === 'existing' && existingRoomId
-        ? { rawValue, existingRoomId }
-        : { rawValue, newRoomName: newRoomName ?? rawValue };
-    const result = await repo.resolveRoom(input);
-    return relativeRedirect(
-      `${base}?resolved=${result.resolvedEntries}&name=${encodeURIComponent(result.roomName)}`,
-    );
-  } catch {
+  const updated = await getAdminRooms(slug).renameRoom(parsed.data.roomId, parsed.data.name);
+  if (!updated) {
     return relativeRedirect(`${base}?error=1`);
   }
+  return relativeRedirect(`${base}?renamed=${encodeURIComponent(updated.name)}`);
 }
