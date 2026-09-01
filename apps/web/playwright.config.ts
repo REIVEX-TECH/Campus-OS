@@ -3,15 +3,19 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
 
-// Preserve the ambient env (DATABASE_URL etc.) and align APP_DOMAIN to the e2e
-// host so a `Host: lgu.localhost:<port>` header is treated as a real subdomain
-// (used by admin-subdomain.spec.ts). `Host: localhost:<port>` stays path-based,
-// so the /u/lgu specs keep working.
+// Preserve the ambient env (DATABASE_URL etc.) and align the host vars to the
+// e2e port so `Host: lgu.localhost:<port>` is treated as a real tenant subdomain
+// (admin-subdomain + tenant-host specs). `Host: localhost:<port>` is the bare
+// platform base, so it stays path-based and the /u/lgu specs keep working.
+// APP_DOMAIN is a DISTINCT legacy root, so `Host: lgu.<legacy>` exercises the
+// 308 to `lgu.localhost:<port>` (tenant-host spec).
 const webServerEnv: Record<string, string> = {};
 for (const [key, value] of Object.entries(process.env)) {
   if (value !== undefined) webServerEnv[key] = value;
 }
-webServerEnv.APP_DOMAIN = `localhost:${PORT}`;
+webServerEnv.TENANT_BASE_DOMAIN = `localhost:${PORT}`;
+webServerEnv.PLATFORM_HOST = `localhost:${PORT}`;
+webServerEnv.APP_DOMAIN = 'legacy.test';
 
 // Runs `next start`, so build the app first (CI does `pnpm build` before e2e).
 export default defineConfig({

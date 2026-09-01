@@ -1,7 +1,7 @@
-# Deploying Campus OS (lgu.reivex.io)
+# Deploying Campus OS (lgu.campusos.reivex.io)
 
 This is the step-by-step runbook to take the app from this repo to a live
-deployment at **lgu.reivex.io**, using **Vercel** (Next.js hosting) and **Neon**
+deployment at **lgu.campusos.reivex.io**, using **Vercel** (Next.js hosting) and **Neon**
 (serverless Postgres). Both have free tiers sufficient for production
 (CLAUDE.md non-negotiable 1). Nothing here requires a paid tier.
 
@@ -14,10 +14,14 @@ deployment at **lgu.reivex.io**, using **Vercel** (Next.js hosting) and **Neon**
   **lazily** (`getDb()` / `getSqlClient()`), so `next build` needs no database.
 - **DB**: single Postgres (Neon). Multi-tenant with **FORCE row-level security**;
   the app connects as a least-privilege, `NOBYPASSRLS` role.
-- **Tenant routing**: resolved from the request host by middleware. With
-  `APP_DOMAIN=reivex.io`, `lgu.reivex.io` resolves to the `lgu` tenant
-  automatically (subdomain label -> tenant slug). SEO/canonical/robots/sitemap
-  all derive from the live request host, so they are correct on the real domain.
+- **Tenant routing**: resolved from the request host by middleware. Tenants nest
+  under the platform root: with `TENANT_BASE_DOMAIN=campusos.reivex.io`,
+  `lgu.campusos.reivex.io` resolves to the `lgu` tenant (subdomain label ->
+  tenant slug). The bare `campusos.reivex.io` (`PLATFORM_HOST`) is the platform
+  landing, not a tenant. `APP_DOMAIN=reivex.io` is legacy: the old flat
+  `lgu.reivex.io` 308-redirects to the nested host (removable). SEO/canonical/
+  robots/sitemap all derive from the live request host, so they are correct on
+  the real domain.
 - **Ingestion**: the `Ingest LGU timetable` GitHub Action runs the full
   autonomous crawl on a schedule against the hosted DB (gated; off until enabled).
 
@@ -77,11 +81,13 @@ start the app (or use the deployed one once step 3 is done), sign in at
    either works.)
 2. Add **Environment Variables** (Production):
 
-   | Variable       | Value                                            |
-   | -------------- | ------------------------------------------------ |
-   | `DATABASE_URL` | Neon **pooled** string (see note below)          |
-   | `APP_DOMAIN`   | `reivex.io`                                      |
-   | `ADMIN_SECRET` | a strong secret (enables the room-mapping admin) |
+   | Variable             | Value                                            |
+   | -------------------- | ------------------------------------------------ |
+   | `DATABASE_URL`       | Neon **pooled** string (see note below)          |
+   | `TENANT_BASE_DOMAIN` | `campusos.reivex.io`                             |
+   | `PLATFORM_HOST`      | `campusos.reivex.io`                             |
+   | `APP_DOMAIN`         | `reivex.io` (legacy; powers the removable 308)   |
+   | `ADMIN_SECRET`       | a strong secret (enables the room-mapping admin) |
 
    > **Pooled vs direct at runtime.** The pooled endpoint (pgbouncer, transaction
    > mode) does not support prepared statements, which the current postgres.js
@@ -93,20 +99,23 @@ start the app (or use the deployed one once step 3 is done), sign in at
 3. Deploy. `next build` runs with no DB access (lazy client), so the build
    succeeds even before the DB is reachable.
 
-## 4. Point lgu.reivex.io at Vercel
+## 4. Point the hosts at Vercel
 
-1. In the Vercel project: **Settings -> Domains -> Add** `lgu.reivex.io`.
-2. At your DNS provider for `reivex.io`, add the record Vercel shows, typically:
+1. In the Vercel project: **Settings -> Domains -> Add** both `campusos.reivex.io`
+   (the platform landing) and `lgu.campusos.reivex.io` (the tenant). Optionally
+   also add the legacy `lgu.reivex.io` so old links 308 forward.
+2. At your DNS provider for `campusos.reivex.io`, add the records Vercel shows,
+   typically a `CNAME` per host (or a wildcard `*.campusos.reivex.io`) to
+   `cname.vercel-dns.com`. Vercel issues TLS automatically (a wildcard domain
+   needs DNS verification).
 
-   | Type    | Name  | Value                  |
-   | ------- | ----- | ---------------------- |
-   | `CNAME` | `lgu` | `cname.vercel-dns.com` |
+   | Type    | Name                | Value                  |
+   | ------- | ------------------- | ---------------------- |
+   | `CNAME` | `lgu` (in campusos) | `cname.vercel-dns.com` |
 
-   (Vercel displays the exact target and issues TLS automatically.)
-
-3. Because `APP_DOMAIN=reivex.io`, the middleware maps the `lgu` subdomain label
-   to the `lgu` tenant with no per-host config. To add another university later,
-   add its tenant config and a DNS record for its subdomain.
+3. Because `TENANT_BASE_DOMAIN=campusos.reivex.io`, the middleware maps the `lgu`
+   subdomain label to the `lgu` tenant with no per-host config. To add another
+   university later, add its tenant config and a DNS record for its subdomain.
 
 ## 5. Enable scheduled ingestion
 
@@ -125,8 +134,9 @@ Scheduled runs execute only when `HOSTED_DB_ENABLED` is `true`; a manual
 ## Environment variables
 
 See `.env.example` for the full list. Production needs: `DATABASE_URL`,
-`APP_DOMAIN=reivex.io`, `ADMIN_SECRET`. `LGU_PHPSESSID` and the `LGU_MAX_*` caps
-are optional.
+`TENANT_BASE_DOMAIN=campusos.reivex.io`, `PLATFORM_HOST=campusos.reivex.io`,
+`ADMIN_SECRET`. `APP_DOMAIN=reivex.io` is optional (only the legacy 308).
+`LGU_PHPSESSID` and the `LGU_MAX_*` caps are optional.
 
 ## Production readiness checklist
 

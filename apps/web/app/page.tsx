@@ -2,17 +2,17 @@ import Link from 'next/link';
 import { buttonVariants, Card } from '@campusos/ui';
 import { tenantRegistry } from '@campusos/tenants';
 import { translator } from '@/lib/i18n';
+import { tenantOrigin } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
 const GITHUB_URL = 'https://github.com/REIVEX-TECH/Campus-OS';
 
-/** Absolute URL to a tenant's instance: its subdomain in production, the
- * /u/{slug} path fallback in local dev. Driven by the registry (no hardcoding). */
+/** Link to a tenant's instance: its {slug}.TENANT_BASE_DOMAIN subdomain in
+ * production, the /u/{slug} path fallback in local dev. Driven by the registry
+ * (no hardcoding). */
 function tenantUrl(slug: string): string {
-  const domain = process.env.APP_DOMAIN ?? 'localhost:3000';
-  const local = domain.startsWith('localhost') || domain.startsWith('127.');
-  return local ? `/u/${slug}` : `https://${slug}.${domain}`;
+  return tenantOrigin(slug) ?? `/u/${slug}`;
 }
 
 export default function PlatformHome() {
