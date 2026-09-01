@@ -80,11 +80,16 @@ and needs no app change).
 3. Check **Enhancements / Course** for the structured-data results once Google
    has recrawled.
 
+## OpenGraph images
+
+Each tenant and the platform landing generate a 1200x630 social card at build/
+request time via first-party `next/og` (`app/u/[slug]/opengraph-image.tsx` and
+`app/opengraph-image.tsx`). Next wires `og:image` and `twitter:image` from these
+files automatically, so a shared link renders a branded card (the tenant card
+uses the tenant accent). No external asset or font file is bundled.
+
 ## Follow-ups
 
-- **OpenGraph image.** The cards currently ship without a generated image (the
-  meta tags are valid as text summaries). A branded per-tenant OG image
-  (`next/og`) is a clean future addition once a shared brand asset exists.
 - **Human-readable URLs.** Section/course/teacher/room pages use raw ids for now;
   slug paths (`/timetable/bscs/5/a`) will improve relevance once dimension data
   is verified (already noted in `lib/metadata.ts`).
