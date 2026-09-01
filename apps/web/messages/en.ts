@@ -1,6 +1,13 @@
 export const en = {
   'app.tagline': 'A multi-tenant, open-source campus platform.',
 
+  'platform.tagline': 'An open-source, multi-tenant campus platform.',
+  'platform.description':
+    'Live timetables and campus tools for universities. Self-hosted, free, and open-source.',
+  'platform.universities': 'Universities',
+  'platform.openInstance': 'Open {name}',
+  'platform.github': 'View on GitHub',
+
   'timetable.heading': 'Timetable',
   'timetable.viewTimetable': 'View timetable',
   'timetable.chooseSection': 'Choose a section',
