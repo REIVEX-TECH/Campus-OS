@@ -276,6 +276,41 @@ describe('TimetableQueries search', () => {
   });
 });
 
+describe('TimetableQueries.analytics', () => {
+  it('counts existing data: totals, entries by kind and day, coverage, and pending', async () => {
+    const a = await createTimetableQueries('aaa').analytics();
+
+    expect(a.totals).toEqual({
+      terms: 2, // F25 + S26
+      programs: 2, // BSCS (pending) + BSSE
+      sections: 2, // A + B
+      courses: 1, // CS201
+      teachers: 1, // Dr Ayesha
+      rooms: 1, // R-101
+      entries: 2, // both seed entries are live (valid_to null)
+    });
+
+    const kinds = Object.fromEntries(a.entriesByKind.map((k) => [k.kind, k.count]));
+    expect(kinds).toEqual({ lecture: 1, lab: 1, tutorial: 0, exam: 0 });
+    // Every kind is present, sorted by count descending.
+    expect(a.entriesByKind).toHaveLength(4);
+    expect(a.entriesByKind[0]!.count).toBeGreaterThanOrEqual(a.entriesByKind[3]!.count);
+
+    // Monday (1) and Wednesday (3) each have one class; the week is fully listed.
+    expect(a.entriesByDay).toHaveLength(7);
+    const byDay = Object.fromEntries(a.entriesByDay.map((d) => [d.dayOfWeek, d.count]));
+    expect(byDay[1]).toBe(1);
+    expect(byDay[3]).toBe(1);
+    expect(byDay[2]).toBe(0);
+
+    // The lab entry has no teacher and no room, so coverage is 1 of 2.
+    expect(a.coverage).toEqual({ entries: 2, withTeacher: 1, withRoom: 1 });
+
+    // Dr Ayesha is pending; both sections are active.
+    expect(a.pending).toEqual({ teachers: 1, sections: 0 });
+  });
+});
+
 describe('TimetableQueries.freeRooms', () => {
   it('excludes a room busy in the window and includes it (with building) when free', async () => {
     const q = createTimetableQueries('aaa');

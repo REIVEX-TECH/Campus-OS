@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Button, Card, Field, Input } from '@campusos/ui';
 import { requireAdmin } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
@@ -30,11 +31,19 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
           <h1 className="text-3xl font-bold tracking-tight">{t('admin.rooms.heading')}</h1>
           <p className="max-w-prose text-sm text-muted-foreground">{t('admin.rooms.intro')}</p>
         </div>
-        <form method="post" action={`${base}/admin/logout`}>
-          <Button type="submit" variant="ghost" size="sm">
-            {t('admin.rooms.signOut')}
-          </Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`${base}/admin/analytics`}
+            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('admin.nav.analytics')}
+          </Link>
+          <form method="post" action={`${base}/admin/logout`}>
+            <Button type="submit" variant="ghost" size="sm">
+              {t('admin.rooms.signOut')}
+            </Button>
+          </form>
+        </div>
       </header>
 
       {sp.renamed ? (
