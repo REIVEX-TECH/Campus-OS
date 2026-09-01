@@ -185,4 +185,9 @@ export const en = {
   'notFound.title': '404',
   'notFound.body': 'This tenant or page could not be found.',
   'notFound.home': 'Back to homepage',
+
+  'error.title': 'Something went wrong',
+  'error.body': 'An unexpected error stopped this page from loading. Please try again.',
+  'error.retry': 'Try again',
+  'error.home': 'Back to homepage',
 } as const;
