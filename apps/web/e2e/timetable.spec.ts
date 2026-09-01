@@ -9,8 +9,10 @@ async function realOptions(select: Locator): Promise<string[]> {
     );
 }
 
-// Drive the cascade to the first program, then step through its sections until a
-// weekly grid renders (a section that has entries). Returns once the grid is up.
+// Drive the cascade to the first section that renders a timetable (a section with
+// entries). "Rendered" is detected by the view switcher appearing, which is
+// view-independent (the default view is responsive: grid on desktop, list on
+// mobile). Returns once the timetable is up.
 async function cascadeToPopulatedSection(page: Page): Promise<void> {
   await page.goto('/u/lgu/timetable');
 
@@ -19,6 +21,7 @@ async function cascadeToPopulatedSection(page: Page): Promise<void> {
   const programs = await realOptions(program);
   expect(programs.length).toBeGreaterThan(0);
 
+  const switcher = page.getByRole('group', { name: 'View' });
   for (const pv of programs) {
     await program.selectOption(pv);
     await page.waitForURL((u) => u.searchParams.get('program') === pv);
@@ -28,7 +31,7 @@ async function cascadeToPopulatedSection(page: Page): Promise<void> {
     for (const sv of await realOptions(section)) {
       await section.selectOption(sv);
       await page.waitForURL((u) => u.searchParams.get('section') === sv);
-      if (await page.locator('section h3').first().isVisible()) return; // a weekday group
+      if (await switcher.isVisible().catch(() => false)) return;
     }
   }
   throw new Error('no section with a rendered timetable was found in the fixture');
@@ -39,9 +42,6 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   request,
 }) => {
   await cascadeToPopulatedSection(page);
-
-  // Inline day-grouped grid with an accessible caption and at least one weekday.
-  await expect(page.locator('section h3').first()).toBeVisible();
   await expect(page).toHaveURL(/section=/); // shareable state lives in the URL
 
   // The inline render uses the SAME four-view switcher as the section page (one
@@ -60,33 +60,16 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(await res.text()).toContain('UID:');
 });
 
-test('a teacher name in the grid links to the teacher view', async ({ page }) => {
-  await page.goto('/u/lgu/timetable');
+test('a teacher name links to the teacher view', async ({ page }) => {
+  await cascadeToPopulatedSection(page);
 
-  const program = page.locator('#pick-program');
-  await expect(program).toBeVisible();
+  // Teacher names are links in the row-based views; switch to List to find one.
+  await page.getByRole('button', { name: 'List', exact: true }).click();
+  const link = page.locator('a[href^="/u/lgu/teachers/"]').first();
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
 
-  // Find some section grid that shows a teacher, then follow that link.
-  let teacherHref: string | null = null;
-  for (const pv of await realOptions(program)) {
-    await program.selectOption(pv);
-    await page.waitForURL((u) => u.searchParams.get('program') === pv);
-    const section = page.locator('#pick-section');
-    await expect(section).toBeVisible();
-    for (const sv of await realOptions(section)) {
-      await section.selectOption(sv);
-      await page.waitForURL((u) => u.searchParams.get('section') === sv);
-      const link = page.locator('a[href^="/u/lgu/teachers/"]').first();
-      if (await link.count()) {
-        teacherHref = await link.getAttribute('href');
-        break;
-      }
-    }
-    if (teacherHref) break;
-  }
-  expect(teacherHref, 'expected at least one teacher link in a section grid').toBeTruthy();
-
-  await page.goto(teacherHref!);
+  await page.goto(href!);
   await expect(page).toHaveURL(/\/u\/lgu\/teachers\//);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // the teacher's name
   await expect(page.locator('section h3').first()).toBeVisible(); // their weekly grid

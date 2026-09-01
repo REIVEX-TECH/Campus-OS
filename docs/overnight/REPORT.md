@@ -6,9 +6,10 @@ Full-width shell + dark mode, timetable redesign, free rooms, search, module
 stubs, landing pages, admin analytics, and SEO. Many small PRs, each green before
 the next. Anything deferred is in [DECISIONS.md](DECISIONS.md).
 
-| PR                                   | Merge SHA | Shipped                                                                                                                                                                                                                                                      |
-| ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| #21 full-width app shell + dark mode | pending   | Live dark/light theme (no-flash script + header toggle, `prefers-color-scheme` default), theme-aware tenant accent (lightened for dark, AA), full-width `AppShell` replacing the max-w-3xl column across all tenant pages. Docs: design.md dark tokens + AA. |
+| PR                                   | Merge SHA | Shipped                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #21 full-width app shell + dark mode | `5b7e4da` | Live dark/light theme (no-flash script + header toggle, `prefers-color-scheme` default), theme-aware tenant accent (lightened for dark, AA), full-width `AppShell` replacing the max-w-3xl column across all tenant pages. Docs: design.md dark tokens + AA.                                             |
+| #22 timetable redesign               | pending   | Colour-coded per-course blocks (8-hue, theme-aware, AA), flagship full-width week Grid (proportional blocks, sticky-left time gutter, crisp hour ruler, "now" line), Timeline "now" line, List/Days course dots; responsive default (Grid desktop, List mobile); all four views polished in both themes. |
 
 _The prior run's report follows below._
 

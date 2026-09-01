@@ -170,3 +170,86 @@
   --primary: var(--primary-dark, var(--primary));
   --primary-foreground: var(--primary-foreground-dark, var(--primary-foreground));
 }
+
+/*
+ * Event colours for the timetable blocks (grid + timeline). A course maps to one
+ * of eight hues so the week reads at a glance. The tint stays near the surface
+ * lightness (pale in light, deep in dark) and text is always `--foreground`, so
+ * every block clears WCAG AA in both themes regardless of hue. A stronger left
+ * bar carries the colour identity.
+ */
+@layer components {
+  .evt {
+    background-color: var(--evt-bg);
+    border-left: 3px solid var(--evt-bar);
+    color: var(--color-foreground);
+  }
+  /* A small course colour dot (reads the same hue's bar colour). */
+  .evt-dot {
+    background-color: var(--evt-bar);
+  }
+}
+.evt-0 {
+  --evt-bg: oklch(0.94 0.045 20);
+  --evt-bar: oklch(0.62 0.14 20);
+}
+.evt-1 {
+  --evt-bg: oklch(0.94 0.045 55);
+  --evt-bar: oklch(0.64 0.13 55);
+}
+.evt-2 {
+  --evt-bg: oklch(0.94 0.05 95);
+  --evt-bar: oklch(0.64 0.13 95);
+}
+.evt-3 {
+  --evt-bg: oklch(0.94 0.05 150);
+  --evt-bar: oklch(0.6 0.13 150);
+}
+.evt-4 {
+  --evt-bg: oklch(0.94 0.045 195);
+  --evt-bar: oklch(0.62 0.12 195);
+}
+.evt-5 {
+  --evt-bg: oklch(0.94 0.045 250);
+  --evt-bar: oklch(0.62 0.13 250);
+}
+.evt-6 {
+  --evt-bg: oklch(0.94 0.045 290);
+  --evt-bar: oklch(0.62 0.14 290);
+}
+.evt-7 {
+  --evt-bg: oklch(0.94 0.05 330);
+  --evt-bar: oklch(0.62 0.14 330);
+}
+.dark .evt-0 {
+  --evt-bg: oklch(0.3 0.055 20);
+  --evt-bar: oklch(0.68 0.13 20);
+}
+.dark .evt-1 {
+  --evt-bg: oklch(0.3 0.055 55);
+  --evt-bar: oklch(0.7 0.12 55);
+}
+.dark .evt-2 {
+  --evt-bg: oklch(0.3 0.055 95);
+  --evt-bar: oklch(0.72 0.12 95);
+}
+.dark .evt-3 {
+  --evt-bg: oklch(0.3 0.055 150);
+  --evt-bar: oklch(0.68 0.13 150);
+}
+.dark .evt-4 {
+  --evt-bg: oklch(0.3 0.05 195);
+  --evt-bar: oklch(0.7 0.11 195);
+}
+.dark .evt-5 {
+  --evt-bg: oklch(0.3 0.055 250);
+  --evt-bar: oklch(0.7 0.12 250);
+}
+.dark .evt-6 {
+  --evt-bg: oklch(0.3 0.055 290);
+  --evt-bar: oklch(0.72 0.13 290);
+}
+.dark .evt-7 {
+  --evt-bg: oklch(0.3 0.055 330);
+  --evt-bar: oklch(0.72 0.13 330);
+}

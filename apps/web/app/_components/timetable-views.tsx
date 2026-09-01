@@ -15,9 +15,10 @@ const ORDER: ViewKey[] = ['grid', 'days', 'list', 'timeline'];
 /**
  * Client-side view switcher for a section timetable. The section data is fetched
  * on the server and passed in; switching is an INSTANT in-place toggle (local
- * state, no navigation) so the four views can be compared side by side. Day-
- * scoped views (days, timeline) share a selected-day state, defaulting to today
- * when it has classes.
+ * state, no navigation) so the four views can be compared side by side. Default
+ * is responsive (Grid on desktop, List on mobile), applied once on mount. Day-
+ * scoped views (days, timeline) share a selected day, defaulting to today when it
+ * has classes, and a live "now" marker is passed to the proportional views.
  */
 export function TimetableViews({
   views,
@@ -36,13 +37,26 @@ export function TimetableViews({
 
   const [view, setView] = useState<ViewKey>('list');
   const [day, setDay] = useState<number>(days[0] ?? 1);
+  const [now, setNow] = useState<{ day: number; minutes: number } | null>(null);
 
-  // Open day-scoped views on today when it has classes (client-only, so no
-  // hydration mismatch: the initial render uses the deterministic first day).
+  // Responsive default + today, applied client-side (initial render is the
+  // deterministic list/first-day, so there is no hydration mismatch).
   useEffect(() => {
+    if (window.matchMedia('(min-width: 768px)').matches) setView('grid');
     const todayIso = ((new Date().getDay() + 6) % 7) + 1;
     if (days.includes(todayIso)) setDay(todayIso);
   }, [days]);
+
+  // Live "now" marker for the grid/timeline, refreshed each minute.
+  useEffect(() => {
+    const tick = (): void => {
+      const d = new Date();
+      setNow({ day: ((d.getDay() + 6) % 7) + 1, minutes: d.getHours() * 60 + d.getMinutes() });
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,7 +83,9 @@ export function TimetableViews({
         })}
       </div>
 
-      {view === 'grid' ? <WeeklyGrid views={views} base={base} locale={locale} t={t} /> : null}
+      {view === 'grid' ? (
+        <WeeklyGrid views={views} base={base} locale={locale} t={t} now={now} />
+      ) : null}
       {view === 'list' ? <CompactList views={views} base={base} locale={locale} t={t} /> : null}
       {view === 'days' ? (
         <DayTabs
@@ -91,6 +107,7 @@ export function TimetableViews({
           days={days}
           day={day}
           onDay={setDay}
+          now={now}
         />
       ) : null}
     </div>

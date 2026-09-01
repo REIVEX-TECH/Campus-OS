@@ -3,15 +3,23 @@ import { ClassBlock, type ViewProps } from './parts';
 import { assignLanes, bounds, minutes } from './time-scale';
 
 const HOUR_PX = 56;
+const NOW_COLOR = 'oklch(0.62 0.22 25)'; // calendar-red "now" marker, reads in both themes
 
 /**
- * Classic calendar: weekday columns, a left time gutter, class blocks placed and
- * sized by time (overlaps split into side-by-side lanes). The hour lines are a
- * time ruler (a faint background), not section dividers. On narrow screens the
- * whole grid scrolls horizontally inside its own container, so the page never
- * scrolls sideways.
+ * Classic calendar: weekday columns, a left time gutter, colour-coded class
+ * blocks placed and sized by time (overlaps split into side-by-side lanes). The
+ * day-header row sticks below the app header on vertical scroll and the time
+ * gutter sticks on horizontal scroll; on narrow screens the whole grid scrolls
+ * horizontally inside its own container, so the page never scrolls sideways. The
+ * hour lines are a time ruler (a faint background), not section dividers.
  */
-export function WeeklyGrid({ views, base, locale, t }: ViewProps) {
+export function WeeklyGrid({
+  views,
+  base,
+  locale,
+  t,
+  now,
+}: ViewProps & { now: { day: number; minutes: number } | null }) {
   const b = bounds(views);
   if (!b) return null;
   const startHour = Math.floor(b.start / 60);
@@ -26,11 +34,13 @@ export function WeeklyGrid({ views, base, locale, t }: ViewProps) {
     height,
     backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, var(--color-border) ${HOUR_PX - 1}px, var(--color-border) ${HOUR_PX}px)`,
   };
+  const nowTop = now ? (now.minutes - axisStart) * pxPerMin : 0;
+  const nowInRange = now !== null && now.minutes >= axisStart && now.minutes <= endHour * 60;
 
   return (
     <div className="overflow-x-auto">
-      <div className="flex">
-        <div className="w-12 shrink-0">
+      <div className="flex min-w-[44rem]">
+        <div className="sticky left-0 z-10 w-12 shrink-0 bg-background">
           <div className="h-8" />
           <div className="relative" style={{ height }}>
             {hours.map((h) => (
@@ -47,8 +57,9 @@ export function WeeklyGrid({ views, base, locale, t }: ViewProps) {
 
         {days.map((day) => {
           const laid = assignLanes(views.filter((v) => v.dayOfWeek === day));
+          const showNow = nowInRange && now?.day === day;
           return (
-            <div key={day} className="min-w-[7.5rem] flex-1 px-0.5">
+            <div key={day} className="min-w-[7rem] flex-1 px-0.5">
               <div className="flex h-8 items-center justify-center text-xs font-semibold uppercase text-muted-foreground">
                 <span aria-hidden="true">{dayShort(locale, day)}</span>
                 <span className="sr-only">{dayName(locale, day)}</span>
@@ -69,6 +80,13 @@ export function WeeklyGrid({ views, base, locale, t }: ViewProps) {
                     }}
                   />
                 ))}
+                {showNow ? (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 z-20 h-0.5"
+                    style={{ top: nowTop, background: NOW_COLOR }}
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
             </div>
           );

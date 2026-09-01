@@ -4,6 +4,7 @@ import { DaySelector } from './day-selector';
 import { assignLanes, bounds, minutes } from './time-scale';
 
 const HOUR_PX = 68;
+const NOW_COLOR = 'oklch(0.62 0.22 25)';
 
 /**
  * One day on a proportional vertical time axis: blocks are placed and sized by
@@ -18,7 +19,13 @@ export function Timeline({
   days,
   day,
   onDay,
-}: ViewProps & { days: number[]; day: number; onDay: (day: number) => void }) {
+  now,
+}: ViewProps & {
+  days: number[];
+  day: number;
+  onDay: (day: number) => void;
+  now: { day: number; minutes: number } | null;
+}) {
   const dayViews = views.filter((v) => v.dayOfWeek === day);
   const b = bounds(dayViews);
   const startHour = b ? Math.floor(b.start / 60) : 8;
@@ -28,6 +35,8 @@ export function Timeline({
   const pxPerMin = HOUR_PX / 60;
   const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i);
   const laid = assignLanes(dayViews);
+  const showNow =
+    now !== null && now.day === day && now.minutes >= axisStart && now.minutes <= endHour * 60;
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,6 +81,13 @@ export function Timeline({
                   }}
                 />
               ))}
+              {showNow ? (
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-20 h-0.5"
+                  style={{ top: (now!.minutes - axisStart) * pxPerMin, background: NOW_COLOR }}
+                  aria-hidden="true"
+                />
+              ) : null}
             </div>
           </div>
         </Card>
