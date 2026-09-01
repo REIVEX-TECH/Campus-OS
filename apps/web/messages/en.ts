@@ -86,6 +86,7 @@ export const en = {
   'nav.search': 'Search',
   'theme.toggle': 'Toggle light and dark',
   'a11y.skipToContent': 'Skip to content',
+  'a11y.loading': 'Loading',
 
   'modules.comingSoon': 'Coming soon',
   'modules.soonBody': 'This is on the way. Check back soon.',
