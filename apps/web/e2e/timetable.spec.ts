@@ -44,6 +44,11 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   await expect(page.locator('section h3').first()).toBeVisible();
   await expect(page).toHaveURL(/section=/); // shareable state lives in the URL
 
+  // The inline render uses the SAME four-view switcher as the section page (one
+  // shared component, so the two paths cannot drift), and de-noises the badge.
+  await expect(page.getByRole('group', { name: 'View' }).getByRole('button')).toHaveCount(4);
+  await expect(page.getByText('Unverified')).toHaveCount(0);
+
   // The selected section exposes an ICS feed that returns a valid calendar.
   const subscribe = page.getByRole('link', { name: /subscribe/i });
   await expect(subscribe).toBeVisible();

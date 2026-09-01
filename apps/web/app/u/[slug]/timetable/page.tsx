@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
-import { buttonVariants, Card } from '@campusos/ui';
+import { Card } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
+import { SectionTimetableView } from '@/app/_components/section-timetable-view';
 import { TimetablePicker } from '@/app/_components/timetable-picker';
-import { TimetableGrid } from '@/app/_components/timetable-grid';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
@@ -84,30 +83,13 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
           </Card>
 
           {section && sectionSummary ? (
-            views.length === 0 ? (
-              <EmptyState title={t('timetable.empty.noEntries')} />
-            ) : (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-3 px-1">
-                  <h2 className="text-lg font-semibold">
-                    {`${sectionSummary.program.code} ${sectionSummary.name}`}
-                  </h2>
-                  <Link
-                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                    href={`${base}/sections/${section}/timetable.ics`}
-                  >
-                    {t('timetable.subscribe')}
-                  </Link>
-                </div>
-                <TimetableGrid
-                  views={views}
-                  title={`${sectionSummary.program.code} ${sectionSummary.name}`}
-                  locale={tenant.locale}
-                  base={base}
-                  t={t}
-                />
-              </div>
-            )
+            <SectionTimetableView
+              views={views}
+              base={base}
+              locale={tenant.locale}
+              subscribeHref={`${base}/sections/${section}/timetable.ics`}
+              title={`${sectionSummary.program.code} ${sectionSummary.name}`}
+            />
           ) : (
             <EmptyState title={t('timetable.pickPrompt')} />
           )}
