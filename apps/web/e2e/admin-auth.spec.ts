@@ -7,8 +7,10 @@ test('admin area is gated server-side on both the route and the mutation', async
   page,
   request,
 }) => {
-  // Route: the admin page redirects an unauthenticated visitor to login.
+  // Route: the admin pages redirect an unauthenticated visitor to login.
   await page.goto('/u/lgu/admin/rooms');
+  await expect(page).toHaveURL(/\/u\/lgu\/admin\/login/);
+  await page.goto('/u/lgu/admin/analytics');
   await expect(page).toHaveURL(/\/u\/lgu\/admin\/login/);
 
   // Mutation: the rename endpoint rejects an unauthenticated POST outright.

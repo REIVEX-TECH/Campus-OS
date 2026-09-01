@@ -82,3 +82,30 @@ export interface Freshness {
   lastSuccessfulAt: string | null;
   source: string | null;
 }
+
+/**
+ * Read-only aggregate counts over a tenant's existing data, for the admin
+ * analytics panel. Nothing new is collected: these are counts of rows that
+ * already exist. "Current" means the live version of a timetable entry
+ * (`valid_to is null`); totals exclude soft-deleted dimension rows.
+ */
+export interface TimetableAnalytics {
+  totals: {
+    terms: number;
+    programs: number;
+    sections: number;
+    courses: number;
+    teachers: number;
+    rooms: number;
+    /** Current (live) timetable entries. */
+    entries: number;
+  };
+  /** Current entries grouped by kind, every kind present, descending by count. */
+  entriesByKind: { kind: TimetableEntryKind; count: number }[];
+  /** Current entries per ISO weekday (1 = Monday .. 7 = Sunday), 1..7 always present. */
+  entriesByDay: { dayOfWeek: number; count: number }[];
+  /** How complete current entries are (a TBA teacher or room lowers coverage). */
+  coverage: { entries: number; withTeacher: number; withRoom: number };
+  /** Auto-imported rows still pending review (honesty over hiding). */
+  pending: { teachers: number; sections: number };
+}

@@ -1,11 +1,11 @@
-import { and, desc, eq, exists, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, exists, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { TenantScopedRepository, type TenantTransaction } from '@campusos/db';
 import { buildings, rooms } from '@campusos/db/schema';
 import { freeRooms as computeFreeRooms, type TimeWindow } from '../domain/index';
 import { academicTerms, courses, programs, sections, teachers } from '../schema/catalog';
 import { timetableEntries } from '../schema/entries';
+import { timetableEntryKind, type TimetableEntryKind } from '../schema/enums';
 import { ingestionRuns } from '../schema/ingestion';
-import type { TimetableEntryKind } from '../schema/enums';
 import type {
   Freshness,
   ProgramSummary,
@@ -14,6 +14,7 @@ import type {
   SectionSummary,
   TeacherSummary,
   TermSummary,
+  TimetableAnalytics,
   TimetableView,
 } from './types';
 
@@ -385,6 +386,94 @@ export class TimetableQueries extends TenantScopedRepository {
         .limit(1),
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * Read-only aggregate counts over the tenant's existing data (admin analytics).
+   * Collects nothing new: every figure is a count of rows already stored.
+   * Queries run sequentially on the one tenant-scoped connection.
+   */
+  async analytics(): Promise<TimetableAnalytics> {
+    return this.run(async (tx) => {
+      const live = isNull(timetableEntries.validTo);
+      const scalar = async (rows: PromiseLike<{ n: number }[]>): Promise<number> =>
+        (await rows)[0]?.n ?? 0;
+
+      const totals = {
+        terms: await scalar(
+          tx.select({ n: count() }).from(academicTerms).where(isNull(academicTerms.deletedAt)),
+        ),
+        programs: await scalar(
+          tx.select({ n: count() }).from(programs).where(isNull(programs.deletedAt)),
+        ),
+        sections: await scalar(
+          tx.select({ n: count() }).from(sections).where(isNull(sections.deletedAt)),
+        ),
+        courses: await scalar(
+          tx.select({ n: count() }).from(courses).where(isNull(courses.deletedAt)),
+        ),
+        teachers: await scalar(
+          tx.select({ n: count() }).from(teachers).where(isNull(teachers.deletedAt)),
+        ),
+        rooms: await scalar(tx.select({ n: count() }).from(rooms).where(isNull(rooms.deletedAt))),
+        entries: await scalar(tx.select({ n: count() }).from(timetableEntries).where(live)),
+      };
+
+      const kindRows = (await tx
+        .select({ kind: timetableEntries.kind, n: count() })
+        .from(timetableEntries)
+        .where(live)
+        .groupBy(timetableEntries.kind)) as { kind: TimetableEntryKind; n: number }[];
+      const kindMap = new Map(kindRows.map((r) => [r.kind, r.n]));
+      const entriesByKind = timetableEntryKind.enumValues
+        .map((kind) => ({ kind, count: kindMap.get(kind) ?? 0 }))
+        .sort((a, b) => b.count - a.count);
+
+      const dayRows = (await tx
+        .select({ dayOfWeek: timetableEntries.dayOfWeek, n: count() })
+        .from(timetableEntries)
+        .where(live)
+        .groupBy(timetableEntries.dayOfWeek)) as { dayOfWeek: number; n: number }[];
+      const dayMap = new Map(dayRows.map((r) => [r.dayOfWeek, r.n]));
+      const entriesByDay = [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+        dayOfWeek,
+        count: dayMap.get(dayOfWeek) ?? 0,
+      }));
+
+      const withTeacher = await scalar(
+        tx
+          .select({ n: count() })
+          .from(timetableEntries)
+          .where(and(live, sql`${timetableEntries.teacherId} is not null`)),
+      );
+      const withRoom = await scalar(
+        tx
+          .select({ n: count() })
+          .from(timetableEntries)
+          .where(and(live, sql`${timetableEntries.roomId} is not null`)),
+      );
+
+      const pendingTeachers = await scalar(
+        tx
+          .select({ n: count() })
+          .from(teachers)
+          .where(and(isNull(teachers.deletedAt), eq(teachers.status, 'pending'))),
+      );
+      const pendingSections = await scalar(
+        tx
+          .select({ n: count() })
+          .from(sections)
+          .where(and(isNull(sections.deletedAt), eq(sections.status, 'pending'))),
+      );
+
+      return {
+        totals,
+        entriesByKind,
+        entriesByDay,
+        coverage: { entries: totals.entries, withTeacher, withRoom },
+        pending: { teachers: pendingTeachers, sections: pendingSections },
+      };
+    });
   }
 
   async freshness(): Promise<Freshness> {
