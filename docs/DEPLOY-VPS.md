@@ -1,4 +1,4 @@
-# Deploying Campus OS on a self-hosted VPS (lgu.reivex.io)
+# Deploying Campus OS on a self-hosted VPS (lgu.campusos.reivex.io)
 
 A step-by-step runbook for **your** box: Ubuntu 24.04, an already-running shared
 Postgres 16 on `127.0.0.1:5432`, nginx 1.24 terminating TLS for other
@@ -16,10 +16,15 @@ Data decision baked in: deploy with `SOURCE_MODE=fixture` now (the recorded
 slice), backfill the full live data later (step 8).
 
 > **Tenant routing sanity check (why this works).** The middleware resolves the
-> tenant from the request `Host` header. `subdomainOf('lgu.reivex.io', 'reivex.io')`
-> returns `'lgu'`, which resolves the `lgu` tenant. So with `APP_DOMAIN=reivex.io`
-> and nginx forwarding the real `Host`, `lgu.reivex.io` serves the `lgu` tenant
-> with no per-host config. (Verified against `packages/core/src/tenant/registry.ts`.)
+> tenant from the request `Host` header, as a subdomain of `TENANT_BASE_DOMAIN`.
+> `subdomainOf('lgu.campusos.reivex.io', 'campusos.reivex.io')` returns `'lgu'`,
+> which resolves the `lgu` tenant. So with `TENANT_BASE_DOMAIN=campusos.reivex.io`
+> and nginx forwarding the real `Host`, `lgu.campusos.reivex.io` serves the `lgu`
+> tenant with no per-host config. The bare `campusos.reivex.io` (= `PLATFORM_HOST`)
+> serves the platform landing. A request on the old flat host `lgu.reivex.io`
+> (`{slug}.APP_DOMAIN`) is 308-redirected to `lgu.campusos.reivex.io`, so existing
+> links keep working; the redirect is removable (unset `APP_DOMAIN`). (Verified
+> against `packages/core/src/tenant/registry.ts` and `apps/web/lib/tenant-routing.ts`.)
 
 ---
 
@@ -114,7 +119,12 @@ PORT=3003
 # Local shared Postgres via the least-privilege app role (no SSL for localhost):
 DATABASE_URL=postgres://campusos_app:PASTE_STRONG_PASSWORD_HERE@127.0.0.1:5432/campusos
 
-# Real root domain so lgu.reivex.io resolves to the lgu tenant:
+# Tenants nest under the platform host: lgu.campusos.reivex.io resolves to `lgu`.
+TENANT_BASE_DOMAIN=campusos.reivex.io
+# The platform landing host (NOT a tenant); equals TENANT_BASE_DOMAIN here:
+PLATFORM_HOST=campusos.reivex.io
+# LEGACY flat root, kept only so lgu.reivex.io 308-redirects to the nested host.
+# Remove this line later to drop the legacy redirect.
 APP_DOMAIN=reivex.io
 
 # Admin gate secret (enables /u/lgu/admin). Generate one and keep it secret:
@@ -145,7 +155,9 @@ pnpm turbo run build --filter=web     # next build; reads DB lazily, no DB neede
 # Point pm2 at Node 22 for THIS app only (from `nvm which 22`):
 export CAMPUSOS_NODE="$(nvm which 22)"
 
-# Load the env so pm2 captures DATABASE_URL / ADMIN_SECRET / APP_DOMAIN, then start:
+# Load the env so pm2 captures DATABASE_URL / ADMIN_SECRET / the host vars
+# (TENANT_BASE_DOMAIN, PLATFORM_HOST, APP_DOMAIN), then start. ecosystem.config.cjs
+# forwards these explicitly, so a var you forgot to source shows up empty at boot.
 set -a; . ./.env; set +a
 pm2 start ecosystem.config.cjs        # committed; runs apps/web via `next start -p 3003`
 pm2 save                              # persist (captures the env + interpreter)
@@ -154,7 +166,7 @@ pm2 startup                           # only if pm2 boot-resurrect is not alread
                                       # apps, so this may already be configured.
 
 pm2 logs campusos --lines 40          # confirm it booted and is listening on 3003
-curl -sS -H 'Host: lgu.reivex.io' http://127.0.0.1:3003/u/lgu/timetable | head -c 300
+curl -sS -H 'Host: lgu.campusos.reivex.io' http://127.0.0.1:3003/u/lgu/timetable | head -c 300
 ```
 
 **Production start command**: `next start` (via the committed `ecosystem.config.cjs`,
@@ -176,12 +188,14 @@ is that `location /` proxies to the app instead of serving files.
 
 > **Critical for tenant routing**: the vhost MUST forward the real `Host` header
 > (`proxy_set_header Host $host;`) or the app cannot resolve the `lgu` tenant, and
-> that forwarded `Host` is what canonical/SEO URLs are built from. `X-Forwarded-Proto`
-> keeps admin-login redirects on https. The app emits **relative** redirect
-> `Location` headers, so it never leaks the upstream `127.0.0.1:3003`;
-> `X-Forwarded-Host` is included for completeness but not required. The `Upgrade` /
-> `Connection` headers pass websockets through (not needed by `next start` today,
-> but future-proof and harmless).
+> that forwarded `Host` is what canonical/SEO URLs and the legacy 308 target are
+> built from. `X-Forwarded-Proto` keeps redirects on https. Route-handler
+> redirects (e.g. admin login) are **relative**, so they never leak the upstream
+> `127.0.0.1:3003`; the ONE absolute redirect is the middleware legacy 308, which
+> deliberately names the new PUBLIC host (`lgu.campusos.reivex.io`), derived from
+> the forwarded `Host`/scheme, not the socket. `X-Forwarded-Host` is included for
+> completeness but not required. The `Upgrade` / `Connection` headers pass
+> websockets through (not needed by `next start` today, but future-proof).
 
 First, add the websocket upgrade `map` once (http context). Skip if you already
 have a `$connection_upgrade` map from another proxied app (the `grep` guards it):
@@ -195,12 +209,15 @@ map $http_upgrade $connection_upgrade {
 EOF
 ```
 
-Create the minimal pre-certbot vhost `/etc/nginx/sites-available/lgu.reivex.io`:
+Create the minimal pre-certbot vhost `/etc/nginx/sites-available/campusos.reivex.io`.
+One `server` block covers the platform host and every tenant subdomain via a
+wildcard `server_name`; the app resolves the tenant from the forwarded `Host`:
 
 ```nginx
 server {
     listen 80;
-    server_name lgu.reivex.io;
+    # Platform landing + all tenant subdomains (lgu.campusos.reivex.io, ...).
+    server_name campusos.reivex.io *.campusos.reivex.io;
 
     location / {
         proxy_pass http://127.0.0.1:3003;
@@ -217,22 +234,36 @@ server {
 }
 ```
 
-Enable, test, reload, then let certbot add TLS (same as your other vhosts):
+Enable, test, reload, then let certbot add TLS. The wildcard subdomain needs a
+**DNS-01** wildcard certificate (HTTP-01 cannot validate `*`), so issue it with
+your DNS plugin (or `--manual` DNS) rather than `--nginx` alone:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/lgu.reivex.io /etc/nginx/sites-enabled/lgu.reivex.io
+sudo ln -s /etc/nginx/sites-available/campusos.reivex.io /etc/nginx/sites-enabled/campusos.reivex.io
 sudo nginx -t                         # ALWAYS test before reload
 sudo systemctl reload nginx
 
-# DNS A record for lgu.reivex.io must already point at this VPS. Then:
-sudo certbot --nginx -d lgu.reivex.io # rewrites the block to 443 + adds the redirect
+# DNS: an A record for campusos.reivex.io AND a wildcard *.campusos.reivex.io
+# (or per-tenant A records) must point at this VPS. Then a wildcard cert:
+sudo certbot certonly --dns-<provider> -d campusos.reivex.io -d '*.campusos.reivex.io'
+# then point the vhost's ssl_certificate at it (or run certbot --nginx if your
+# plugin wires it in), test, reload:
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+**Legacy host (optional, keeps the old URLs working).** Add a second minimal
+vhost with `server_name lgu.reivex.io;` proxying the same `127.0.0.1:3003`; the
+app returns a 308 to `https://lgu.campusos.reivex.io/...` itself (from
+`APP_DOMAIN=reivex.io` in `.env`), so no nginx `return` rule is needed. Issue a
+normal cert for it (`certbot --nginx -d lgu.reivex.io`). Note: the 308 covers
+HTML pages, not `/robots.txt` or `/sitemap.xml` (those are excluded from the
+middleware), so on the OLD host those two degrade during the transition; the new
+host serves them correctly and page canonicals already point at the new host, so
+crawlers migrate regardless. Drop this vhost (and `APP_DOMAIN`) once the old URLs
+are no longer in use.
+
 After certbot, the `location /` proxy lives in the `listen 443 ssl` block and
-`X-Forwarded-Proto` reports `https`, so app redirects stay on https. The
-generated file will mirror your `acc.reivex.io` layout (443 block + a port-80
-`return 301` block).
+`X-Forwarded-Proto` reports `https`, so app redirects stay on https.
 
 ---
 
@@ -240,9 +271,9 @@ generated file will mirror your `acc.reivex.io` layout (443 block + a port-80
 
 Clear the `room=TBA` on the fixture data via the admin flow.
 
-1. Visit `https://lgu.reivex.io/u/lgu/admin/login`.
+1. Visit `https://lgu.campusos.reivex.io/admin/login`.
 2. Enter the `ADMIN_SECRET` from `.env`.
-3. At `https://lgu.reivex.io/u/lgu/admin/rooms`, map each pending room (the
+3. At `https://lgu.campusos.reivex.io/admin/rooms`, map each pending room (the
    default "Create a new room" named after the source string is one click each).
    `room=TBA` drops toward 0 as you go.
 
@@ -323,39 +354,42 @@ Run after step 5 (and again after step 6/8):
 
 ## Environment variables (VPS)
 
-| Variable        | Value                                                  |
-| --------------- | ------------------------------------------------------ |
-| `NODE_ENV`      | `production`                                           |
-| `PORT`          | `3003`                                                 |
-| `DATABASE_URL`  | `postgres://campusos_app:<pw>@127.0.0.1:5432/campusos` |
-| `APP_DOMAIN`    | `reivex.io`                                            |
-| `PLATFORM_HOST` | `campusos.reivex.io` (the platform landing host)       |
-| `ADMIN_SECRET`  | a long random secret (`openssl rand -hex 32`)          |
-| `SOURCE_MODE`   | `fixture` now; the cron uses `live` regardless         |
-| `CAMPUSOS_NODE` | (shell only, for `pm2 start`) the `nvm which 22` path  |
+| Variable             | Value                                                     |
+| -------------------- | --------------------------------------------------------- |
+| `NODE_ENV`           | `production`                                              |
+| `PORT`               | `3003`                                                    |
+| `DATABASE_URL`       | `postgres://campusos_app:<pw>@127.0.0.1:5432/campusos`    |
+| `TENANT_BASE_DOMAIN` | `campusos.reivex.io` (tenants nest as `{slug}.` under it) |
+| `PLATFORM_HOST`      | `campusos.reivex.io` (the platform landing host)          |
+| `APP_DOMAIN`         | `reivex.io` (LEGACY; only powers the removable 308)       |
+| `ADMIN_SECRET`       | a long random secret (`openssl rand -hex 32`)             |
+| `SOURCE_MODE`        | `fixture` now; the cron uses `live` regardless            |
+| `CAMPUSOS_NODE`      | (shell only, for `pm2 start`) the `nvm which 22` path     |
 
-## Platform root (campusos.reivex.io)
+## Host model: platform, tenants, and the legacy redirect
 
-`campusos.reivex.io` is the platform landing (it lists the universities), NOT a
-tenant. Set `PLATFORM_HOST=campusos.reivex.io` in `.env` so the app serves the
-landing there instead of trying to resolve `campusos` as a tenant slug (which
-would 404). Tenant subdomains (`lgu.reivex.io`) are unaffected. Create a **fresh minimal
-port-80 vhost** for it exactly like step 5 (same `location /` proxy block to
-`127.0.0.1:3003`, just `server_name campusos.reivex.io`), then let certbot add
-TLS:
+Three host vars, one pm2 app on port 3003, tenants told apart by the forwarded
+`Host`:
 
-```bash
-# /etc/nginx/sites-available/campusos.reivex.io  (same proxy block as step 5,
-# with server_name campusos.reivex.io), then:
-sudo ln -s /etc/nginx/sites-available/campusos.reivex.io /etc/nginx/sites-enabled/campusos.reivex.io
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d campusos.reivex.io      # DNS A record must resolve first
-sudo nginx -t && sudo systemctl reload nginx
-```
+- **`TENANT_BASE_DOMAIN=campusos.reivex.io`** — tenants are subdomains of it:
+  `lgu.campusos.reivex.io` resolves the `lgu` tenant (`subdomainOf` takes the
+  leading label). A third party adds a university by adding a tenant config and a
+  DNS record; no per-host app change.
+- **`PLATFORM_HOST=campusos.reivex.io`** — the SAME host, bare, is the platform
+  landing (it lists the universities), NOT a tenant. The app serves the landing
+  there instead of resolving `campusos` as a slug. (It also falls through to the
+  platform branch even if `PLATFORM_HOST` were unset, because the bare base has
+  no leading label, but keep it set for clarity.)
+- **`APP_DOMAIN=reivex.io`** — the LEGACY flat root. A request on the old
+  `lgu.reivex.io` is 308-redirected to `lgu.campusos.reivex.io` (path and query
+  preserved), so existing links and bookmarks keep working. Removable: delete the
+  `APP_DOMAIN` line (or set it equal to `TENANT_BASE_DOMAIN`) and `pm2 restart`.
 
-Add `PLATFORM_HOST=campusos.reivex.io` to `.env` and `pm2 restart campusos`, and
-add a DNS A record for `campusos.reivex.io` -> this VPS. Both hosts run the same
-pm2 app on 3003; only the env and DNS differ.
+nginx (step 5) already serves the platform host and every tenant subdomain from
+one wildcard vhost; the optional legacy vhost there keeps `lgu.reivex.io` alive.
+DNS: an A record for `campusos.reivex.io` and a wildcard `*.campusos.reivex.io`
+(or per-tenant records) must point at this VPS. Set the three vars in `.env`,
+`set -a; . ./.env; set +a`, then `pm2 restart campusos && pm2 save`.
 
 ## Updating later
 

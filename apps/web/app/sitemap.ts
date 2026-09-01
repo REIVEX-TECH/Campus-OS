@@ -3,19 +3,21 @@ import { headers } from 'next/headers';
 import { tenantRegistry } from '@campusos/tenants';
 import { getQueries } from '@/lib/timetable';
 import { baseUrlFromHost } from '@/lib/tenant';
-import { isPlatformHost, tenantBaseForHost } from '@/lib/tenant-routing';
+import {
+  isPlatformHost,
+  tenantBaseDomain,
+  tenantBaseForHost,
+  tenantOrigin,
+} from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
-const APP_DOMAIN = process.env.APP_DOMAIN ?? 'localhost:3000';
-
 function instanceUrl(baseUrl: string, slug: string): string {
-  const local = APP_DOMAIN.startsWith('localhost') || APP_DOMAIN.startsWith('127.');
-  return local ? `${baseUrl}/u/${slug}` : `https://${slug}.${APP_DOMAIN}`;
+  return tenantOrigin(slug) ?? `${baseUrl}/u/${slug}`;
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const host = (await headers()).get('host') ?? APP_DOMAIN;
+  const host = (await headers()).get('host') ?? tenantBaseDomain();
   const baseUrl = baseUrlFromHost(host);
   const now = new Date();
 
@@ -33,7 +35,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // Tenant host: the tenant home, picker, and every section timetable.
-  const tenant = tenantRegistry.resolveByHost(host, APP_DOMAIN);
+  const tenant = tenantRegistry.resolveByHost(host, tenantBaseDomain());
   if (!tenant) return [];
 
   const base = `${baseUrl}${tenantBaseForHost(host, tenant.slug)}`;
