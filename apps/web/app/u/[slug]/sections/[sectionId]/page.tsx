@@ -2,10 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
-import { buttonVariants } from '@campusos/ui';
-import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
-import { TimetableViews } from '@/app/_components/timetable-views';
+import { SectionTimetableView } from '@/app/_components/section-timetable-view';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
@@ -46,34 +44,23 @@ export default async function SectionTimetable({ params }: Params) {
     queries.freshness(),
   ]);
   const title = `${section.program.code} ${section.name}`;
-  const anyPending = section.status === 'pending' || views.some((v) => v.pending);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3 px-1">
-        <div className="flex flex-col gap-1">
-          <Link href={`${base}/timetable`} className="text-sm text-primary hover:underline">
-            {tenant.displayName}
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-          <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
-          {anyPending ? (
-            <p className="text-xs text-muted-foreground">{t('timetable.pendingNote')}</p>
-          ) : null}
-        </div>
-        <Link
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          href={`${base}/sections/${sectionId}/timetable.ics`}
-        >
-          {t('timetable.subscribe')}
+      <header className="flex flex-col gap-1 px-1">
+        <Link href={`${base}/timetable`} className="text-sm text-primary hover:underline">
+          {tenant.displayName}
         </Link>
+        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
       </header>
 
-      {views.length === 0 ? (
-        <EmptyState title={t('timetable.empty.noEntries')} />
-      ) : (
-        <TimetableViews views={views} base={base} locale={tenant.locale} />
-      )}
+      <SectionTimetableView
+        views={views}
+        base={base}
+        locale={tenant.locale}
+        subscribeHref={`${base}/sections/${sectionId}/timetable.ics`}
+      />
 
       {!term?.startsOn ? (
         <p className="px-1 text-xs text-muted-foreground">{t('timetable.termDatesPending')}</p>
