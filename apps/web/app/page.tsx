@@ -1,23 +1,21 @@
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import { buttonVariants, Card } from '@campusos/ui';
 import { tenantRegistry } from '@campusos/tenants';
 import { translator } from '@/lib/i18n';
-import { tenantOrigin } from '@/lib/tenant-routing';
+import { tenantUrlForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
 const GITHUB_URL = 'https://github.com/REIVEX-TECH/Campus-OS';
 
-/** Link to a tenant's instance: its {slug}.TENANT_BASE_DOMAIN subdomain in
- * production, the /u/{slug} path fallback in local dev. Driven by the registry
- * (no hardcoding). */
-function tenantUrl(slug: string): string {
-  return tenantOrigin(slug) ?? `/u/${slug}`;
-}
-
-export default function PlatformHome() {
+export default async function PlatformHome() {
   const t = translator('en');
   const tenants = tenantRegistry.all();
+  // Host-reflective: the landing is served on the platform host, so a tenant is
+  // a subdomain of THIS host (single hop, no legacy redirect). Path-based in dev.
+  const host = (await headers()).get('host') ?? '';
+  const tenantUrl = (slug: string): string => tenantUrlForHost(slug, host) ?? `/u/${slug}`;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-10 p-6">

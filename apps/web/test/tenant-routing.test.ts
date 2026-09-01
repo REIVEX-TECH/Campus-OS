@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isPlatformHost, planRoute, tenantBaseForHost, tenantOrigin } from '../lib/tenant-routing';
+import {
+  isPlatformHost,
+  planRoute,
+  tenantBaseForHost,
+  tenantUrlForHost,
+} from '../lib/tenant-routing';
 
 // The nested-host model: a tenant is {slug}.TENANT_BASE_DOMAIN, nested under the
 // platform root PLATFORM_HOST (which equals the bare tenant base). APP_DOMAIN is
@@ -120,13 +125,18 @@ describe('planRoute: legacy host 308', () => {
   });
 });
 
-describe('tenantOrigin', () => {
-  it('is the production subdomain of the tenant base', () => {
-    expect(tenantOrigin('lgu', 'campusos.reivex.io')).toBe('https://lgu.campusos.reivex.io');
+describe('tenantUrlForHost (host-reflective tenant link)', () => {
+  it('is a subdomain of the platform host the request is served on (single hop)', () => {
+    expect(tenantUrlForHost('lgu', 'campusos.reivex.io')).toBe('https://lgu.campusos.reivex.io');
+    // Does NOT depend on TENANT_BASE_DOMAIN: whatever platform host is live, the
+    // tenant link is its subdomain, so the landing card never emits a legacy host.
+    expect(tenantUrlForHost('lgu', 'campus.example.edu')).toBe('https://lgu.campus.example.edu');
   });
 
-  it('is null in local dev (tenants are path-based)', () => {
-    expect(tenantOrigin('lgu', 'localhost:3000')).toBeNull();
-    expect(tenantOrigin('lgu', '127.0.0.1:3000')).toBeNull();
+  it('is null for a local host (tenants are path-based in dev)', () => {
+    expect(tenantUrlForHost('lgu', 'localhost:3000')).toBeNull();
+    expect(tenantUrlForHost('lgu', '127.0.0.1:3000')).toBeNull();
+    expect(tenantUrlForHost('lgu', 'lgu.localhost:3000')).toBeNull();
+    expect(tenantUrlForHost('lgu', '')).toBeNull();
   });
 });

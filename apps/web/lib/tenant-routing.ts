@@ -41,20 +41,25 @@ export function isPlatformHost(host: string, platform: string | null = platformH
   return platform !== null && bareHost(host) === bareHost(platform);
 }
 
-/** Is the base a local-dev host (so tenants are reached by /u/{slug} path)? */
-function isLocalBase(base: string): boolean {
-  return base.startsWith('localhost') || base.startsWith('127.');
+/** Is the host a local-dev host (so tenants are reached by /u/{slug} path)? */
+function isLocalHost(host: string): boolean {
+  const h = bareHost(host);
+  return h === 'localhost' || h.endsWith('.localhost') || h.startsWith('127.') || h === '::1';
 }
 
 /**
- * A tenant's absolute production origin, `https://{slug}.{TENANT_BASE_DOMAIN}`,
- * or null in local dev where tenants are path-based (`/u/{slug}`). The single
- * place `{slug}.{base}` is constructed, so links, landing cards, and the sitemap
- * all emit one host shape.
+ * A tenant's absolute URL as a subdomain of `host`, the platform host the current
+ * request is served on: `https://{slug}.{host}`. HOST-REFLECTIVE, so the link
+ * always matches the live platform host and is a SINGLE hop, with no dependency
+ * on TENANT_BASE_DOMAIN being set in the environment (if it is unset or stale, an
+ * env-based URL would emit the legacy host and force a second redirect). Returns
+ * null for a local host, where tenants are reached by the /u/{slug} path instead.
+ * The landing and sitemap are only served on the platform host (== the tenant
+ * base), so its subdomains are exactly the tenant hosts.
  */
-export function tenantOrigin(slug: string, base: string = tenantBaseDomain()): string | null {
-  if (isLocalBase(base)) return null;
-  return `https://${slug}.${base}`;
+export function tenantUrlForHost(slug: string, host: string): string | null {
+  if (!host || isLocalHost(host)) return null;
+  return `https://${slug}.${host}`;
 }
 
 /**
