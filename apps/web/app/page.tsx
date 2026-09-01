@@ -9,6 +9,7 @@ import { baseUrlFromHost } from '@/lib/tenant';
 import { tenantUrlForHost } from '@/lib/tenant-routing';
 import { JsonLd } from './_components/json-ld';
 import { PlatformHeader } from './_components/platform-header';
+import { SkipLink } from './_components/skip-link';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,8 +52,13 @@ export default async function PlatformHome() {
   return (
     <div className="flex min-h-screen flex-col">
       <JsonLd data={websiteLd({ url: `${baseUrl}/`, description: t('platform.description') })} />
+      <SkipLink label={t('a11y.skipToContent')} />
       <PlatformHeader />
-      <main className="mx-auto w-full max-w-[120rem] flex-1 px-4 py-10 sm:px-6 sm:py-14">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-[120rem] flex-1 px-4 py-10 outline-none sm:px-6 sm:py-14"
+      >
         <section className="flex max-w-3xl flex-col gap-4">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
             {t('platform.hero.title')}
