@@ -17,11 +17,13 @@ this document is the source of intent. Read it before building UI.
    (Unverified, TBA), and any text a low vision student must read are flat with
    strong contrast. Elevation is decoration around a block; it never sits under
    readable text (see "How it stays AA" below).
-4. **Mobile first.** Layouts are a single readable column that scales up, not a
-   desktop grid squeezed down. The timetable is a day-by-day list on a phone; the
-   same list simply centres in a column on a wider screen.
-5. **Light is the product.** The app renders light (`<html class="light">`). A
-   dark palette is defined but dormant; do not design dark-only affordances.
+4. **Mobile first, full width.** Layouts are mobile-first and use the whole
+   viewport inside the app shell (no narrow centred column); grids and tables
+   breathe across the width, with narrow internal max-widths only where reading
+   comfort needs them.
+5. **Light and dark.** Both themes ship and must both be correct (see "Dark
+   mode"). Light is the default; design tokens carry the theme, so components are
+   written once against the tokens, never per-theme.
 
 ## Tokens
 
@@ -108,8 +110,8 @@ and the grey page, so accent links are readable, not just decorative. When a
 tenant sets a light accent, `--primary-foreground` flips to near black by the
 same luminance rule, so accent buttons stay readable for any configured colour.
 
-Ratios are reproducible from the palette in `globals.css`; the dormant dark
-palette is kept internally coherent but is not the shipped surface.
+Ratios are reproducible from the palette in `globals.css`. The dark palette ships
+too and clears AA on the same method (see the "Dark mode" table below).
 
 ## The cascading picker pattern
 
