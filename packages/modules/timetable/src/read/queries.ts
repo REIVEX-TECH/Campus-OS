@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { TenantScopedRepository, type TenantTransaction } from '@campusos/db';
 import { buildings, rooms } from '@campusos/db/schema';
 import { freeRooms as computeFreeRooms, type TimeWindow } from '../domain/index';
@@ -264,6 +264,57 @@ export class TimetableQueries extends TenantScopedRepository {
         .limit(1),
     );
     return rows[0] ?? null;
+  }
+
+  /** Teachers with a current entry whose name matches the query (for search). */
+  searchTeachers(query: string, limit = 20): Promise<{ id: string; name: string }[]> {
+    const q = `%${query.trim().replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    return this.run((tx) =>
+      tx
+        .selectDistinct({ id: teachers.id, name: teachers.name })
+        .from(teachers)
+        .innerJoin(timetableEntries, eq(timetableEntries.teacherId, teachers.id))
+        .where(and(isNull(timetableEntries.validTo), ilike(teachers.name, q)))
+        .orderBy(teachers.name)
+        .limit(limit),
+    );
+  }
+
+  /** Courses with a current entry whose code or title matches the query. */
+  searchCourses(query: string, limit = 20): Promise<{ id: string; code: string; title: string }[]> {
+    const q = `%${query.trim().replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    return this.run((tx) =>
+      tx
+        .selectDistinct({ id: courses.id, code: courses.code, title: courses.title })
+        .from(courses)
+        .innerJoin(timetableEntries, eq(timetableEntries.courseId, courses.id))
+        .where(
+          and(
+            isNull(timetableEntries.validTo),
+            or(ilike(courses.title, q), ilike(courses.code, q)),
+          ),
+        )
+        .orderBy(courses.title)
+        .limit(limit),
+    );
+  }
+
+  async getCourse(courseId: string): Promise<{ id: string; code: string; title: string } | null> {
+    const rows = await this.run((tx) =>
+      tx
+        .select({ id: courses.id, code: courses.code, title: courses.title })
+        .from(courses)
+        .where(eq(courses.id, courseId))
+        .limit(1),
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Every current session of a course (across sections): where, when, who. */
+  courseTimetable(courseId: string): Promise<TimetableView[]> {
+    return this.viewsBy(
+      and(eq(timetableEntries.courseId, courseId), isNull(timetableEntries.validTo)),
+    );
   }
 
   async getTeacher(teacherId: string): Promise<TeacherSummary | null> {

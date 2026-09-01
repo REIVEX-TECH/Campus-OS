@@ -25,6 +25,7 @@ export function AppShell({
   const nav = [
     { href: `${base}/timetable`, label: t('nav.timetable') },
     { href: `${base}/free-rooms`, label: t('nav.freeRooms') },
+    { href: `${base}/search`, label: t('nav.search') },
   ];
 
   return (

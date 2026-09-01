@@ -66,7 +66,17 @@ export const en = {
 
   'nav.timetable': 'Timetable',
   'nav.freeRooms': 'Free rooms',
+  'nav.search': 'Search',
   'theme.toggle': 'Toggle light and dark',
+
+  'search.heading': 'Search',
+  'search.intro': 'Find a teacher to see their week, or a course to see where and when it runs.',
+  'search.placeholder': 'Search teachers and courses',
+  'search.teachers': 'Teachers',
+  'search.courses': 'Courses',
+  'search.prompt': 'Type a name or course to search.',
+  'search.none': 'Nothing found for {q}.',
+  'search.courseWhere': 'Where and when this course runs',
 
   'freeRooms.heading': 'Free rooms',
   'freeRooms.intro': 'Pick a day and time to see which rooms are free. Defaults to right now.',
