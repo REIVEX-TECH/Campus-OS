@@ -46,7 +46,7 @@ export default async function SectionTimetable({ params }: Params) {
   const title = `${section.program.code} ${section.name}`;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 p-4 sm:p-6">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1 px-1">
         <Link href={`${base}/timetable`} className="text-sm text-primary hover:underline">
           {tenant.displayName}
@@ -66,6 +66,6 @@ export default async function SectionTimetable({ params }: Params) {
         <p className="px-1 text-xs text-muted-foreground">{t('timetable.termDatesPending')}</p>
       ) : null}
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
-    </main>
+    </div>
   );
 }

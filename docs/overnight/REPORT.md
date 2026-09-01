@@ -1,5 +1,17 @@
 # Overnight autonomous run — final report
 
+## Session 2026-09-02 (current overnight batch)
+
+Full-width shell + dark mode, timetable redesign, free rooms, search, module
+stubs, landing pages, admin analytics, and SEO. Many small PRs, each green before
+the next. Anything deferred is in [DECISIONS.md](DECISIONS.md).
+
+| PR                                   | Merge SHA | Shipped                                                                                                                                                                                                                                                      |
+| ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #21 full-width app shell + dark mode | pending   | Live dark/light theme (no-flash script + header toggle, `prefers-color-scheme` default), theme-aware tenant accent (lightened for dark, AA), full-width `AppShell` replacing the max-w-3xl column across all tenant pages. Docs: design.md dark tokens + AA. |
+
+_The prior run's report follows below._
+
 ## ⚠️ Read first
 
 All three phases were built, reviewed by CI, and **merged to `main`** cleanly.

@@ -64,6 +64,9 @@ export const en = {
   'timetable.dayShort.6': 'Sat',
   'timetable.dayShort.7': 'Sun',
 
+  'nav.timetable': 'Timetable',
+  'theme.toggle': 'Toggle light and dark',
+
   'timetable.view.label': 'View',
   'timetable.view.grid': 'Grid',
   'timetable.view.days': 'Days',
