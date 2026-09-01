@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, isNull, sql, type SQL } from 'drizzle-orm';
 import { TenantScopedRepository, type TenantTransaction } from '@campusos/db';
 import { rooms } from '@campusos/db/schema';
 import { academicTerms, courses, programs, sections, teachers } from '../schema/catalog';
@@ -7,6 +7,7 @@ import { ingestionRuns } from '../schema/ingestion';
 import type { TimetableEntryKind } from '../schema/enums';
 import type {
   Freshness,
+  ProgramSummary,
   RecordStatus,
   RoomSummary,
   SectionSummary,
@@ -152,6 +153,97 @@ export class TimetableQueries extends TenantScopedRepository {
         .where(and(eq(sections.termId, termId), isNull(sections.deletedAt)))
         .orderBy(programs.code, sections.name),
     );
+  }
+
+  /** Step 1 of the cascade: terms that actually have at least one section. */
+  listTermsWithSections(): Promise<TermSummary[]> {
+    return this.run((tx) =>
+      tx
+        .select({
+          id: academicTerms.id,
+          code: academicTerms.code,
+          name: academicTerms.name,
+          status: academicTerms.status,
+          startsOn: academicTerms.startsOn,
+          endsOn: academicTerms.endsOn,
+        })
+        .from(academicTerms)
+        .where(
+          and(
+            isNull(academicTerms.deletedAt),
+            exists(
+              tx
+                .select({ one: sql`1` })
+                .from(sections)
+                .where(and(eq(sections.termId, academicTerms.id), isNull(sections.deletedAt))),
+            ),
+          ),
+        )
+        .orderBy(desc(academicTerms.createdAt)),
+    );
+  }
+
+  /** Step 2: the distinct programs that have sections in a given term. */
+  listProgramsByTerm(termId: string): Promise<ProgramSummary[]> {
+    return this.run((tx) =>
+      tx
+        .selectDistinct({ id: programs.id, code: programs.code, name: programs.name })
+        .from(sections)
+        .innerJoin(programs, eq(programs.id, sections.programId))
+        .where(
+          and(eq(sections.termId, termId), isNull(sections.deletedAt), isNull(programs.deletedAt)),
+        )
+        .orderBy(programs.code),
+    );
+  }
+
+  /** Step 3: the sections of one program within one term. */
+  listSectionsByProgramTerm(termId: string, programId: string): Promise<SectionSummary[]> {
+    return this.run((tx) =>
+      tx
+        .select({
+          id: sections.id,
+          name: sections.name,
+          status: sections.status,
+          semester: sections.semester,
+          termId: sections.termId,
+          program: { id: programs.id, code: programs.code, name: programs.name },
+        })
+        .from(sections)
+        .innerJoin(programs, eq(programs.id, sections.programId))
+        .where(
+          and(
+            eq(sections.termId, termId),
+            eq(sections.programId, programId),
+            isNull(sections.deletedAt),
+          ),
+        )
+        .orderBy(sections.semester, sections.name),
+    );
+  }
+
+  /** Distinct teacher ids that appear on a current entry (for the sitemap). */
+  listTeacherIdsWithEntries(): Promise<{ id: string }[]> {
+    return this.run(async (tx) => {
+      const rows = await tx
+        .selectDistinct({ id: timetableEntries.teacherId })
+        .from(timetableEntries)
+        .where(
+          and(isNull(timetableEntries.validTo), sql`${timetableEntries.teacherId} is not null`),
+        );
+      return rows.filter((r): r is { id: string } => r.id !== null);
+    });
+  }
+
+  /** Distinct room ids that appear on a current entry (for the sitemap). */
+  listRoomIdsWithEntries(): Promise<{ id: string }[]> {
+    return this.run(async (tx) => {
+      const rows = await tx
+        .selectDistinct({ id: timetableEntries.roomId })
+        .from(timetableEntries)
+        .where(and(isNull(timetableEntries.validTo), sql`${timetableEntries.roomId} is not null`));
+      return rows.filter((r): r is { id: string } => r.id !== null);
+    });
   }
 
   async getSection(sectionId: string): Promise<SectionSummary | null> {
