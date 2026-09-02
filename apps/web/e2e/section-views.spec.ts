@@ -56,6 +56,12 @@ test('section view switcher toggles four views and drops the per-class Unverifie
   );
   await expect(page.getByRole('tablist')).toHaveCount(0);
 
+  // The grid is a keyboard-focusable, named scroll region (it scrolls sideways
+  // on narrow screens, so it must be reachable and scrollable by keyboard).
+  const grid = page.getByRole('region', { name: /Weekly timetable grid/ });
+  await expect(grid).toBeVisible();
+  await expect(grid).toHaveAttribute('tabindex', '0');
+
   await page.getByRole('button', { name: 'List', exact: true }).click();
   await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
     'aria-pressed',

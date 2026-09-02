@@ -62,6 +62,7 @@ export const en = {
   'timetable.neverUpdated': 'Not yet imported',
 
   'timetable.gridCaption': 'Weekly timetable for {name}',
+  'timetable.weekGrid': 'Weekly timetable grid, scroll sideways to see all days',
   'timetable.teacherTimetable': 'Teacher timetable',
   'timetable.roomTimetable': 'Room timetable',
   'timetable.cellAria': '{course}, {kind}, {day} {start} to {end}, teacher {teacher}, room {room}',
