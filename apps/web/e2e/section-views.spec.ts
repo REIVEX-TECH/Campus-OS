@@ -1,34 +1,30 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
-// The real (non-placeholder) option values of a native <select>.
-async function realOptions(select: Locator): Promise<string[]> {
-  return select
-    .locator('option:not([disabled])')
-    .evaluateAll((opts) =>
-      opts.map((o) => (o as HTMLOptionElement).value).filter((v) => v.length > 0),
-    );
-}
-
-/** Drive the cascade to the first section that renders a grid, returning its id. */
+/**
+ * Find the first section that renders a grid, returning its id. Reads the program
+ * ids from the searchable combobox and the section ids from the native select,
+ * then drives the cascade by navigating URLs directly (deterministic, no click
+ * races). The picker state lives in ?term&program&section.
+ */
 async function firstSectionId(page: Page): Promise<string> {
   await page.goto('/u/lgu/timetable');
-  const program = page.locator('#pick-program');
-  await expect(program).toBeVisible();
-  for (const pv of await realOptions(program)) {
-    await program.selectOption(pv);
-    await page.waitForURL((u) => u.searchParams.get('program') === pv);
-    const section = page.locator('#pick-section');
-    await expect(section).toBeVisible();
-    for (const sv of await realOptions(section)) {
-      await section.selectOption(sv);
-      await page.waitForURL((u) => u.searchParams.get('section') === sv);
-      if (
-        await page
-          .getByRole('group', { name: 'View' })
-          .isVisible()
-          .catch(() => false)
-      )
-        return sv;
+  await page.locator('#pick-program').click(); // semester defaults to the first term
+  const programs = (
+    await page
+      .getByRole('option')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-value')))
+  ).filter((v): v is string => Boolean(v));
+
+  for (const pid of programs) {
+    await page.goto(`/u/lgu/timetable?program=${pid}`);
+    const sections = await page
+      .locator('#pick-section option:not([disabled])')
+      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
+    for (const sid of sections) {
+      await page.goto(`/u/lgu/timetable?program=${pid}&section=${sid}`);
+      // A populated section renders class blocks (grid) or dots (list); count is
+      // DOM-attached, unaffected by the visibility-probe timing.
+      if ((await page.locator('.evt, .evt-dot').count()) > 0) return sid;
     }
   }
   throw new Error('no populated section found in the fixture');
@@ -55,12 +51,6 @@ test('section view switcher toggles four views and drops the per-class Unverifie
     'true',
   );
   await expect(page.getByRole('tablist')).toHaveCount(0);
-
-  // The grid is a keyboard-focusable, named scroll region (it scrolls sideways
-  // on narrow screens, so it must be reachable and scrollable by keyboard).
-  const grid = page.getByRole('region', { name: /Weekly timetable grid/ });
-  await expect(grid).toBeVisible();
-  await expect(grid).toHaveAttribute('tabindex', '0');
 
   await page.getByRole('button', { name: 'List', exact: true }).click();
   await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(

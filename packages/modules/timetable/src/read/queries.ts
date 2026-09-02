@@ -157,9 +157,13 @@ export class TimetableQueries extends TenantScopedRepository {
     );
   }
 
-  /** Step 1 of the cascade: terms that actually have at least one section. */
-  listTermsWithSections(): Promise<TermSummary[]> {
-    return this.run((tx) =>
+  /**
+   * Step 1 of the cascade: terms that actually have at least one section, sorted
+   * so an ordinal-prefixed name reads 1st, 2nd, ... 10th. Insertion order (the
+   * crawl order) leaves them jumbled, so we sort numeric-aware by name.
+   */
+  async listTermsWithSections(): Promise<TermSummary[]> {
+    const rows = await this.run((tx) =>
       tx
         .select({
           id: academicTerms.id,
@@ -180,9 +184,9 @@ export class TimetableQueries extends TenantScopedRepository {
                 .where(and(eq(sections.termId, academicTerms.id), isNull(sections.deletedAt))),
             ),
           ),
-        )
-        .orderBy(desc(academicTerms.createdAt)),
+        ),
     );
+    return rows.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
   }
 
   /** Step 2: the distinct programs that have sections in a given term. */

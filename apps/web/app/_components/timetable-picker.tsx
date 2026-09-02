@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { Field, Select } from '@campusos/ui';
+import { Combobox } from './combobox';
 
 export type PickerOption = { id: string; label: string };
 
@@ -16,10 +17,10 @@ export type PickerLabels = {
 
 /**
  * The cascading semester -> program -> section picker. Each choice updates the
- * URL query (?term&program&section); the page re-renders the next dropdown and
- * the timetable inline via a soft navigation (no full reload). State lives in the
- * URL, so it is shareable and works when navigated back to. Selecting an earlier
- * step clears the later ones.
+ * URL query (?term&program&section); the page re-renders the next control and the
+ * timetable inline via a soft navigation (no full reload). State lives in the
+ * URL, so it is shareable. Semester and program are searchable comboboxes (long,
+ * order-sensitive lists); section is a short native select.
  */
 export function TimetablePicker({
   terms,
@@ -41,7 +42,7 @@ export function TimetablePicker({
   const router = useRouter();
   const pathname = usePathname();
 
-  function go(next: { term?: string; program?: string; section?: string }) {
+  function go(next: { term?: string; program?: string; section?: string }): void {
     const params = new URLSearchParams();
     if (next.term) params.set('term', next.term);
     if (next.program) params.set('program', next.program);
@@ -53,34 +54,26 @@ export function TimetablePicker({
   return (
     <div className="flex flex-col gap-4">
       <Field label={labels.semester} htmlFor="pick-term">
-        <Select id="pick-term" value={term ?? ''} onChange={(e) => go({ term: e.target.value })}>
-          <option value="" disabled>
-            {labels.chooseSemester}
-          </option>
-          {terms.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
+        <Combobox
+          id="pick-term"
+          ariaLabel={labels.semester}
+          placeholder={labels.chooseSemester}
+          value={term}
+          options={terms}
+          onSelect={(v) => go({ term: v })}
+        />
       </Field>
 
       {term ? (
         <Field label={labels.program} htmlFor="pick-program">
-          <Select
+          <Combobox
             id="pick-program"
-            value={program ?? ''}
-            onChange={(e) => go({ term, program: e.target.value })}
-          >
-            <option value="" disabled>
-              {labels.chooseProgram}
-            </option>
-            {programs.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
+            ariaLabel={labels.program}
+            placeholder={labels.chooseProgram}
+            value={program}
+            options={programs}
+            onSelect={(v) => go({ term, program: v })}
+          />
         </Field>
       ) : null}
 
