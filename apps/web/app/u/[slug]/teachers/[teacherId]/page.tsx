@@ -7,6 +7,7 @@ import { EmptyState } from '@/app/_components/empty-state';
 import { FilterableTimetable } from '@/app/_components/filterable-timetable';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { FreeSlotsCard } from '@/app/_components/profile/free-slots-card';
+import { ProfileBreadcrumb } from '@/app/_components/profile/profile-breadcrumb';
 import { ProfileHeader } from '@/app/_components/profile/profile-header';
 import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { PendingBadge } from '@/app/_components/timetable-grid';
@@ -74,13 +75,9 @@ export default async function TeacherProfile({ params }: Params) {
         title={teacher.name}
         badge={teacher.status === 'pending' ? <PendingBadge t={t} /> : undefined}
         context={
-          <>
-            <Link href={`${base}/teachers`} className="text-primary hover:underline">
-              {t('teachers.heading')}
-            </Link>{' '}
-            <span aria-hidden="true">·</span>{' '}
+          <ProfileBreadcrumb href={`${base}/teachers`} label={t('teachers.heading')}>
             <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
-          </>
+          </ProfileBreadcrumb>
         }
         actions={
           <Link

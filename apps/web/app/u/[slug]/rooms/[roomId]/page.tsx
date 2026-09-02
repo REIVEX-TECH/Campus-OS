@@ -7,6 +7,7 @@ import { EmptyState } from '@/app/_components/empty-state';
 import { FilterableTimetable } from '@/app/_components/filterable-timetable';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { FreeSlotsCard } from '@/app/_components/profile/free-slots-card';
+import { ProfileBreadcrumb } from '@/app/_components/profile/profile-breadcrumb';
 import { ProfileHeader } from '@/app/_components/profile/profile-header';
 import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { countText, dayName, translator } from '@/lib/i18n';
@@ -73,13 +74,9 @@ export default async function RoomProfile({ params }: Params) {
         title={room.name}
         kind="place"
         context={
-          <>
-            <Link href={`${base}/rooms`} className="text-primary hover:underline">
-              {t('rooms.heading')}
-            </Link>{' '}
-            <span aria-hidden="true">·</span>{' '}
+          <ProfileBreadcrumb href={`${base}/rooms`} label={t('rooms.heading')}>
             <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
-          </>
+          </ProfileBreadcrumb>
         }
         actions={
           <Link
