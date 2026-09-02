@@ -22,6 +22,9 @@ Anything stopped rather than guessed is in `DECISIONS.md`.
 | 64  | `fix(web): a room hosts courses, it does not teach them`               | `abd0042` |
 | 65  | `fix(web): the profile breadcrumb no longer wraps badly on a phone`    | `a0d4d99` |
 | 66  | `fix(web): the course filter is called Course`                         | `26a248a` |
+| 67  | `docs: update overnight report with the polish PRs`                    | `f1a2b3c` |
+| 68  | `feat(web): the room directory shows a building only when it varies`   | `2b9110d` |
+| 69  | `fix(web): profiles no longer scroll sideways on a phone`              | `5e81777` |
 
 ---
 
@@ -114,6 +117,22 @@ Each its own PR, all additive.
   parts share a line.
 - **The course filter is called Course.** It was labelled "Class", which clashed
   with "classes" already meaning individual sessions in the same panel.
+- **The room directory shows a building only when it varies.** Every card read
+  "Unassigned Building", which is noise dressed as information. Written as a
+  general rule about constant values rather than a check for that string, so it
+  is not tenant specific logic.
+- **Profiles no longer scroll sideways on a phone.** Found during the dark mode
+  and mobile sweep: the teacher and room profiles were 109px wider than a 375px
+  screen, clipping course titles and the free-slot chips. `truncate` sets
+  `white-space: nowrap`, which makes an element's min-content width the full text
+  width, and grid and flex items default to `min-width: auto`, so they refuse to
+  shrink below it. The link had `min-w-0` but its ancestors did not, so the floor
+  was set two levels up. Two e2e tests now assert zero horizontal overflow at
+  375 by 812 on both profiles.
+
+A sweep afterwards measured every main route at 375px: the hub, timetable, a
+populated section timetable, search, free rooms, both directories, both profiles,
+and the platform landing all report zero overflow.
 
 ## Gate status
 
