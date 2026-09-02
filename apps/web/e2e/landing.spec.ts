@@ -18,11 +18,26 @@ test('the platform landing shows the hero, features, and a university link', asy
 
 test('the app has a branded icon and web manifest', async ({ page, request }) => {
   await page.goto('/');
-  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /icon\.svg/);
+  // Logo-derived icons, wired from the app/ file conventions (favicon.ico,
+  // icon.png, apple-icon.png) and the manifest.
+  await expect(page.locator('link[rel="icon"][href*="icon.png"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
   await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
   const manifest = await request.get('/manifest.webmanifest');
   expect(manifest.status()).toBe(200);
-  expect(await manifest.text()).toContain('CampusOS');
+  const body = await manifest.text();
+  expect(body).toContain('CampusOS');
+  expect(body).toContain('icon-512.png');
+  // The generated brand assets are served (both theme variants of the in-app mark).
+  for (const asset of [
+    '/icon.png',
+    '/favicon.ico',
+    '/apple-icon.png',
+    '/logo-mark.png',
+    '/logo-mark-light.png',
+  ]) {
+    expect((await request.get(asset)).status()).toBe(200);
+  }
 });
 
 test('a keyboard user can skip past the header to the content', async ({ page }) => {
