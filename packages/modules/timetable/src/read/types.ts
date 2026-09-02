@@ -109,3 +109,35 @@ export interface TimetableAnalytics {
   /** Auto-imported rows still pending review (honesty over hiding). */
   pending: { teachers: number; sections: number };
 }
+
+/**
+ * The tenant's observed teaching window: the earliest start, the latest end, and
+ * the weekdays that carry classes, over current entries. It gives free-slot and
+ * utilisation maths one consistent denominator, so figures are comparable across
+ * teachers and rooms instead of each being measured against its own schedule.
+ * Times are local wall-clock "HH:MM"; null when the tenant has no entries yet.
+ */
+export interface TeachingWindow {
+  startsAt: string | null;
+  endsAt: string | null;
+  days: number[];
+}
+
+/** A teacher plus counts over current entries, for the teacher directory. */
+export interface TeacherDirectoryEntry {
+  id: string;
+  name: string;
+  status: RecordStatus;
+  classes: number;
+  courses: number;
+  days: number;
+}
+
+/** A room plus counts over current entries, for the room directory. */
+export interface RoomDirectoryEntry {
+  id: string;
+  name: string;
+  building: string;
+  classes: number;
+  days: number;
+}
