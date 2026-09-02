@@ -1,17 +1,31 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
-import { Card } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { PageShell } from '@/app/_components/page-shell';
 import { SectionTimetableView } from '@/app/_components/section-timetable-view';
-import { TimetablePicker } from '@/app/_components/timetable-picker';
+import { TimetableWorkspace } from '@/app/_components/timetable-workspace';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { tenantNow, toHHMM } from '@/lib/tenant-time';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
+
+// Visual only: the workspace owns the live region (a permanent role="status"
+// whose text toggles on pending), so this is decorative and hidden from AT.
+function ResultsSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-hidden="true">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="h-6 w-40 max-w-full animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+        <div className="h-8 w-28 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
+      </div>
+      <div className="h-9 w-60 max-w-full animate-pulse rounded-xl bg-muted motion-reduce:animate-none" />
+      <div className="h-80 animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />
+    </div>
+  );
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -51,8 +65,8 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
   const program = programs.find((p) => p.id === sp.program)?.id;
   const sections = term && program ? await queries.listSectionsByProgramTerm(term, program) : [];
   const section = sections.find((s) => s.id === sp.section)?.id;
-  const views = section ? await queries.sectionTimetable(section) : [];
   const sectionSummary = section ? sections.find((s) => s.id === section) : undefined;
+  const views = section ? await queries.sectionTimetable(section) : [];
 
   // Rail (xl only): which rooms are free right now, plus quick links.
   const nowT = tenantNow(tenant.timezone);
@@ -103,28 +117,27 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
         {terms.length === 0 ? (
           <EmptyState title={t('timetable.empty.noTerms')} />
         ) : (
-          <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
-            <Card className="p-4">
-              <TimetablePicker
-                terms={terms.map((x) => ({ id: x.id, label: x.name }))}
-                programs={programs.map((p) => ({ id: p.id, label: p.name }))}
-                sections={sections.map((s) => ({ id: s.id, label: s.name }))}
-                term={term}
-                program={program}
-                section={section}
-                labels={{
-                  semester: t('timetable.semester'),
-                  program: t('timetable.program'),
-                  section: t('timetable.section'),
-                  chooseSemester: t('timetable.chooseSemester'),
-                  chooseProgram: t('timetable.chooseProgram'),
-                  chooseSection: t('timetable.chooseSection'),
-                }}
-              />
-            </Card>
-
-            <div className="min-w-0">
-              {section && sectionSummary ? (
+          <TimetableWorkspace
+            terms={terms.map((x) => ({ id: x.id, label: x.name }))}
+            programs={programs.map((p) => ({ id: p.id, label: p.name }))}
+            sections={sections.map((s) => ({ id: s.id, label: s.name }))}
+            term={term}
+            program={program}
+            section={section}
+            labels={{
+              semester: t('timetable.semester'),
+              program: t('timetable.program'),
+              section: t('timetable.section'),
+              chooseSemester: t('timetable.chooseSemester'),
+              chooseProgram: t('timetable.chooseProgram'),
+              chooseSection: t('timetable.chooseSection'),
+              programLocked: t('timetable.programLocked'),
+              sectionLocked: t('timetable.sectionLocked'),
+            }}
+            skeleton={<ResultsSkeleton />}
+            loadingLabel={t('a11y.loading')}
+            results={
+              section && sectionSummary ? (
                 <SectionTimetableView
                   views={views}
                   base={base}
@@ -134,9 +147,9 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
                 />
               ) : (
                 <EmptyState title={t('timetable.pickPrompt')} />
-              )}
-            </div>
-          </div>
+              )
+            }
+          />
         )}
 
         <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>

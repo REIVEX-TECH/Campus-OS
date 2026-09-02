@@ -36,6 +36,8 @@ export const en = {
   'timetable.chooseSemester': 'Choose a semester',
   'timetable.chooseProgram': 'Choose a program',
   'timetable.chooseSection': 'Choose a section',
+  'timetable.programLocked': 'Choose a semester first',
+  'timetable.sectionLocked': 'Choose a program first',
   'timetable.pickPrompt': 'Choose a semester, program, and section to see the timetable.',
   'timetable.section': 'Section',
   'timetable.teacher': 'Teacher',
