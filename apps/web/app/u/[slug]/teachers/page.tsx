@@ -33,6 +33,7 @@ export default async function TeachersDirectory({ params }: Params) {
 
   const items: DirectoryItem[] = teachers.map((x) => ({
     id: x.id,
+    kind: 'person',
     href: `${base}/teachers/${x.id}`,
     title: x.name,
     meta: `${countText(tenant.locale, 'classes', x.classes)}, ${countText(tenant.locale, 'courses', x.courses)}`,

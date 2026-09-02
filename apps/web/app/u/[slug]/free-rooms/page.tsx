@@ -6,7 +6,6 @@ import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { FreeRoomsControl } from '@/app/_components/free-rooms-control';
 import { dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
-import { roomInitials } from '@/lib/room-label';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { parseHHMM, tenantNow, toHHMM } from '@/lib/tenant-time';
 import { tenantBase } from '@/lib/tenant-url';
@@ -99,13 +98,7 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
                     className="ios-card ios-pressable flex items-center gap-3 rounded-2xl p-3 hover:shadow-[var(--shadow-card-strong)]"
                   >
                     <span aria-hidden="true">
-                      <IdentityAvatar
-                        seed={room.id}
-                        label={room.name}
-                        initials={roomInitials(room.name)}
-                        size={36}
-                        shape="circle"
-                      />
+                      <IdentityAvatar seed={room.id} label={room.name} kind="place" size={36} />
                     </span>
                     <span className="flex min-w-0 flex-col gap-0.5">
                       <span className="truncate text-sm font-semibold">{room.name}</span>

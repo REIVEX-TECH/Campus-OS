@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { IdentityAvatar } from '../identity-avatar';
+import type { AvatarKind } from '@/lib/avatar';
 
 /**
  * The head of a teacher or room profile: the generated avatar beside the name,
@@ -10,14 +11,14 @@ import { IdentityAvatar } from '../identity-avatar';
 export function ProfileHeader({
   seed,
   title,
-  initials,
+  kind = 'person',
   context,
   badge,
   actions,
 }: {
   seed: string;
   title: string;
-  initials?: string;
+  kind?: AvatarKind;
   context?: ReactNode;
   badge?: ReactNode;
   actions?: ReactNode;
@@ -29,9 +30,8 @@ export function ProfileHeader({
           <IdentityAvatar
             seed={seed}
             label={title}
-            initials={initials}
+            kind={kind}
             size={56}
-            shape="circle"
             className="sm:h-16 sm:w-16"
           />
         </span>

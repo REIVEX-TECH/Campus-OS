@@ -5,7 +5,6 @@ import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { countText, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
-import { roomInitials } from '@/lib/room-label';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -34,10 +33,10 @@ export default async function RoomsDirectory({ params }: Params) {
 
   const items: DirectoryItem[] = rooms.map((r) => ({
     id: r.id,
+    kind: 'place',
     href: `${base}/rooms/${r.id}`,
     title: r.name,
     subtitle: r.building,
-    initials: roomInitials(r.name),
     meta: `${countText(tenant.locale, 'classes', r.classes)}, ${countText(tenant.locale, 'days', r.days)}`,
   }));
 

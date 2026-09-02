@@ -11,7 +11,6 @@ import { ProfileHeader } from '@/app/_components/profile/profile-header';
 import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { countText, dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
-import { roomInitials } from '@/lib/room-label';
 import { formatDuration, timetableStats } from '@/lib/timetable-stats';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -72,7 +71,7 @@ export default async function RoomProfile({ params }: Params) {
       <ProfileHeader
         seed={room.id}
         title={room.name}
-        initials={roomInitials(room.name)}
+        kind="place"
         context={
           <>
             <Link href={`${base}/rooms`} className="text-primary hover:underline">

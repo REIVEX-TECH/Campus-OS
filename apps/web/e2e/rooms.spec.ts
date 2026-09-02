@@ -28,9 +28,30 @@ test('a room profile shows how booked it is and when it is free', async ({ page 
   await first.click();
 
   await expect(page.getByRole('heading', { level: 1 })).toContainText(name);
-  await expect(page.locator('header svg').first()).toBeAttached();
+  await expect(page.locator('header img[src^="/api/avatar/place/"]')).toBeAttached();
   // Utilisation is measured against the shared teaching window, so it is a
   // percentage rather than a raw count.
   await expect(page.getByText('Booked', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Free slots' })).toBeVisible();
+});
+
+test('the avatar route renders a cacheable svg and rejects a bad seed', async ({ request }) => {
+  const ok = await request.get('/api/avatar/person/abc-123');
+  expect(ok.status()).toBe(200);
+  expect(ok.headers()['content-type']).toContain('image/svg+xml');
+  // Deterministic output, so it is safe to cache forever.
+  expect(ok.headers()['cache-control']).toContain('immutable');
+  expect(await ok.text()).toContain('<svg');
+
+  // Same seed, same picture.
+  const again = await request.get('/api/avatar/person/abc-123');
+  expect(await again.text()).toBe(await ok.text());
+
+  // A different kind is a different picture.
+  const place = await request.get('/api/avatar/place/abc-123');
+  expect(await place.text()).not.toBe(await ok.text());
+
+  // Unknown kinds and unsafe seeds are refused rather than rendered.
+  expect((await request.get('/api/avatar/wizard/abc-123')).status()).toBe(404);
+  expect((await request.get('/api/avatar/person/' + 'x'.repeat(80))).status()).toBe(404);
 });
