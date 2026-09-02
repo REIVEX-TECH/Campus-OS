@@ -19,6 +19,8 @@ export const lgu: TenantConfigInput = {
     logoPath: '/tenants/lgu/logo.svg',
   },
   allowedEmailDomains: ['lgu.edu.pk'],
+  // Anyone with a verified lgu.edu.pk address joins as a student.
+  joinMode: 'domain',
   enabledModules: ['timetable'],
   seo: {
     titleTemplate: '%s · LGU Timetable',

@@ -79,3 +79,44 @@ describe('createTenantRegistry', () => {
     ).toThrow();
   });
 });
+
+describe('joinMode', () => {
+  it('defaults to domain, matching how the first tenant already works', () => {
+    const parsed = tenantConfigSchema.parse({
+      slug: 'aaa',
+      displayName: 'Alpha U',
+      timezone: 'Asia/Karachi',
+      locale: 'en',
+      branding: { colors: { primary: '#0a7cff' }, logoPath: '/logo.svg' },
+      seo: { titleTemplate: '%s · Alpha', description: 'Alpha U' },
+    });
+    expect(parsed.joinMode).toBe('domain');
+  });
+
+  it('accepts invite for a tenant that would rather approve members', () => {
+    const parsed = tenantConfigSchema.parse({
+      slug: 'bbb',
+      displayName: 'Beta U',
+      timezone: 'Asia/Karachi',
+      locale: 'en',
+      joinMode: 'invite',
+      branding: { colors: { primary: '#0a7cff' }, logoPath: '/logo.svg' },
+      seo: { titleTemplate: '%s · Beta', description: 'Beta U' },
+    });
+    expect(parsed.joinMode).toBe('invite');
+  });
+
+  it('rejects a mode that is not one of the two', () => {
+    expect(() =>
+      tenantConfigSchema.parse({
+        slug: 'ccc',
+        displayName: 'Gamma U',
+        timezone: 'Asia/Karachi',
+        locale: 'en',
+        joinMode: 'anyone',
+        branding: { colors: { primary: '#0a7cff' }, logoPath: '/logo.svg' },
+        seo: { titleTemplate: '%s · Gamma', description: 'Gamma U' },
+      }),
+    ).toThrow();
+  });
+});

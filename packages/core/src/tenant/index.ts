@@ -1,8 +1,10 @@
 export {
+  joinModeSchema,
   tenantConfigSchema,
   brandingSchema,
   seoSchema,
   slugSchema,
+  type JoinMode,
   type TenantConfig,
   type TenantConfigInput,
 } from './schema';
