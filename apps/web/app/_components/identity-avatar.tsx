@@ -1,4 +1,4 @@
-import { avatarSrc, type AvatarKind } from '@/lib/avatar';
+import { avatarBackground, avatarSrc, type AvatarKind } from '@/lib/avatar';
 
 /**
  * A deterministic generated avatar: the same entity always shows the same
@@ -39,7 +39,10 @@ export function IdentityAvatar({
       loading="lazy"
       decoding="async"
       className={className}
-      style={{ flex: 'none', borderRadius: '9999px' }}
+      // The seeded backdrop is painted immediately, so a directory shows its
+      // circles at once and each illustration fills its own without the grid
+      // popping in one avatar at a time.
+      style={{ flex: 'none', borderRadius: '9999px', backgroundColor: avatarBackground(seed) }}
     />
   );
 }
