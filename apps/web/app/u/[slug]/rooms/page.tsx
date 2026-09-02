@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Building2 } from 'lucide-react';
 import { tenantRegistry } from '@campusos/tenants';
 import { Directory, type DirectoryItem } from '@/app/_components/profile/directory';
 import { EmptyState } from '@/app/_components/empty-state';
@@ -49,7 +50,7 @@ export default async function RoomsDirectory({ params }: Params) {
         </header>
 
         {items.length === 0 ? (
-          <EmptyState title={t('rooms.empty')} />
+          <EmptyState title={t('rooms.empty')} icon={Building2} />
         ) : (
           <Directory
             items={items}
