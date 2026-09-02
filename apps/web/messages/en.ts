@@ -97,6 +97,7 @@ export const en = {
   'theme.toggle': 'Toggle light and dark',
   'a11y.skipToContent': 'Skip to content',
   'a11y.loading': 'Loading',
+  'a11y.close': 'Close',
   'hub.about': 'About',
 
   'modules.comingSoon': 'Coming soon',
@@ -143,6 +144,20 @@ export const en = {
   'timetable.view.days': 'Days',
   'timetable.view.list': 'List',
   'timetable.view.timeline': 'Timeline',
+
+  'timetable.filters': 'Filters',
+  'timetable.filters.show': 'Show filters',
+  'timetable.filters.hide': 'Hide filters',
+  'timetable.filters.from': 'From',
+  'timetable.filters.to': 'To',
+  'timetable.filters.day': 'Day',
+  'timetable.filters.type': 'Type',
+  'timetable.filters.class': 'Class',
+  'timetable.filters.teacher': 'Teacher',
+  'timetable.filters.room': 'Room',
+  'timetable.filters.clear': 'Clear filters',
+  'timetable.filters.none': 'No classes match these filters.',
+  'timetable.filters.activeCount': '{count} active',
   'timetable.pendingNote': 'Some classes are imported automatically and are pending review.',
   'timetable.noClasses': 'No classes this day.',
 

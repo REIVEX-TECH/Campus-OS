@@ -4,8 +4,9 @@ import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { buttonVariants } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
+import { FilterableTimetable } from '@/app/_components/filterable-timetable';
 import { FreshnessLine } from '@/app/_components/freshness';
-import { PendingBadge, TimetableGrid } from '@/app/_components/timetable-grid';
+import { PendingBadge } from '@/app/_components/timetable-grid';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
@@ -66,12 +67,11 @@ export default async function TeacherTimetable({ params }: Params) {
       {views.length === 0 ? (
         <EmptyState title={t('timetable.empty.noEntries')} />
       ) : (
-        <TimetableGrid
+        <FilterableTimetable
           views={views}
           title={teacher.name}
           locale={tenant.locale}
           base={base}
-          t={t}
         />
       )}
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
