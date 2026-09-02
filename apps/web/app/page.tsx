@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
+import { Blocks, CalendarDays, Search, Unlock } from 'lucide-react';
 import { buttonVariants, Card } from '@campusos/ui';
 import { tenantRegistry } from '@campusos/tenants';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -34,10 +35,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const FEATURES = [
-  { key: 'timetable', icon: '📅' },
-  { key: 'find', icon: '🔎' },
-  { key: 'modular', icon: '🧩' },
-  { key: 'open', icon: '🔓' },
+  { key: 'timetable', Icon: CalendarDays },
+  { key: 'find', Icon: Search },
+  { key: 'modular', Icon: Blocks },
+  { key: 'open', Icon: Unlock },
 ] as const;
 
 export default async function PlatformHome() {
@@ -86,8 +87,8 @@ export default async function PlatformHome() {
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map((f) => (
               <li key={f.key} className="ios-card flex h-full flex-col gap-2 rounded-2xl p-5">
-                <span className="text-2xl" aria-hidden="true">
-                  {f.icon}
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-foreground">
+                  <f.Icon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
                 </span>
                 <span className="text-lg font-semibold">
                   {t(`platform.feature.${f.key}.title` as MessageKey)}

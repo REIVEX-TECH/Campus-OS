@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ModuleIconName } from '@/lib/modules';
+import { ModuleIcon } from './module-icon';
 import { ThemeToggle } from './theme-toggle';
 
 export type SidebarItem = {
   key: string;
   label: string;
-  icon: string;
+  icon: ModuleIconName;
   href: string;
   soon: boolean;
 };
@@ -199,8 +201,8 @@ export function Sidebar({
                   title={n.label}
                   className={`sidebar-item ios-pressable${isActive(n.href) ? ' is-active' : ''}`}
                 >
-                  <span className="sidebar-icon" aria-hidden="true">
-                    {n.icon}
+                  <span className="sidebar-icon">
+                    <ModuleIcon name={n.icon} className="sidebar-icon-svg" />
                   </span>
                   <span className="sidebar-label">{n.label}</span>
                 </Link>
@@ -211,8 +213,8 @@ export function Sidebar({
             {soon.map((n) => (
               <li key={n.key}>
                 <span className="sidebar-item is-soon" title={`${n.label} (${labels.comingSoon})`}>
-                  <span className="sidebar-icon" aria-hidden="true">
-                    {n.icon}
+                  <span className="sidebar-icon">
+                    <ModuleIcon name={n.icon} className="sidebar-icon-svg" />
                   </span>
                   <span className="sidebar-label">{n.label}</span>
                   <span className="sidebar-soon-tag sidebar-label">{labels.comingSoon}</span>
