@@ -7,6 +7,7 @@ import {
   PackageSearch,
   Search,
   ShoppingBag,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { ModuleIconName } from '@/lib/modules';
@@ -22,6 +23,7 @@ const ICONS: Record<ModuleIconName, LucideIcon> = {
   calendar: Calendar,
   'door-open': DoorOpen,
   search: Search,
+  users: Users,
   'shopping-bag': ShoppingBag,
   'message-circle': MessageCircle,
   'package-search': PackageSearch,

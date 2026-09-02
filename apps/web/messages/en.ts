@@ -218,4 +218,30 @@ export const en = {
   'error.body': 'An unexpected error stopped this page from loading. Please try again.',
   'error.retry': 'Try again',
   'error.home': 'Back to homepage',
+
+  'nav.teachers': 'Teachers',
+  'module.teachers.label': 'Teachers',
+  'module.teachers.desc': 'Browse every teacher and see their week.',
+
+  'teachers.heading': 'Teachers',
+  'teachers.intro':
+    'Every teacher with published classes. Open one to see their week and free slots.',
+  'teachers.search': 'Search teachers',
+  'teachers.count': '{count} shown',
+  'teachers.none': 'No teachers match {q}.',
+  'teachers.empty': 'No teachers have been published yet.',
+  'teachers.meta': '{classes} classes, {courses} courses',
+
+  'profile.classes': 'Classes a week',
+  'profile.hours': 'Hours a week',
+  'profile.days': 'Teaching days',
+  'profile.courses': 'Courses',
+  'profile.sections': 'Sections',
+  'profile.busiest': 'Busiest day',
+  'profile.utilisation': 'Booked',
+  'profile.coursesTaught': 'Courses taught',
+  'profile.freeSlots': 'Free slots',
+  'profile.freeSlotsIntro': 'Open time between {start} and {end}, the hours this campus schedules.',
+  'profile.noFree': 'Booked all day.',
+  'profile.classCount': '{count} classes',
 } as const;
