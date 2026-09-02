@@ -1,4 +1,5 @@
 import {
+  Building2,
   Calendar,
   Car,
   DoorOpen,
@@ -24,6 +25,7 @@ const ICONS: Record<ModuleIconName, LucideIcon> = {
   'door-open': DoorOpen,
   search: Search,
   users: Users,
+  building: Building2,
   'shopping-bag': ShoppingBag,
   'message-circle': MessageCircle,
   'package-search': PackageSearch,

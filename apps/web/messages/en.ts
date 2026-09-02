@@ -230,7 +230,6 @@ export const en = {
   'teachers.count': '{count} shown',
   'teachers.none': 'No teachers match {q}.',
   'teachers.empty': 'No teachers have been published yet.',
-  'teachers.meta': '{classes} classes, {courses} courses',
 
   'profile.classes': 'Classes a week',
   'profile.hours': 'Hours a week',
@@ -243,5 +242,22 @@ export const en = {
   'profile.freeSlots': 'Free slots',
   'profile.freeSlotsIntro': 'Open time between {start} and {end}, the hours this campus schedules.',
   'profile.noFree': 'Booked all day.',
-  'profile.classCount': '{count} classes',
+
+  'nav.rooms': 'Rooms',
+  'module.rooms.label': 'Rooms',
+  'module.rooms.desc': 'Browse every room and see how booked it is.',
+
+  'rooms.heading': 'Rooms',
+  'rooms.intro': 'Every room with published classes. Open one to see its week and when it is free.',
+  'rooms.search': 'Search rooms',
+  'rooms.count': '{count} shown',
+  'rooms.none': 'No rooms match {q}.',
+  'rooms.empty': 'No rooms have been published yet.',
+
+  'count.classes.one': '{count} class',
+  'count.classes.other': '{count} classes',
+  'count.courses.one': '{count} course',
+  'count.courses.other': '{count} courses',
+  'count.days.one': '{count} day',
+  'count.days.other': '{count} days',
 } as const;

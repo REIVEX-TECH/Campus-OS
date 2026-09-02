@@ -15,6 +15,7 @@ export type ModuleIconName =
   | 'door-open'
   | 'search'
   | 'users'
+  | 'building'
   | 'shopping-bag'
   | 'message-circle'
   | 'package-search'
@@ -34,6 +35,7 @@ export const MODULES: ModuleCard[] = [
   { key: 'freeRooms', icon: 'door-open', path: '/free-rooms', soon: false },
   { key: 'search', icon: 'search', path: '/search', soon: false },
   { key: 'teachers', icon: 'users', path: '/teachers', soon: false },
+  { key: 'rooms', icon: 'building', path: '/rooms', soon: false },
   { key: 'marketplace', icon: 'shopping-bag', soon: true },
   { key: 'communities', icon: 'message-circle', soon: true },
   { key: 'lostFound', icon: 'package-search', soon: true },

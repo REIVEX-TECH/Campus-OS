@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
+import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { FreeRoomsControl } from '@/app/_components/free-rooms-control';
 import { dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
+import { roomInitials } from '@/lib/room-label';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { parseHHMM, tenantNow, toHHMM } from '@/lib/tenant-time';
 import { tenantBase } from '@/lib/tenant-url';
@@ -89,15 +91,28 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
           {free.length === 0 ? (
             <EmptyState title={t('freeRooms.none')} />
           ) : (
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {free.map((room) => (
                 <li key={room.id}>
                   <Link
                     href={`${base}/rooms/${room.id}`}
-                    className="ios-card ios-pressable flex flex-col gap-0.5 rounded-2xl p-4 hover:shadow-[var(--shadow-card-strong)]"
+                    className="ios-card ios-pressable flex items-center gap-3 rounded-2xl p-3 hover:shadow-[var(--shadow-card-strong)]"
                   >
-                    <span className="font-semibold">{room.name}</span>
-                    <span className="text-sm text-muted-foreground">{room.building}</span>
+                    <span aria-hidden="true">
+                      <IdentityAvatar
+                        seed={room.id}
+                        label={room.name}
+                        initials={roomInitials(room.name)}
+                        size={36}
+                        shape="circle"
+                      />
+                    </span>
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="truncate text-sm font-semibold">{room.name}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {room.building}
+                      </span>
+                    </span>
                   </Link>
                 </li>
               ))}
