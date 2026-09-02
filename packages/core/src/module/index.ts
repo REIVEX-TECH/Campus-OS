@@ -37,6 +37,13 @@ export interface ModuleEventHandler {
 /** Where a module's own migrations live (run after base db migrations). */
 export interface ModuleMigrations {
   folder: string;
+  /**
+   * The bookkeeping table for this module's migrations. Modules must not share
+   * one: drizzle applies only migrations dated after the last recorded entry, so
+   * a shared table makes one module silently skip another's migrations whenever
+   * the dates interleave.
+   */
+  table?: string;
 }
 
 /**
