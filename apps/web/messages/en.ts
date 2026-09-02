@@ -239,6 +239,7 @@ export const en = {
   'profile.busiest': 'Busiest day',
   'profile.utilisation': 'Booked',
   'profile.coursesTaught': 'Courses taught',
+  'profile.coursesHere': 'Courses held here',
   'profile.freeSlots': 'Free slots',
   'profile.freeSlotsIntro': 'Open time between {start} and {end}, the hours this campus schedules.',
   'profile.noFree': 'Booked all day.',
