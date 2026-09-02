@@ -5,16 +5,17 @@ test('tenant home is a module hub: live modules link out, soon modules open a st
 }) => {
   await page.goto('/u/lgu');
 
-  // Live modules link to their real pages (scoped to the hub card grid, since
-  // the header nav also links to them).
-  const grid = page.getByRole('list').first();
+  // Live modules link to their real pages (scoped to the hub card grid in main,
+  // since the sidebar nav also links to them).
+  const grid = page.getByRole('main').getByRole('list').first();
   await expect(grid.locator('a[href="/u/lgu/timetable"]')).toBeVisible();
   await expect(grid.locator('a[href="/u/lgu/free-rooms"]')).toBeVisible();
 
-  // A "soon" module opens a Coming soon stub (pure UI, no feature).
+  // A "soon" module opens a Coming soon stub (pure UI, no feature). Only the hub
+  // card is a link; the sidebar's soon items are non-link rows.
   await page.locator('a[href="/u/lgu/soon/marketplace"]').click();
   await expect(page.getByRole('heading', { name: 'Marketplace' })).toBeVisible();
-  await expect(page.getByText('Coming soon')).toBeVisible();
+  await expect(page.getByRole('main').getByText('Coming soon')).toBeVisible();
 
   // The stub links back to the hub.
   await page.getByRole('link', { name: 'Back to home' }).click();
