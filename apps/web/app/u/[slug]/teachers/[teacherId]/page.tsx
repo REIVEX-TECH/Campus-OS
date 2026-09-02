@@ -40,7 +40,7 @@ export default async function TeacherTimetable({ params }: Params) {
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted-foreground">
@@ -49,7 +49,7 @@ export default async function TeacherTimetable({ params }: Params) {
             </Link>{' '}
             · {t('timetable.teacherTimetable')}
           </p>
-          <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             {teacher.name}
             {teacher.status === 'pending' ? <PendingBadge t={t} /> : null}
           </h1>

@@ -25,7 +25,7 @@ export function DayTabs({
           {t('timetable.noClasses')}
         </Card>
       ) : (
-        <Card className="p-5">
+        <Card className="p-4">
           <ul className="flex flex-col gap-5">
             {dayViews.map((v) => (
               <ClassRow key={v.entryId} view={v} base={base} locale={locale} t={t} />

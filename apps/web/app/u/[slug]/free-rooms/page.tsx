@@ -53,10 +53,10 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
   const days = [1, 2, 3, 4, 5, 6, 7].map((d) => dayName(tenant.locale, d));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-1 px-1">
         <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-        <h1 className="text-3xl font-bold tracking-tight">{t('freeRooms.heading')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t('freeRooms.heading')}</h1>
         <p className="max-w-prose text-sm text-muted-foreground">{t('freeRooms.intro')}</p>
       </header>
 

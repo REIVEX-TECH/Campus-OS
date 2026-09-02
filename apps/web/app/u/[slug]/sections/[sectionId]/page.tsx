@@ -46,12 +46,12 @@ export default async function SectionTimetable({ params }: Params) {
   const title = `${section.program.code} ${section.name}`;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-1 px-1">
         <Link href={`${base}/timetable`} className="text-sm text-primary hover:underline">
           {tenant.displayName}
         </Link>
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
       </header>
 

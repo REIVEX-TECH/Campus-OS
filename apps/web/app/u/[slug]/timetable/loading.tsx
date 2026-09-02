@@ -8,7 +8,7 @@ import { translator } from '@/lib/i18n';
 export default function Loading() {
   const t = translator('en');
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <span className="sr-only" role="status">
         {t('a11y.loading')}
       </span>

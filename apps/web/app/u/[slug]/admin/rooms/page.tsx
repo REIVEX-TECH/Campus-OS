@@ -24,11 +24,11 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const rooms = await getAdminRooms(slug).listRooms();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-          <h1 className="text-3xl font-bold tracking-tight">{t('admin.rooms.heading')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('admin.rooms.heading')}</h1>
           <p className="max-w-prose text-sm text-muted-foreground">{t('admin.rooms.intro')}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
           {t('admin.rooms.none')}
         </Card>
       ) : (
-        <Card className="flex flex-col gap-5 p-5">
+        <Card className="flex flex-col gap-5 p-4">
           <ul className="flex flex-col gap-5">
             {rooms.map((room) => (
               <li key={room.id} className="flex flex-col gap-2">

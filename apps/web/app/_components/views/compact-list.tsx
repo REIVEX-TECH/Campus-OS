@@ -15,7 +15,7 @@ export function CompactList({ views, base, locale, t }: ViewProps) {
   const days = [...byDay.keys()].sort((a, b) => a - b);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {days.map((day) => {
         const dayViews = (byDay.get(day) ?? []).sort(
           (a, b) => minutes(a.startsAt) - minutes(b.startsAt),
@@ -25,7 +25,7 @@ export function CompactList({ views, base, locale, t }: ViewProps) {
             <h3 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               {dayName(locale, day)}
             </h3>
-            <Card className="p-5">
+            <Card className="p-4">
               <ul className="flex flex-col gap-5">
                 {dayViews.map((v) => (
                   <ClassRow key={v.entryId} view={v} base={base} locale={locale} t={t} />

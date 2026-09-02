@@ -88,11 +88,11 @@ export default async function AdminAnalyticsPage({ params }: Props) {
   const hasClasses = analytics.totals.entries > 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-          <h1 className="text-3xl font-bold tracking-tight">{t('admin.analytics.heading')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('admin.analytics.heading')}</h1>
           <p className="max-w-prose text-sm text-muted-foreground">{t('admin.analytics.intro')}</p>
           <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
         </div>
@@ -125,12 +125,12 @@ export default async function AdminAnalyticsPage({ params }: Props) {
       </section>
 
       {hasClasses ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <section className="flex flex-col gap-3">
             <h2 className="px-1 text-sm font-medium uppercase tracking-wide text-muted-foreground">
               {t('admin.analytics.coverage')}
             </h2>
-            <Card className="flex flex-col gap-4 p-5">
+            <Card className="flex flex-col gap-4 p-4">
               <CoverageRow
                 label={t('admin.analytics.withTeacher')}
                 have={analytics.coverage.withTeacher}
@@ -150,7 +150,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
             <h2 className="px-1 text-sm font-medium uppercase tracking-wide text-muted-foreground">
               {t('admin.analytics.byKind')}
             </h2>
-            <Card className="flex flex-col gap-3 p-5">
+            <Card className="flex flex-col gap-3 p-4">
               {analytics.entriesByKind.map((k) => (
                 <BarRow
                   key={k.kind}
@@ -166,7 +166,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
             <h2 className="px-1 text-sm font-medium uppercase tracking-wide text-muted-foreground">
               {t('admin.analytics.byDay')}
             </h2>
-            <Card className="flex flex-col gap-3 p-5">
+            <Card className="flex flex-col gap-3 p-4">
               {analytics.entriesByDay.map((d) => (
                 <BarRow
                   key={d.dayOfWeek}

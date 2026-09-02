@@ -28,7 +28,7 @@ export default async function AdminLoginPage({ params, searchParams }: Props) {
         : undefined;
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col gap-6 p-8">
+    <main className="mx-auto flex max-w-sm flex-col gap-5 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t('admin.login.heading')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
