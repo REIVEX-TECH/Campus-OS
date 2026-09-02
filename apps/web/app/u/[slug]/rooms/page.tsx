@@ -32,12 +32,17 @@ export default async function RoomsDirectory({ params }: Params) {
   const base = await tenantBase(slug);
   const rooms = await getQueries(slug).listRoomsWithCounts();
 
+  // A subtitle that reads the same on every card tells the reader nothing. Many
+  // tenants keep all their rooms in one building (or in the importer's single
+  // placeholder), so the building only earns its line when it actually varies.
+  const showBuilding = new Set(rooms.map((r) => r.building)).size > 1;
+
   const items: DirectoryItem[] = rooms.map((r) => ({
     id: r.id,
     kind: 'place',
     href: `${base}/rooms/${r.id}`,
     title: r.name,
-    subtitle: r.building,
+    ...(showBuilding ? { subtitle: r.building } : {}),
     meta: `${countText(tenant.locale, 'classes', r.classes)}, ${countText(tenant.locale, 'days', r.days)}`,
   }));
 
