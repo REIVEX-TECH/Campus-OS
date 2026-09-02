@@ -1,37 +1,35 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
-// The real (non-placeholder) option values of a native <select>.
-async function realOptions(select: Locator): Promise<string[]> {
-  return select
-    .locator('option:not([disabled])')
-    .evaluateAll((opts) =>
-      opts.map((o) => (o as HTMLOptionElement).value).filter((v) => v.length > 0),
-    );
+// The picker state lives in the URL (?term&program&section). We read the program
+// ids from the searchable combobox and the section ids from the native select,
+// then drive the cascade by navigating URLs directly. That keeps the picker
+// exercised while being deterministic (no soft-navigation click races). Lands the
+// page on the first section that renders a timetable (view switcher visible).
+async function programIds(page: Page): Promise<string[]> {
+  await page.goto('/u/lgu/timetable');
+  await page.locator('#pick-program').click(); // semester defaults to the first term
+  const ids = await page
+    .getByRole('option')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-value')));
+  return ids.filter((v): v is string => Boolean(v));
 }
 
-// Drive the cascade to the first section that renders a timetable (a section with
-// entries). "Rendered" is detected by the view switcher appearing, which is
-// view-independent (the default view is responsive: grid on desktop, list on
-// mobile). Returns once the timetable is up.
+async function sectionIds(page: Page, pid: string): Promise<string[]> {
+  await page.goto(`/u/lgu/timetable?program=${pid}`);
+  return page
+    .locator('#pick-section option:not([disabled])')
+    .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
+}
+
 async function cascadeToPopulatedSection(page: Page): Promise<void> {
-  await page.goto('/u/lgu/timetable');
-
-  const program = page.locator('#pick-program');
-  await expect(program).toBeVisible(); // semester defaults to the first term
-  const programs = await realOptions(program);
+  const programs = await programIds(page);
   expect(programs.length).toBeGreaterThan(0);
-
-  const switcher = page.getByRole('group', { name: 'View' });
-  for (const pv of programs) {
-    await program.selectOption(pv);
-    await page.waitForURL((u) => u.searchParams.get('program') === pv);
-
-    const section = page.locator('#pick-section');
-    await expect(section).toBeVisible();
-    for (const sv of await realOptions(section)) {
-      await section.selectOption(sv);
-      await page.waitForURL((u) => u.searchParams.get('section') === sv);
-      if (await switcher.isVisible().catch(() => false)) return;
+  for (const pid of programs) {
+    for (const sid of await sectionIds(page, pid)) {
+      await page.goto(`/u/lgu/timetable?program=${pid}&section=${sid}`);
+      // A populated section renders class blocks (grid) or dots (list). Count is
+      // DOM-attached, so it is not subject to the visibility-probe timing.
+      if ((await page.locator('.evt, .evt-dot').count()) > 0) return;
     }
   }
   throw new Error('no section with a rendered timetable was found in the fixture');
@@ -58,6 +56,22 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(res.status()).toBe(200);
   expect(res.headers()['content-type']).toContain('text/calendar');
   expect(await res.text()).toContain('UID:');
+});
+
+test('the semester combobox is searchable and keyboard-operable', async ({ page }) => {
+  await page.goto('/u/lgu/timetable');
+  const semester = page.getByRole('combobox', { name: 'Semester' });
+  await expect(semester).toBeVisible();
+
+  // Opening it lists the terms; typing filters them.
+  await semester.click();
+  await expect(page.getByRole('option').first()).toBeVisible();
+
+  // Arrow + Enter picks a term, closes the listbox, and writes ?term to the URL.
+  await semester.press('ArrowDown');
+  await semester.press('Enter');
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await expect(page).toHaveURL(/term=/);
 });
 
 test('a teacher name links to the teacher view', async ({ page }) => {

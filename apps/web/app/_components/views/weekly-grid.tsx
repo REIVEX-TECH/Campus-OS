@@ -8,9 +8,8 @@ const NOW_COLOR = 'oklch(0.62 0.22 25)'; // calendar-red "now" marker, reads in 
 /**
  * Classic calendar: weekday columns, a left time gutter, colour-coded class
  * blocks placed and sized by time (overlaps split into side-by-side lanes). The
- * day-header row sticks below the app header on vertical scroll and the time
- * gutter sticks on horizontal scroll; on narrow screens the whole grid scrolls
- * horizontally inside its own container, so the page never scrolls sideways. The
+ * columns flex to fill the container, so the grid has no inner scrollbar (the
+ * page scrolls); on a phone the responsive default is the list view instead. The
  * hour lines are a time ruler (a faint background), not section dividers.
  */
 export function WeeklyGrid({
@@ -38,17 +37,9 @@ export function WeeklyGrid({
   const nowInRange = now !== null && now.minutes >= axisStart && now.minutes <= endHour * 60;
 
   return (
-    // Keyboard-focusable scroll region: on narrow screens the grid scrolls
-    // sideways, so it must be reachable and scrollable with the keyboard, and
-    // named for screen readers.
-    <div
-      className="overflow-x-auto rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      role="region"
-      aria-label={t('timetable.weekGrid')}
-      tabIndex={0}
-    >
-      <div className="flex min-w-[44rem]">
-        <div className="sticky left-0 z-10 w-12 shrink-0 bg-background">
+    <div>
+      <div className="flex">
+        <div className="w-12 shrink-0">
           <div className="h-8" />
           <div className="relative" style={{ height }}>
             {hours.map((h) => (
@@ -67,7 +58,7 @@ export function WeeklyGrid({
           const laid = assignLanes(views.filter((v) => v.dayOfWeek === day));
           const showNow = nowInRange && now?.day === day;
           return (
-            <div key={day} className="min-w-[7rem] flex-1 px-0.5">
+            <div key={day} className="min-w-0 flex-1 px-0.5">
               <div className="flex h-8 items-center justify-center text-xs font-semibold uppercase text-muted-foreground">
                 <span aria-hidden="true">{dayShort(locale, day)}</span>
                 <span className="sr-only">{dayName(locale, day)}</span>

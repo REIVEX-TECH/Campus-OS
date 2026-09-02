@@ -43,6 +43,8 @@ export const en = {
   'timetable.time': 'Time',
   'timetable.timeRange': '{start} to {end}',
   'timetable.subscribe': 'Subscribe (ICS)',
+  'timetable.freeNow': 'Free rooms now',
+  'timetable.allFreeRooms': 'All free rooms',
 
   'timetable.tba': 'TBA',
   'timetable.tbaTeacherAria': 'Teacher to be announced',

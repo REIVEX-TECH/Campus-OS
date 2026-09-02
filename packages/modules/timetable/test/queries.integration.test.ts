@@ -231,6 +231,29 @@ describe('TimetableQueries (cascade picker: term to program to section)', () => 
     expect(withSections).not.toContain('S26'); // the empty term is dropped
   });
 
+  it('step 1: sorts ordinal-named terms numerically (1st, 2nd, ... 10th)', async () => {
+    // Insert ordinal-named terms, each with a section, out of natural order.
+    await withTenant('aaa', async (tx) => {
+      for (const name of ['10th Semester', '2nd Semester', '1st Semester']) {
+        const [tm] = await tx
+          .insert(academicTerms)
+          .values({ tenantId: 'aaa', code: name, name, status: 'active' })
+          .returning();
+        await tx.insert(sections).values({
+          tenantId: 'aaa',
+          programId: ids.bscsProgramId,
+          termId: tm!.id,
+          name: 'X',
+          semester: 1,
+          status: 'active',
+        });
+      }
+    });
+    const names = (await createTimetableQueries('aaa').listTermsWithSections()).map((t) => t.name);
+    const ordinals = names.filter((n) => n.endsWith('Semester'));
+    expect(ordinals).toEqual(['1st Semester', '2nd Semester', '10th Semester']);
+  });
+
   it('step 2: lists the distinct programs (including pending) that have sections in a term', async () => {
     const q = createTimetableQueries('aaa');
     const programs = await q.listProgramsByTerm(ids.termId);
