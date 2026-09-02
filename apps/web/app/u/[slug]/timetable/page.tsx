@@ -12,13 +12,12 @@ import { tenantNow, toHHMM } from '@/lib/tenant-time';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
-function ResultsSkeleton({ loading }: { loading: string }) {
+// Visual only: the workspace owns the live region (a permanent role="status"
+// whose text toggles on pending), so this is decorative and hidden from AT.
+function ResultsSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      <span className="sr-only" role="status">
-        {loading}
-      </span>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1" aria-hidden="true">
+    <div className="flex flex-col gap-4" aria-hidden="true">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="h-6 w-40 max-w-full animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
         <div className="h-8 w-28 animate-pulse rounded-lg bg-muted motion-reduce:animate-none" />
       </div>
@@ -135,7 +134,8 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
               programLocked: t('timetable.programLocked'),
               sectionLocked: t('timetable.sectionLocked'),
             }}
-            skeleton={<ResultsSkeleton loading={t('a11y.loading')} />}
+            skeleton={<ResultsSkeleton />}
+            loadingLabel={t('a11y.loading')}
             results={
               section && sectionSummary ? (
                 <SectionTimetableView

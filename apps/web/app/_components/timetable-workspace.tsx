@@ -23,6 +23,7 @@ export function TimetableWorkspace({
   labels,
   results,
   skeleton,
+  loadingLabel,
 }: {
   terms: PickerOption[];
   programs: PickerOption[];
@@ -33,6 +34,7 @@ export function TimetableWorkspace({
   labels: PickerLabels;
   results: ReactNode;
   skeleton: ReactNode;
+  loadingLabel: string;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -51,6 +53,12 @@ export function TimetableWorkspace({
         />
       </Card>
       <div className="min-w-0" aria-busy={isPending}>
+        {/* A permanent live region (text toggled on pending) so screen readers
+         * announce the change reliably; a region inserted with its text at once
+         * is not always announced. */}
+        <span className="sr-only" role="status">
+          {isPending ? loadingLabel : ''}
+        </span>
         {isPending ? skeleton : results}
       </div>
     </div>

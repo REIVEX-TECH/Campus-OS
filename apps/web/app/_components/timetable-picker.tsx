@@ -64,11 +64,18 @@ export function TimetablePicker({
     else run();
   }
 
+  // Field ids are shared between the control and its hint (Field derives the hint
+  // id as `${htmlFor}-hint`), so the describedBy is built from the same constant
+  // rather than a separate literal that could drift.
+  const TERM = 'pick-term';
+  const PROGRAM = 'pick-program';
+  const SECTION = 'pick-section';
+
   return (
     <div className="flex flex-col gap-4">
-      <Field label={labels.semester} htmlFor="pick-term">
+      <Field label={labels.semester} htmlFor={TERM}>
         <Combobox
-          id="pick-term"
+          id={TERM}
           ariaLabel={labels.semester}
           placeholder={labels.chooseSemester}
           value={term}
@@ -79,29 +86,29 @@ export function TimetablePicker({
 
       <Field
         label={labels.program}
-        htmlFor="pick-program"
+        htmlFor={PROGRAM}
         hint={term ? undefined : labels.programLocked}
       >
         <Combobox
-          id="pick-program"
+          id={PROGRAM}
           ariaLabel={labels.program}
           placeholder={labels.chooseProgram}
           value={program}
           options={programs}
           onSelect={(v) => go({ term, program: v })}
           disabled={!term}
-          describedBy={term ? undefined : 'pick-program-hint'}
+          describedBy={term ? undefined : `${PROGRAM}-hint`}
         />
       </Field>
 
       <Field
         label={labels.section}
-        htmlFor="pick-section"
+        htmlFor={SECTION}
         hint={program ? undefined : labels.sectionLocked}
       >
         <Select
-          id="pick-section"
-          aria-describedby={program ? undefined : 'pick-section-hint'}
+          id={SECTION}
+          aria-describedby={program ? undefined : `${SECTION}-hint`}
           value={section ?? ''}
           disabled={!program}
           onChange={(e) => go({ term, program, section: e.target.value })}
