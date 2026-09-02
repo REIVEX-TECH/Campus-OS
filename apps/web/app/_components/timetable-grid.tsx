@@ -121,14 +121,14 @@ export function TimetableGrid({
   const days = [...byDay.keys()].sort((a, b) => a - b);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="flex flex-col gap-5">
       <h2 className="sr-only">{t('timetable.gridCaption', { name: title })}</h2>
       {days.map((day) => (
         <section key={day} className="flex flex-col gap-2">
           <h3 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             {dayName(locale, day)}
           </h3>
-          <Card className="flex flex-col gap-5 p-5">
+          <Card className="flex flex-col gap-5 p-4">
             <ul className="flex flex-col gap-5">
               {(byDay.get(day) ?? []).map((view) => (
                 <EntryRow key={view.entryId} view={view} locale={locale} base={base} t={t} />

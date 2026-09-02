@@ -40,7 +40,7 @@ export default async function RoomTimetable({ params }: Params) {
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted-foreground">
@@ -49,7 +49,7 @@ export default async function RoomTimetable({ params }: Params) {
             </Link>{' '}
             · {t('timetable.roomTimetable')}
           </p>
-          <h1 className="text-3xl font-bold tracking-tight">{room.name}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{room.name}</h1>
           <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
         </div>
         <Link

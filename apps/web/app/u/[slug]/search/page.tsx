@@ -42,10 +42,10 @@ export default async function SearchPage({ params, searchParams }: Params) {
   const empty = active && teachers.length === 0 && courses.length === 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-1 px-1">
         <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-        <h1 className="text-3xl font-bold tracking-tight">{t('search.heading')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t('search.heading')}</h1>
         <p className="max-w-prose text-sm text-muted-foreground">{t('search.intro')}</p>
       </header>
 
@@ -56,7 +56,7 @@ export default async function SearchPage({ params, searchParams }: Params) {
       ) : empty ? (
         <EmptyState title={t('search.none', { q })} />
       ) : (
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-6">
           {teachers.length > 0 ? (
             <section className="flex flex-col gap-2">
               <h2 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">

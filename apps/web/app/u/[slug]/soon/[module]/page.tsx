@@ -38,7 +38,7 @@ export default async function ComingSoonPage({ params }: Params) {
       <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
         {t('modules.comingSoon')}
       </span>
-      <h1 className="text-3xl font-bold tracking-tight">
+      <h1 className="text-2xl font-bold tracking-tight">
         {t(`module.${mod.key}.label` as MessageKey)}
       </h1>
       <p className="max-w-prose text-muted-foreground">

@@ -53,26 +53,26 @@ export default async function CoursePage({ params }: Params) {
   const days = [...byDay.keys()].sort((a, b) => a - b);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <JsonLd data={courseLd({ course, url: courseUrl, tenant, tenantUrl, sessions: views })} />
       <header className="flex flex-col gap-1 px-1">
         <Link href={`${base}/search`} className="text-sm text-primary hover:underline">
           {course.code}
         </Link>
-        <h1 className="text-3xl font-bold tracking-tight">{course.title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{course.title}</h1>
         <p className="text-sm text-muted-foreground">{t('search.courseWhere')}</p>
       </header>
 
       {views.length === 0 ? (
         <EmptyState title={t('timetable.empty.noEntries')} />
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           {days.map((day) => (
             <section key={day} className="flex flex-col gap-2">
               <h2 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {dayName(tenant.locale, day)}
               </h2>
-              <Card className="p-5">
+              <Card className="p-4">
                 <ul className="flex flex-col gap-5">
                   {(byDay.get(day) ?? []).map((v) => (
                     <li key={v.entryId} className="flex flex-col gap-1">
