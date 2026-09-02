@@ -38,6 +38,21 @@ export const seoSchema = z.object({
   aliases: z.array(z.string().min(1)).default([]),
 });
 
+/**
+ * How someone becomes a member of this tenant.
+ *
+ * `domain` lets anyone with a verified email on `allowedEmailDomains` join as a
+ * student with no admin involvement, which is what a university with a single
+ * well known address space wants. `invite` requires a tenant admin to invite
+ * each member, for a tenant that would rather approve who gets in.
+ *
+ * Defaults to `domain`, matching how the first tenant already works. Nothing
+ * enforces it yet: membership arrives with the identity module, and this field
+ * exists so the setting is part of the tenant model from the start rather than
+ * bolted on later.
+ */
+export const joinModeSchema = z.enum(['domain', 'invite']);
+
 export const tenantConfigSchema = z.object({
   slug: slugSchema,
   displayName: z.string().min(1),
@@ -49,9 +64,11 @@ export const tenantConfigSchema = z.object({
   locale: z.string().min(1),
   branding: brandingSchema,
   allowedEmailDomains: z.array(emailDomain).default([]),
+  joinMode: joinModeSchema.default('domain'),
   enabledModules: z.array(z.string().min(1)).default([]),
   seo: seoSchema,
 });
 
+export type JoinMode = z.infer<typeof joinModeSchema>;
 export type TenantConfig = z.infer<typeof tenantConfigSchema>;
 export type TenantConfigInput = z.input<typeof tenantConfigSchema>;
