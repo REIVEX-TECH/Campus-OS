@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { JsonLd } from '@/app/_components/json-ld';
+import { ModuleIcon } from '@/app/_components/module-icon';
 import { PageShell } from '@/app/_components/page-shell';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { universityLd } from '@/lib/json-ld';
@@ -56,8 +57,8 @@ export default async function TenantHome({ params }: Params) {
                 className="ios-card ios-pressable flex h-full flex-col gap-2 rounded-2xl p-4 hover:shadow-[var(--shadow-card-strong)]"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-2xl" aria-hidden="true">
-                    {m.icon}
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-foreground">
+                    <ModuleIcon name={m.icon} className="h-5 w-5" />
                   </span>
                   {m.soon ? (
                     <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
