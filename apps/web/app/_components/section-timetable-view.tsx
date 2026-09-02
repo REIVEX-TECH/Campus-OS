@@ -42,7 +42,11 @@ export function SectionTimetableView({
             <p className="text-xs text-muted-foreground">{t('timetable.pendingNote')}</p>
           ) : null}
         </div>
-        <Link className={buttonVariants({ variant: 'outline', size: 'sm' })} href={subscribeHref}>
+        <Link
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          href={subscribeHref}
+          data-print-hide
+        >
           {t('timetable.subscribe')}
         </Link>
       </div>

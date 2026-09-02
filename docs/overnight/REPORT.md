@@ -30,11 +30,14 @@ a separate design session); the future modules are "coming soon" stubs only.
 | #35 app identity                     | `8704459` | App identity that was missing: a branded SVG favicon (`app/icon.svg`), a generated 180x180 apple-touch icon (`next/og`), a web manifest (installable PWA basics), and per-theme `theme-color` for the mobile browser chrome. No binary assets committed. e2e.                                                                                                                                                                   |
 | #36 loading skeleton                 | `e1ed024` | A calm on-brand loading skeleton for the timetable picker (its reads are the heaviest tenant page). Scoped to that leaf route on purpose: a route-group-wide loading boundary streams every tenant page, which turns a `notFound()`/`redirect()` into a committed 200 (the e2e caught exactly this). Verified the skeleton renders via a temporary delay.                                                                       |
 | #37 grid keyboard a11y               | `fbcf656` | Make the flagship week grid a keyboard-focusable, screen-reader-named scroll region (`role="region"`, `aria-label`, `tabIndex=0`, focus ring). It scrolls sideways on narrow screens, so keyboard users can now reach and scroll it (WCAG 2.1.1). e2e asserts the region + tabindex.                                                                                                                                            |
+| #38 report wrap-up (docs)            | `4e1a5be` | Backfilled the final merge SHA and added this session summary (verification approach, performance budget, hard rules, test growth). Docs only.                                                                                                                                                                                                                                                                                  |
+| #39 print stylesheet                 | pending   | A print stylesheet for timetables: drops the interactive chrome (`data-print-hide` on the app header, view switcher, subscribe), forces a clean light layout regardless of theme, flattens elevation, and lets the week grid expand instead of scrolling. The page heading and schedule still print. e2e (print-media emulation) confirms the chrome hides and the heading stays.                                               |
 
 ### Session summary
 
-**17 PRs, all merged to `main` first-try green** (#21 through #37): the eight
-scoped items (#21 to #28) plus nine polish/hardening changes (#29 to #37).
+**19 PRs, all merged to `main` first-try green** (#21 through #39): the eight
+scoped items (#21 to #28) plus eleven polish/hardening changes (#29 to #39, one
+of them this docs wrap-up).
 
 - **Verification.** Every change ran the full gate (`typecheck lint format build`
   - unit/integration + Playwright e2e) locally and in CI before merge. UI was
@@ -51,7 +54,7 @@ scoped items (#21 to #28) plus nine polish/hardening changes (#29 to #37).
   community/marketplace features were built; future modules are "coming soon"
   stubs only. No secret or verification token is committed. No gate was weakened.
   No architectural fork was guessed (none arose this run).
-- **e2e grew** from 13 to 22 specs; the module integration suite from 25 to 27.
+- **e2e grew** from 13 to 24 specs; the module integration suite from 25 to 27.
 
 _The prior run's report follows below._
 

@@ -32,7 +32,10 @@ export function AppShell({
   return (
     <div className="flex min-h-screen flex-col">
       <SkipLink label={t('a11y.skipToContent')} />
-      <header className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur">
+      <header
+        data-print-hide
+        className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur"
+      >
         <div className="mx-auto flex h-14 w-full max-w-[120rem] items-center justify-between gap-4 px-4 sm:px-6">
           <Link
             href={base || '/'}

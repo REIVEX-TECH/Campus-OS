@@ -253,3 +253,49 @@
   --evt-bg: oklch(0.3 0.055 330);
   --evt-bar: oklch(0.72 0.13 330);
 }
+
+/*
+ * Print. Force a clean light layout regardless of the active theme, drop the
+ * interactive chrome (header/nav, view switcher, subscribe button), flatten
+ * elevation, and let the week grid expand instead of scrolling. Tag any extra
+ * screen-only control with `data-print-hide`.
+ */
+@media print {
+  :root,
+  .dark {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #000000;
+    --card: #ffffff;
+    --card-foreground: #000000;
+    --surface: #ffffff;
+    --surface-foreground: #000000;
+    --muted: #f2f2f2;
+    --muted-foreground: #333333;
+    --border: #cccccc;
+    --shadow-card: none;
+    --shadow-card-strong: none;
+  }
+  body {
+    background: #ffffff;
+  }
+  [data-print-hide] {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  .evt {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-left-color: #444444 !important;
+  }
+  a {
+    color: #000000 !important;
+    text-decoration: none;
+  }
+}
