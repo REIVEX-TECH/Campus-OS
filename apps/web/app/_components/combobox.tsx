@@ -20,6 +20,8 @@ export function Combobox({
   onSelect,
   placeholder,
   ariaLabel,
+  disabled = false,
+  describedBy,
 }: {
   id: string;
   value?: string;
@@ -27,15 +29,29 @@ export function Combobox({
   onSelect: (id: string) => void;
   placeholder: string;
   ariaLabel: string;
+  disabled?: boolean;
+  describedBy?: string;
 }) {
   const [enhanced, setEnhanced] = useState(false);
   useEffect(() => setEnhanced(true), []);
+
+  // Locked step (its parent choice is not made yet): a disabled field that shows
+  // the placeholder, so all three steps stay visible and the flow reads as
+  // progressive enabling rather than fields appearing one by one.
+  if (disabled) {
+    return (
+      <Select id={id} aria-label={ariaLabel} aria-describedby={describedBy} value="" disabled>
+        <option value="">{placeholder}</option>
+      </Select>
+    );
+  }
 
   if (!enhanced) {
     return (
       <Select
         id={id}
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
         value={value ?? ''}
         onChange={(e) => onSelect(e.target.value)}
       >
@@ -59,6 +75,7 @@ export function Combobox({
       onSelect={onSelect}
       placeholder={placeholder}
       ariaLabel={ariaLabel}
+      describedBy={describedBy}
     />
   );
 }
@@ -70,6 +87,7 @@ function ComboboxLive({
   onSelect,
   placeholder,
   ariaLabel,
+  describedBy,
 }: {
   id: string;
   value?: string;
@@ -77,6 +95,7 @@ function ComboboxLive({
   onSelect: (id: string) => void;
   placeholder: string;
   ariaLabel: string;
+  describedBy?: string;
 }) {
   const listId = useId();
   const [query, setQuery] = useState('');
@@ -149,6 +168,7 @@ function ComboboxLive({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
         aria-activedescendant={open && filtered[active] ? `${listId}-opt-${active}` : undefined}
         autoComplete="off"
         value={display}

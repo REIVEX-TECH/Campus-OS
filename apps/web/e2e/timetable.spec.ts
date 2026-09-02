@@ -58,6 +58,56 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(await res.text()).toContain('UID:');
 });
 
+test('the picker shows all three steps, enabling section only after a program', async ({
+  page,
+}) => {
+  const [pid] = await programIds(page);
+
+  // Fresh load: semester defaults to the first term, so program is ready; the
+  // section step is visible but disabled with a hint (progressive enabling).
+  await page.goto('/u/lgu/timetable');
+  const section = page.locator('#pick-section');
+  await expect(section).toBeVisible();
+  await expect(section).toBeDisabled();
+  await expect(page.getByText('Choose a program first')).toBeVisible();
+
+  // Choosing a program enables the section step and drops the hint.
+  await page.goto(`/u/lgu/timetable?program=${pid}`);
+  await expect(page.locator('#pick-section')).toBeEnabled();
+  await expect(page.getByText('Choose a program first')).toHaveCount(0);
+});
+
+test('the results skeleton shows while the next section loads', async ({ page }) => {
+  const [pid] = await programIds(page);
+  const sids = await sectionIds(page, pid);
+  expect(sids.length).toBeGreaterThan(0);
+
+  await page.goto(`/u/lgu/timetable?program=${pid}`);
+  await expect(page.locator('#pick-section')).toBeEnabled();
+
+  // Hold the soft-navigation RSC fetch briefly (fetch the real response, then
+  // deliver it after a delay) so the pending skeleton is observable, and the
+  // navigation still commits afterwards.
+  await page.route('**/u/lgu/timetable**', async (route) => {
+    if (route.request().resourceType() === 'fetch') {
+      const response = await route.fetch();
+      await new Promise((r) => setTimeout(r, 600));
+      await route.fulfill({ response });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.locator('#pick-section').selectOption(sids[0]);
+
+  // The results column is marked busy (and shows the skeleton) while the section
+  // loads, then clears once the new content arrives. The pending state is driven
+  // by the picker's transition, so it is reliable on a soft navigation.
+  await expect(page.locator('[aria-busy="true"]')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`section=${sids[0]}`), { timeout: 6000 });
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 6000 });
+});
+
 test('the semester combobox is searchable and keyboard-operable', async ({ page }) => {
   await page.goto('/u/lgu/timetable');
   const semester = page.getByRole('combobox', { name: 'Semester' });

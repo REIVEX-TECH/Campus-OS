@@ -1,5 +1,6 @@
 'use client';
 
+import type { TransitionStartFunction } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Field, Select } from '@campusos/ui';
 import { Combobox } from './combobox';
@@ -13,13 +14,18 @@ export type PickerLabels = {
   chooseSemester: string;
   chooseProgram: string;
   chooseSection: string;
+  programLocked: string;
+  sectionLocked: string;
 };
 
 /**
  * The cascading semester -> program -> section picker. Each choice updates the
  * URL query (?term&program&section); the page re-renders the next control and the
  * timetable inline via a soft navigation (no full reload). State lives in the
- * URL, so it is shareable. Semester and program are searchable comboboxes (long,
+ * URL, so it is shareable. All three steps are always visible: program is
+ * disabled until a semester is chosen and section until a program is chosen
+ * (progressive enabling, not progressive reveal), each with a hint saying what to
+ * pick first. Semester and program are searchable comboboxes (long,
  * order-sensitive lists); section is a short native select.
  */
 export function TimetablePicker({
@@ -30,6 +36,7 @@ export function TimetablePicker({
   program,
   section,
   labels,
+  startTransition,
 }: {
   terms: PickerOption[];
   programs: PickerOption[];
@@ -38,6 +45,9 @@ export function TimetablePicker({
   program?: string;
   section?: string;
   labels: PickerLabels;
+  /** When provided, navigation runs inside this transition so the caller can
+   * show a pending (skeleton) state until the new results arrive. */
+  startTransition?: TransitionStartFunction;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -48,7 +58,10 @@ export function TimetablePicker({
     if (next.program) params.set('program', next.program);
     if (next.section) params.set('section', next.section);
     const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    const href = query ? `${pathname}?${query}` : pathname;
+    const run = (): void => router.replace(href, { scroll: false });
+    if (startTransition) startTransition(run);
+    else run();
   }
 
   return (
@@ -64,37 +77,45 @@ export function TimetablePicker({
         />
       </Field>
 
-      {term ? (
-        <Field label={labels.program} htmlFor="pick-program">
-          <Combobox
-            id="pick-program"
-            ariaLabel={labels.program}
-            placeholder={labels.chooseProgram}
-            value={program}
-            options={programs}
-            onSelect={(v) => go({ term, program: v })}
-          />
-        </Field>
-      ) : null}
+      <Field
+        label={labels.program}
+        htmlFor="pick-program"
+        hint={term ? undefined : labels.programLocked}
+      >
+        <Combobox
+          id="pick-program"
+          ariaLabel={labels.program}
+          placeholder={labels.chooseProgram}
+          value={program}
+          options={programs}
+          onSelect={(v) => go({ term, program: v })}
+          disabled={!term}
+          describedBy={term ? undefined : 'pick-program-hint'}
+        />
+      </Field>
 
-      {term && program ? (
-        <Field label={labels.section} htmlFor="pick-section">
-          <Select
-            id="pick-section"
-            value={section ?? ''}
-            onChange={(e) => go({ term, program, section: e.target.value })}
-          >
-            <option value="" disabled>
-              {labels.chooseSection}
+      <Field
+        label={labels.section}
+        htmlFor="pick-section"
+        hint={program ? undefined : labels.sectionLocked}
+      >
+        <Select
+          id="pick-section"
+          aria-describedby={program ? undefined : 'pick-section-hint'}
+          value={section ?? ''}
+          disabled={!program}
+          onChange={(e) => go({ term, program, section: e.target.value })}
+        >
+          <option value="" disabled>
+            {labels.chooseSection}
+          </option>
+          {sections.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
             </option>
-            {sections.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
+          ))}
+        </Select>
+      </Field>
     </div>
   );
 }
