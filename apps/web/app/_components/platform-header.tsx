@@ -12,7 +12,10 @@ const GITHUB_URL = 'https://github.com/REIVEX-TECH/Campus-OS';
 export function PlatformHeader({ locale = 'en' }: { locale?: string }) {
   const t = translator(locale);
   return (
-    <header className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur">
+    <header
+      data-print-hide
+      className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur"
+    >
       <div className="mx-auto flex h-14 w-full max-w-[120rem] items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="text-base font-semibold tracking-tight">
           CampusOS

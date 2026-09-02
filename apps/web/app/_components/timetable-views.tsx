@@ -63,6 +63,7 @@ export function TimetableViews({
       <div
         role="group"
         aria-label={t('timetable.view.label')}
+        data-print-hide
         className="inline-flex gap-1 self-start rounded-xl bg-input p-1"
       >
         {ORDER.map((key) => {
