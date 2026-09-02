@@ -43,18 +43,18 @@ export default async function TenantHome({ params }: Params) {
   return (
     <PageShell rail={rail}>
       <JsonLd data={universityLd(tenant, tenantUrl)} />
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-5 sm:gap-6">
         <header className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold tracking-tight">{tenant.displayName}</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">{tenant.displayName}</h1>
           <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
         </header>
 
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-3">
           {MODULES.map((m) => (
             <li key={m.key}>
               <Link
                 href={m.soon ? `${base}/soon/${m.key}` : `${base}${m.path ?? ''}`}
-                className="ios-card ios-pressable flex h-full flex-col gap-2 rounded-2xl p-4 hover:shadow-[var(--shadow-card-strong)]"
+                className="ios-card ios-pressable flex h-full flex-col gap-1.5 rounded-2xl p-3.5 hover:shadow-[var(--shadow-card-strong)] sm:gap-2 sm:p-4"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-foreground">

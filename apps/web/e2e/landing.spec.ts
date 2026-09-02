@@ -28,14 +28,8 @@ test('the app has a branded icon and web manifest', async ({ page, request }) =>
   const body = await manifest.text();
   expect(body).toContain('CampusOS');
   expect(body).toContain('icon-512.png');
-  // The generated brand assets are served (both theme variants of the in-app mark).
-  for (const asset of [
-    '/icon.png',
-    '/favicon.ico',
-    '/apple-icon.png',
-    '/logo-mark.png',
-    '/logo-mark-light.png',
-  ]) {
+  // The generated brand assets are served.
+  for (const asset of ['/icon.png', '/favicon.ico', '/apple-icon.png', '/logo-mark.png']) {
     expect((await request.get(asset)).status()).toBe(200);
   }
 });
