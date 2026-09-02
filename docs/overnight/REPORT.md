@@ -16,6 +16,12 @@ Anything stopped rather than guessed is in `DECISIONS.md`.
 | 58  | `feat(web): illustrated generated avatars`                             | `18c7184` |
 | 59  | `feat(identity): the identity data model and its isolation guarantees` | `d1fb575` |
 | 60  | `feat(core): tenant join mode setting`                                 | `2de96c1` |
+| 61  | `docs: overnight run report and open decisions`                        | `a400a66` |
+| 62  | `feat(web): steadier loading for avatars and directories`              | `1e5e564` |
+| 63  | `feat(web): empty states that read as deliberate`                      | `5ac85f2` |
+| 64  | `fix(web): a room hosts courses, it does not teach them`               | `abd0042` |
+| 65  | `fix(web): the profile breadcrumb no longer wraps badly on a phone`    | `a0d4d99` |
+| 66  | `fix(web): the course filter is called Course`                         | `26a248a` |
 
 ---
 
@@ -89,6 +95,25 @@ the session resolution decision anyway.
 was approved and does not depend on membership existing.
 
 ---
+
+## D. Polish
+
+Each its own PR, all additive.
+
+- **Avatars paint their seeded backdrop immediately**, so a directory shows its
+  circles on first paint instead of popping in one at a time as each SVG lands.
+- **Directory loading skeletons** for teachers and rooms, at the real card size.
+  Deliberately not on the profile routes: a loading boundary commits a 200 as soon
+  as it streams, and those routes still 404 for an unknown id. Each file says so.
+- **Empty states** take an optional icon and tighter phone padding, so they read
+  as an answer rather than a card that failed to fill.
+- **A room hosts courses, it does not teach them.** The room profile had inherited
+  the teacher heading "Courses taught".
+- **The profile breadcrumb** wrapped mid phrase on a phone and left the separator
+  dangling at the end of a line. It stacks now, with the separator only when the
+  parts share a line.
+- **The course filter is called Course.** It was labelled "Class", which clashed
+  with "classes" already meaning individual sessions in the same panel.
 
 ## Gate status
 
