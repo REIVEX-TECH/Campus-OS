@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { baseUrlFromHost } from '@/lib/tenant';
 import './globals.css';
 
 // The mobile browser chrome colour, matched to each theme's page background.
@@ -17,7 +18,22 @@ export const viewport: Viewport = {
 // default (see docs/SEO.md and .env.example); no real token lives in the repo.
 const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION;
 
+/**
+ * The absolute origin social cards resolve against. Statically rendered routes
+ * (the 404, the platform opengraph image) have no request host to read, so the
+ * base has to come from configuration; without it Next falls back to
+ * http://localhost:3000 and shared links preview a dead image. Tenant pages
+ * override this per request with their own host in `pageMetadata`.
+ */
+const PLATFORM_ORIGIN = baseUrlFromHost(
+  process.env.PLATFORM_HOST ||
+    process.env.TENANT_BASE_DOMAIN ||
+    process.env.APP_DOMAIN ||
+    'localhost:3000',
+);
+
 export const metadata: Metadata = {
+  metadataBase: new URL(PLATFORM_ORIGIN),
   title: 'CampusOS',
   description: 'An open-source, multi-tenant campus platform.',
   ...(googleSiteVerification ? { verification: { google: googleSiteVerification } } : {}),
