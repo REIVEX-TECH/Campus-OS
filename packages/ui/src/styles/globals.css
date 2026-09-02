@@ -299,3 +299,229 @@
     text-decoration: none;
   }
 }
+
+/*
+ * Tenant app shell (Reddit-style): a persistent left module nav beside the page
+ * content. Desktop = grid [sidebar | content], the sidebar collapsible to icons
+ * and persisted via `data-sidebar` on <html>. Mobile = a sticky top bar over the
+ * content, with the sidebar as an off-canvas drawer. No panel scrolls internally:
+ * the sidebar is sticky and short, the content grows and the PAGE scrolls.
+ */
+@layer components {
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    width: 100%;
+    max-width: 120rem;
+    margin-inline: auto;
+  }
+  .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 3.25rem;
+    padding: 0 0.75rem;
+    background: color-mix(in oklch, var(--color-background) 88%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .app-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    border: 0;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 16rem;
+    max-width: 82vw;
+    padding: 0.75rem;
+    background: var(--color-surface);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+  .app-sidebar.is-open {
+    transform: none;
+    visibility: visible;
+  }
+  .app-content {
+    flex: 1;
+    min-width: 0;
+    padding: 1rem;
+  }
+
+  .sidebar-head {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 2.25rem;
+    padding: 0.25rem 0.5rem;
+  }
+  .sidebar-brand {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-foreground);
+  }
+  .sidebar-collapse,
+  .sidebar-close {
+    display: grid;
+    place-items: center;
+    height: 2rem;
+    width: 2rem;
+    border-radius: 0.5rem;
+    color: var(--color-muted-foreground);
+  }
+  .sidebar-collapse:hover,
+  .sidebar-close:hover {
+    color: var(--color-foreground);
+    background: var(--color-muted);
+  }
+  .sidebar-collapse {
+    display: none;
+    margin-left: auto;
+  }
+  .sidebar-close {
+    margin-left: auto;
+  }
+  .sidebar-collapse .chevron {
+    transition: transform 0.15s ease;
+  }
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .sidebar-nav ul {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    height: 2.25rem;
+    padding: 0 0.625rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    white-space: nowrap;
+  }
+  a.sidebar-item:hover {
+    color: var(--color-foreground);
+    background: var(--color-muted);
+  }
+  .sidebar-item.is-active {
+    color: var(--color-foreground);
+    background: var(--color-muted);
+  }
+  .sidebar-item.is-soon {
+    cursor: default;
+  }
+  .sidebar-icon {
+    flex: none;
+    width: 1.25rem;
+    text-align: center;
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+  .sidebar-soon-tag {
+    margin-left: auto;
+    padding: 0.05rem 0.4rem;
+    border-radius: 9999px;
+    background: var(--color-muted);
+    font-size: 0.6875rem;
+    font-weight: 500;
+  }
+  .sidebar-foot {
+    margin-top: auto;
+    padding: 0.25rem 0.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-sidebar,
+    .sidebar-collapse .chevron,
+    .ios-pressable {
+      transition: none;
+    }
+    .ios-pressable:active {
+      transform: none;
+    }
+  }
+
+  @media (min-width: 768px) {
+    :root[data-sidebar='collapsed'] {
+      --sidebar-w: 3.5rem;
+    }
+    :root:not([data-sidebar='collapsed']) {
+      --sidebar-w: 15rem;
+    }
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w, 15rem) minmax(0, 1fr);
+      align-items: start;
+    }
+    .app-topbar {
+      display: none;
+    }
+    .app-backdrop {
+      display: none !important;
+    }
+    .app-sidebar {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      width: auto;
+      max-width: none;
+      height: auto;
+      overflow: visible;
+      visibility: visible;
+      transform: none;
+      transition: none;
+      background: transparent;
+    }
+    .app-content {
+      padding: 1.25rem 1.5rem;
+    }
+    .sidebar-close {
+      display: none;
+    }
+    .sidebar-collapse {
+      display: grid;
+    }
+    :root[data-sidebar='collapsed'] .sidebar-label {
+      display: none;
+    }
+    :root[data-sidebar='collapsed'] .sidebar-head {
+      justify-content: center;
+    }
+    :root[data-sidebar='collapsed'] .sidebar-collapse {
+      margin-left: 0;
+    }
+    :root[data-sidebar='collapsed'] .sidebar-collapse .chevron {
+      transform: rotate(180deg);
+    }
+    :root[data-sidebar='collapsed'] .sidebar-item {
+      justify-content: center;
+      padding-inline: 0;
+    }
+    :root[data-sidebar='collapsed'] .sidebar-foot {
+      display: flex;
+      justify-content: center;
+    }
+  }
+}
