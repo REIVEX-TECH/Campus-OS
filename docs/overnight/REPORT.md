@@ -29,7 +29,29 @@ a separate design session); the future modules are "coming soon" stubs only.
 | #34 OG images                        | `9a53883` | Generated OpenGraph/Twitter card images (1200x630) via first-party `next/og` (server-only, no client bundle, no external asset): a per-tenant card (brand dot in the tenant accent, university name, tagline) and a platform card. `og:image` + `twitter:image` now wired on every page. e2e.                                                                                                                                   |
 | #35 app identity                     | `8704459` | App identity that was missing: a branded SVG favicon (`app/icon.svg`), a generated 180x180 apple-touch icon (`next/og`), a web manifest (installable PWA basics), and per-theme `theme-color` for the mobile browser chrome. No binary assets committed. e2e.                                                                                                                                                                   |
 | #36 loading skeleton                 | `e1ed024` | A calm on-brand loading skeleton for the timetable picker (its reads are the heaviest tenant page). Scoped to that leaf route on purpose: a route-group-wide loading boundary streams every tenant page, which turns a `notFound()`/`redirect()` into a committed 200 (the e2e caught exactly this). Verified the skeleton renders via a temporary delay.                                                                       |
-| #37 grid keyboard a11y               | pending   | Make the flagship week grid a keyboard-focusable, screen-reader-named scroll region (`role="region"`, `aria-label`, `tabIndex=0`, focus ring). It scrolls sideways on narrow screens, so keyboard users can now reach and scroll it (WCAG 2.1.1). e2e asserts the region + tabindex.                                                                                                                                            |
+| #37 grid keyboard a11y               | `fbcf656` | Make the flagship week grid a keyboard-focusable, screen-reader-named scroll region (`role="region"`, `aria-label`, `tabIndex=0`, focus ring). It scrolls sideways on narrow screens, so keyboard users can now reach and scroll it (WCAG 2.1.1). e2e asserts the region + tabindex.                                                                                                                                            |
+
+### Session summary
+
+**17 PRs, all merged to `main` first-try green** (#21 through #37): the eight
+scoped items (#21 to #28) plus nine polish/hardening changes (#29 to #37).
+
+- **Verification.** Every change ran the full gate (`typecheck lint format build`
+  - unit/integration + Playwright e2e) locally and in CI before merge. UI was
+    checked visually in light **and** dark on a production build via the in-app
+    browser (theme toggle + `colorScheme` emulation); data-backed pages were
+    checked against the local `campusos_dev` slice. Transient states (error
+    boundary, loading skeleton) were proven with temporary instrumentation that was
+    removed before commit.
+- **Performance budget met.** Largest route first-load JS is **121 kB** (section
+  and timetable pages), against the 200 kB/route budget; shared baseline 103 kB.
+  No chart or heavy client library was added (admin charts are SSR CSS; OG images
+  and icons are server-only `next/og`).
+- **Hard rules held.** No auth, accounts, login, Firebase, or
+  community/marketplace features were built; future modules are "coming soon"
+  stubs only. No secret or verification token is committed. No gate was weakened.
+  No architectural fork was guessed (none arose this run).
+- **e2e grew** from 13 to 22 specs; the module integration suite from 25 to 27.
 
 _The prior run's report follows below._
 
