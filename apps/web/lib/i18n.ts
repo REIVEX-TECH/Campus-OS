@@ -38,3 +38,18 @@ export function dayShort(locale: string, isoDay: number): string {
 export function kindName(locale: string, kind: string): string {
   return t(locale, `timetable.kind.${kind}` as MessageKey);
 }
+
+/**
+ * A counted noun in the right plural form, e.g. "1 class" / "4 classes". Uses
+ * Intl.PluralRules so a locale with more than two forms picks correctly rather
+ * than always taking the English "other".
+ */
+export function countText(
+  locale: string,
+  noun: 'classes' | 'courses' | 'days',
+  count: number,
+): string {
+  const form = new Intl.PluralRules(locale).select(count);
+  const key = `count.${noun}.${form === 'one' ? 'one' : 'other'}` as MessageKey;
+  return t(locale, key, { count });
+}

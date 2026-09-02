@@ -124,7 +124,9 @@ test('the semester combobox is searchable and keyboard-operable', async ({ page 
   await semester.press('ArrowDown');
   await semester.press('Enter');
   await expect(page.getByRole('listbox')).toBeHidden();
-  await expect(page).toHaveURL(/term=/);
+  // Picking runs a soft navigation, so the URL lands only after the server
+  // responds; allow for a loaded CI runner rather than the 5s default.
+  await expect(page).toHaveURL(/term=/, { timeout: 15_000 });
 });
 
 test('a teacher name links to the teacher view', async ({ page }) => {

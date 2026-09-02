@@ -5,6 +5,7 @@ import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { countText, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
+import { roomInitials } from '@/lib/room-label';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -18,43 +19,44 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!tenant) return {};
   return pageMetadata({
     tenant,
-    title: translator(tenant.locale)('teachers.heading'),
-    path: `${await tenantBase(slug)}/teachers`,
+    title: translator(tenant.locale)('rooms.heading'),
+    path: `${await tenantBase(slug)}/rooms`,
   });
 }
 
-/** The teacher directory: everyone with published classes, searchable. */
-export default async function TeachersDirectory({ params }: Params) {
+/** The room directory: every room with published classes, searchable. */
+export default async function RoomsDirectory({ params }: Params) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const teachers = await getQueries(slug).listTeachersWithCounts();
+  const rooms = await getQueries(slug).listRoomsWithCounts();
 
-  const items: DirectoryItem[] = teachers.map((x) => ({
-    id: x.id,
-    href: `${base}/teachers/${x.id}`,
-    title: x.name,
-    meta: `${countText(tenant.locale, 'classes', x.classes)}, ${countText(tenant.locale, 'courses', x.courses)}`,
-    badge: x.status === 'pending' ? t('timetable.unverified') : undefined,
+  const items: DirectoryItem[] = rooms.map((r) => ({
+    id: r.id,
+    href: `${base}/rooms/${r.id}`,
+    title: r.name,
+    subtitle: r.building,
+    initials: roomInitials(r.name),
+    meta: `${countText(tenant.locale, 'classes', r.classes)}, ${countText(tenant.locale, 'days', r.days)}`,
   }));
 
   return (
     <PageShell>
       <div className="flex flex-col gap-5">
         <header className="flex flex-col gap-1 px-1">
-          <h1 className="text-2xl font-bold tracking-tight">{t('teachers.heading')}</h1>
-          <p className="max-w-prose text-sm text-muted-foreground">{t('teachers.intro')}</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('rooms.heading')}</h1>
+          <p className="max-w-prose text-sm text-muted-foreground">{t('rooms.intro')}</p>
         </header>
 
         {items.length === 0 ? (
-          <EmptyState title={t('teachers.empty')} />
+          <EmptyState title={t('rooms.empty')} />
         ) : (
           <Directory
             items={items}
-            searchLabel={t('teachers.search')}
-            countTemplate={t('teachers.count', { count: '{count}' })}
-            emptyTemplate={t('teachers.none', { q: '{q}' })}
+            searchLabel={t('rooms.search')}
+            countTemplate={t('rooms.count', { count: '{count}' })}
+            emptyTemplate={t('rooms.none', { q: '{q}' })}
           />
         )}
       </div>

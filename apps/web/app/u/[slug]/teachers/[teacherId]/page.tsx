@@ -10,7 +10,7 @@ import { FreeSlotsCard } from '@/app/_components/profile/free-slots-card';
 import { ProfileHeader } from '@/app/_components/profile/profile-header';
 import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { PendingBadge } from '@/app/_components/timetable-grid';
-import { dayName, translator } from '@/lib/i18n';
+import { countText, dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { formatDuration, timetableStats } from '@/lib/timetable-stats';
 import { getQueries, requireTenant } from '@/lib/timetable';
@@ -111,7 +111,7 @@ export default async function TeacherProfile({ params }: Params) {
                       {c.code} <span className="text-muted-foreground">{c.title}</span>
                     </Link>
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                      {t('profile.classCount', { count: c.classes })}
+                      {countText(tenant.locale, 'classes', c.classes)}
                     </span>
                   </li>
                 ))}
