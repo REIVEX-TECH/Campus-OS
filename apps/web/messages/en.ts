@@ -152,7 +152,7 @@ export const en = {
   'timetable.filters.to': 'To',
   'timetable.filters.day': 'Day',
   'timetable.filters.type': 'Type',
-  'timetable.filters.class': 'Class',
+  'timetable.filters.course': 'Course',
   'timetable.filters.teacher': 'Teacher',
   'timetable.filters.room': 'Room',
   'timetable.filters.clear': 'Clear filters',

@@ -24,7 +24,7 @@ const GROUP_ORDER: GroupId[] = ['day', 'kind', 'course', 'teacher', 'room'];
 const GROUP_LABEL: Record<GroupId, MessageKey> = {
   day: 'timetable.filters.day',
   kind: 'timetable.filters.type',
-  course: 'timetable.filters.class',
+  course: 'timetable.filters.course',
   teacher: 'timetable.filters.teacher',
   room: 'timetable.filters.room',
 };
