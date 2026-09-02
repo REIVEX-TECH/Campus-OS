@@ -95,11 +95,11 @@ export default async function RoomProfile({ params }: Params) {
           <StatGrid stats={figures} />
 
           <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-            <section className="ios-card flex flex-col gap-3 rounded-2xl p-4">
+            <section className="ios-card flex min-w-0 flex-col gap-3 rounded-2xl p-4">
               <h2 className="text-base font-semibold">{t('profile.coursesHere')}</h2>
               <ul className="flex flex-col gap-2">
                 {stats.courses.map((c) => (
-                  <li key={c.id} className="flex items-baseline justify-between gap-3">
+                  <li key={c.id} className="flex min-w-0 items-baseline justify-between gap-3">
                     <Link
                       href={`${base}/courses/${c.id}`}
                       className="min-w-0 truncate text-sm font-medium hover:underline"
