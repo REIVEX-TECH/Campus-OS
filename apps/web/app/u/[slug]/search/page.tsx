@@ -90,7 +90,6 @@ export default async function SearchPage({ params, searchParams }: Params) {
                       className="ios-card ios-pressable flex flex-col gap-0.5 rounded-2xl p-4 hover:shadow-[var(--shadow-card-strong)]"
                     >
                       <span className="font-semibold">{c.title}</span>
-                      <span className="text-sm text-muted-foreground">{c.code}</span>
                     </Link>
                   </li>
                 ))}

@@ -108,7 +108,7 @@ export default async function RoomProfile({ params }: Params) {
                       href={`${base}/courses/${c.id}`}
                       className="min-w-0 truncate text-sm font-medium hover:underline"
                     >
-                      {c.code} <span className="text-muted-foreground">{c.title}</span>
+                      {c.title}
                     </Link>
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       {countText(tenant.locale, 'classes', c.classes)}
