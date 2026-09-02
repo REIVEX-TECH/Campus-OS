@@ -8,6 +8,9 @@ import { timetableEntryKind, type TimetableEntryKind } from '../schema/enums';
 import { ingestionRuns } from '../schema/ingestion';
 import type {
   Freshness,
+  RoomDirectoryEntry,
+  TeacherDirectoryEntry,
+  TeachingWindow,
   ProgramSummary,
   RecordStatus,
   RoomSummary,
@@ -407,6 +410,79 @@ export class TimetableQueries extends TenantScopedRepository {
    * Collects nothing new: every figure is a count of rows already stored.
    * Queries run sequentially on the one tenant-scoped connection.
    */
+  /**
+   * The tenant's observed teaching window over current entries: earliest start,
+   * latest end, and the weekdays that carry classes. Free-slot and utilisation
+   * maths measure against this one window so figures compare across entities.
+   */
+  async teachingWindow(): Promise<TeachingWindow> {
+    return this.run(async (tx) => {
+      const [span] = await tx
+        .select({
+          startsAt: sql<string | null>`min(${timetableEntries.startsAt})`,
+          endsAt: sql<string | null>`max(${timetableEntries.endsAt})`,
+        })
+        .from(timetableEntries)
+        .where(isNull(timetableEntries.validTo));
+      const dayRows = await tx
+        .selectDistinct({ day: timetableEntries.dayOfWeek })
+        .from(timetableEntries)
+        .where(isNull(timetableEntries.validTo));
+      // Postgres returns `time` as HH:MM:SS; the enriched views expose HH:MM, so
+      // trim to keep one shape across the read layer.
+      const hhmm = (v: string | null): string | null => (v ? v.slice(0, 5) : null);
+      return {
+        startsAt: hhmm(span?.startsAt ?? null),
+        endsAt: hhmm(span?.endsAt ?? null),
+        days: dayRows.map((r) => r.day).sort((a, b) => a - b),
+      };
+    });
+  }
+
+  /** Every teacher who has current entries, with counts, for the directory. */
+  listTeachersWithCounts(): Promise<TeacherDirectoryEntry[]> {
+    return this.run(async (tx) => {
+      const rows = await tx
+        .select({
+          id: teachers.id,
+          name: teachers.name,
+          status: teachers.status,
+          classes: sql<number>`count(${timetableEntries.id})::int`,
+          courses: sql<number>`count(distinct ${timetableEntries.courseId})::int`,
+          days: sql<number>`count(distinct ${timetableEntries.dayOfWeek})::int`,
+        })
+        .from(teachers)
+        .innerJoin(
+          timetableEntries,
+          and(eq(timetableEntries.teacherId, teachers.id), isNull(timetableEntries.validTo)),
+        )
+        .groupBy(teachers.id, teachers.name, teachers.status);
+      return rows.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    });
+  }
+
+  /** Every room that has current entries, with counts, for the directory. */
+  listRoomsWithCounts(): Promise<RoomDirectoryEntry[]> {
+    return this.run(async (tx) => {
+      const rows = await tx
+        .select({
+          id: rooms.id,
+          name: rooms.name,
+          building: buildings.name,
+          classes: sql<number>`count(${timetableEntries.id})::int`,
+          days: sql<number>`count(distinct ${timetableEntries.dayOfWeek})::int`,
+        })
+        .from(rooms)
+        .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
+        .innerJoin(
+          timetableEntries,
+          and(eq(timetableEntries.roomId, rooms.id), isNull(timetableEntries.validTo)),
+        )
+        .groupBy(rooms.id, rooms.name, buildings.name);
+      return rows.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
+    });
+  }
+
   async analytics(): Promise<TimetableAnalytics> {
     return this.run(async (tx) => {
       const live = isNull(timetableEntries.validTo);

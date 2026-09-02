@@ -363,3 +363,44 @@ describe('TimetableQueries.freeRooms', () => {
     expect(r101).toEqual({ id: ids.roomId, name: 'R-101', building: 'A Block' });
   });
 });
+
+describe('TimetableQueries directory reads', () => {
+  it('reports the tenant teaching window over current entries', async () => {
+    const w = await createTimetableQueries('aaa').teachingWindow();
+    // Seed: Mon 09:00-10:30 and Wed 11:00-12:30.
+    expect(w.startsAt).toBe('09:00');
+    expect(w.endsAt).toBe('12:30');
+    expect(w.days).toEqual([1, 3]);
+  });
+
+  it('lists teachers that have entries, with counts', async () => {
+    const rows = await createTimetableQueries('aaa').listTeachersWithCounts();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: 'Dr Ayesha',
+      status: 'pending',
+      classes: 1,
+      courses: 1,
+      days: 1,
+    });
+  });
+
+  it('lists rooms that have entries, with their building and counts', async () => {
+    const rows = await createTimetableQueries('aaa').listRoomsWithCounts();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: 'R-101',
+      building: 'A Block',
+      classes: 1,
+      days: 1,
+    });
+  });
+
+  it('is tenant scoped: another tenant sees none of it', async () => {
+    const rows = await createTimetableQueries('zzz').listTeachersWithCounts();
+    expect(rows).toEqual([]);
+    const w = await createTimetableQueries('zzz').teachingWindow();
+    expect(w.startsAt).toBeNull();
+    expect(w.days).toEqual([]);
+  });
+});
