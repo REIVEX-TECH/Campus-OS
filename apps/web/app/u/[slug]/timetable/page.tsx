@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { CalendarSearch } from 'lucide-react';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
@@ -146,7 +147,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
                   title={`${sectionSummary.program.code} ${sectionSummary.name}`}
                 />
               ) : (
-                <EmptyState title={t('timetable.pickPrompt')} />
+                <EmptyState title={t('timetable.pickPrompt')} icon={CalendarSearch} />
               )
             }
           />

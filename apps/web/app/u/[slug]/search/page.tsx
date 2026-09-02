@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { SearchX } from 'lucide-react';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
@@ -54,7 +55,7 @@ export default async function SearchPage({ params, searchParams }: Params) {
       {!active ? (
         <p className="px-1 text-sm text-muted-foreground">{t('search.prompt')}</p>
       ) : empty ? (
-        <EmptyState title={t('search.none', { q })} />
+        <EmptyState title={t('search.none', { q })} icon={SearchX} />
       ) : (
         <div className="flex flex-col gap-6">
           {teachers.length > 0 ? (

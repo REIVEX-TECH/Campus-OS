@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { DoorClosed } from 'lucide-react';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
@@ -88,7 +89,7 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
           </p>
 
           {free.length === 0 ? (
-            <EmptyState title={t('freeRooms.none')} />
+            <EmptyState title={t('freeRooms.none')} icon={DoorClosed} />
           ) : (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {free.map((room) => (
