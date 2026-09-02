@@ -30,8 +30,9 @@ test('a teacher profile shows a generated avatar, stats and free slots', async (
   await first.click();
 
   await expect(page.getByRole('heading', { level: 1 })).toContainText(name);
-  // The avatar is generated inline, so it is an <svg>, not a network image.
-  await expect(page.locator('header svg').first()).toBeAttached();
+  // The avatar is generated on the server and served from the cached avatar
+  // route, so it is an <img> at that path rather than an inline drawing.
+  await expect(page.locator('header img[src^="/api/avatar/person/"]')).toBeAttached();
   // Figures and the free-slot card are both derived from the same class list.
   await expect(page.getByText('Classes a week')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Free slots' })).toBeVisible();

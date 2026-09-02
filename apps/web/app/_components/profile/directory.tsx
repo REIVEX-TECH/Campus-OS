@@ -4,16 +4,18 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { IdentityAvatar } from '../identity-avatar';
+import type { AvatarKind } from '@/lib/avatar';
 
 export type DirectoryItem = {
   id: string;
+  /** Whether this row depicts a person or a place. */
+  kind: AvatarKind;
   href: string;
   title: string;
   /** Quiet second line, e.g. a building or a pending note. */
   subtitle?: string;
   /** Short figures shown under the name, already formatted. */
   meta: string;
-  initials?: string;
   badge?: string;
 };
 
@@ -88,13 +90,7 @@ export function Directory({
                 className="ios-card ios-pressable flex h-full items-center gap-3 rounded-2xl p-3 hover:shadow-[var(--shadow-card-strong)]"
               >
                 <span aria-hidden="true">
-                  <IdentityAvatar
-                    seed={item.id}
-                    label={item.title}
-                    initials={item.initials}
-                    size={40}
-                    shape="circle"
-                  />
+                  <IdentityAvatar seed={item.id} label={item.title} kind={item.kind} size={40} />
                 </span>
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex items-center gap-1.5">
