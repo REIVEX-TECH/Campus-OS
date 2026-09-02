@@ -7,8 +7,13 @@ or a new feature module, **without editing core code**.
 It runs live at **[campusos.reivex.io](https://campusos.reivex.io)**, which is
 the platform home and lists the universities on it. The first tenant is Lahore
 Garrison University at **[lgu.campusos.reivex.io](https://lgu.campusos.reivex.io)**,
-and the first module is **Timetable**: live, searchable class schedules with
-per-section, per-teacher, and per-room views and subscribable calendar feeds.
+and the first module is **Timetable**: live class schedules with per-section,
+per-teacher, and per-room views (a macOS-style week grid plus list, day, and
+timeline layouts) and subscribable calendar feeds. Alongside it the tenant site
+offers **free-room finding** (which rooms are open right now, or at any time) and
+**search** (jump from a teacher to their week or a course to where and when it
+runs). Each tenant home is a module hub; modules still to come appear as
+"coming soon" cards.
 
 The project is young and built in the open. If a rule only ever applies to one
 university, it belongs in that tenant's config or a tenant adapter, never in the
@@ -25,6 +30,10 @@ shared core.
   tenant enables the modules it wants; a disabled module contributes nothing.
 - **Free to run.** Every dependency and hosted service has a free tier or a
   self-hosted equivalent. No paid tier is required for production.
+- **Polished, fast web app.** Server-rendered with light and dark themes, a
+  tenant accent, mobile-first responsive layouts, and accessibility built in
+  (keyboard reachable, WCAG AA, screen-reader labels). SEO and social cards ship
+  per page. No heavy client libraries: the largest route loads well under budget.
 
 Canonical repository: <https://github.com/REIVEX-TECH/Campus-OS>
 
