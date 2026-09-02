@@ -37,3 +37,16 @@ test('a teacher profile shows a generated avatar, stats and free slots', async (
   await expect(page.getByText('Classes a week')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Free slots' })).toBeVisible();
 });
+
+test('a teacher profile fits a phone with no sideways scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/u/lgu/teachers');
+  await page.locator('main li a[data-name]').first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+  const overflow = await page.evaluate(() => {
+    const d = document.documentElement;
+    return d.scrollWidth - d.clientWidth;
+  });
+  expect(overflow).toBe(0);
+});

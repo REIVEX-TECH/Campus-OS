@@ -55,3 +55,18 @@ test('the avatar route renders a cacheable svg and rejects a bad seed', async ({
   expect((await request.get('/api/avatar/wizard/abc-123')).status()).toBe(404);
   expect((await request.get('/api/avatar/person/' + 'x'.repeat(80))).status()).toBe(404);
 });
+
+test('a room profile fits a phone with no sideways scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/u/lgu/rooms');
+  await page.locator('main li a[data-name]').first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+  // A long course title sets the floor for a nowrap link, so a grid or flex item
+  // that forgets min-width:0 pushes the whole page wider than the screen.
+  const overflow = await page.evaluate(() => {
+    const d = document.documentElement;
+    return d.scrollWidth - d.clientWidth;
+  });
+  expect(overflow).toBe(0);
+});
