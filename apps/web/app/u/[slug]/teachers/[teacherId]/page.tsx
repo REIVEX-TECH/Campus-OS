@@ -6,9 +6,13 @@ import { buttonVariants } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FilterableTimetable } from '@/app/_components/filterable-timetable';
 import { FreshnessLine } from '@/app/_components/freshness';
+import { FreeSlotsCard } from '@/app/_components/profile/free-slots-card';
+import { ProfileHeader } from '@/app/_components/profile/profile-header';
+import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { PendingBadge } from '@/app/_components/timetable-grid';
-import { translator } from '@/lib/i18n';
+import { dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
+import { formatDuration, timetableStats } from '@/lib/timetable-stats';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -21,11 +25,21 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const tenant = tenantRegistry.resolveBySlug(slug);
   if (!tenant) return {};
   const teacher = await getQueries(slug).getTeacher(teacherId);
-  const title = teacher?.name ?? translator(tenant.locale)('timetable.teacherTimetable');
-  return pageMetadata({ tenant, title, path: `${await tenantBase(slug)}/teachers/${teacherId}` });
+  if (!teacher) return {};
+  return pageMetadata({
+    tenant,
+    title: teacher.name,
+    path: `${await tenantBase(slug)}/teachers/${teacherId}`,
+  });
 }
 
-export default async function TeacherTimetable({ params }: Params) {
+/**
+ * A teacher profile: who they are, what their week looks like in figures, the
+ * courses they carry, when they are free, and the timetable itself. Every number
+ * is derived from the class list already fetched for the timetable, so the page
+ * makes no extra reads and the figures can never disagree with the grid below.
+ */
+export default async function TeacherProfile({ params }: Params) {
   const { slug, teacherId } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
@@ -35,44 +49,90 @@ export default async function TeacherTimetable({ params }: Params) {
   const teacher = await queries.getTeacher(teacherId);
   if (!teacher) notFound();
 
-  const [views, freshness] = await Promise.all([
+  const [views, freshness, window] = await Promise.all([
     queries.teacherTimetable(teacherId),
     queries.freshness(),
+    queries.teachingWindow(),
   ]);
+
+  const stats = timetableStats(views, window);
+  const figures = [
+    { label: t('profile.classes'), value: String(stats.classes) },
+    { label: t('profile.hours'), value: formatDuration(stats.busyMinutes) },
+    { label: t('profile.days'), value: String(stats.days.length) },
+    { label: t('profile.courses'), value: String(stats.courses.length) },
+    {
+      label: t('profile.busiest'),
+      value: stats.busiestDay ? dayName(tenant.locale, stats.busiestDay) : t('timetable.tba'),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-3 px-1">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">
-            <Link href={`${base}/timetable`} className="text-primary hover:underline">
-              {tenant.displayName}
+      <ProfileHeader
+        seed={teacher.id}
+        title={teacher.name}
+        badge={teacher.status === 'pending' ? <PendingBadge t={t} /> : undefined}
+        context={
+          <>
+            <Link href={`${base}/teachers`} className="text-primary hover:underline">
+              {t('teachers.heading')}
             </Link>{' '}
-            · {t('timetable.teacherTimetable')}
-          </p>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            {teacher.name}
-            {teacher.status === 'pending' ? <PendingBadge t={t} /> : null}
-          </h1>
-          <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
-        </div>
-        <Link
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          href={`${base}/teachers/${teacherId}/timetable.ics`}
-        >
-          {t('timetable.subscribe')}
-        </Link>
-      </header>
+            <span aria-hidden="true">·</span>{' '}
+            <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
+          </>
+        }
+        actions={
+          <Link
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            href={`${base}/teachers/${teacherId}/timetable.ics`}
+          >
+            {t('timetable.subscribe')}
+          </Link>
+        }
+      />
 
       {views.length === 0 ? (
         <EmptyState title={t('timetable.empty.noEntries')} />
       ) : (
-        <FilterableTimetable
-          views={views}
-          title={teacher.name}
-          locale={tenant.locale}
-          base={base}
-        />
+        <>
+          <StatGrid stats={figures} />
+
+          <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+            <section className="ios-card flex flex-col gap-3 rounded-2xl p-4">
+              <h2 className="text-base font-semibold">{t('profile.coursesTaught')}</h2>
+              <ul className="flex flex-col gap-2">
+                {stats.courses.map((c) => (
+                  <li key={c.id} className="flex items-baseline justify-between gap-3">
+                    <Link
+                      href={`${base}/courses/${c.id}`}
+                      className="min-w-0 truncate text-sm font-medium hover:underline"
+                    >
+                      {c.code} <span className="text-muted-foreground">{c.title}</span>
+                    </Link>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {t('profile.classCount', { count: c.classes })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <FreeSlotsCard
+              freeByDay={stats.freeByDay}
+              window={window}
+              locale={tenant.locale}
+              t={t}
+            />
+          </div>
+
+          <FilterableTimetable
+            views={views}
+            title={teacher.name}
+            locale={tenant.locale}
+            base={base}
+          />
+        </>
       )}
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
     </div>
