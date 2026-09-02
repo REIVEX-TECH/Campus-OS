@@ -114,7 +114,7 @@ export function useTimetableFilters(views: TimetableView[], locale: string) {
         value: k,
         label: kindName(locale, k),
       })),
-      course: uniqueOptions(views.map((v) => [v.course.id, v.course.code])).sort((a, b) =>
+      course: uniqueOptions(views.map((v) => [v.course.id, v.course.title])).sort((a, b) =>
         a.label.localeCompare(b.label, locale, { numeric: true }),
       ),
       teacher: uniqueOptions(
@@ -249,6 +249,7 @@ export function TimetableFilters({
                   key={o.value}
                   active={!g.excluded.has(o.value)}
                   onClick={() => g.onToggle(o.value)}
+                  title={o.label}
                 >
                   {o.label}
                 </Chip>
@@ -307,10 +308,12 @@ function ChipGroup({ label, children }: { label: string; children: ReactNode }) 
 function Chip({
   active,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  title?: string;
   children: ReactNode;
 }) {
   return (
@@ -318,7 +321,8 @@ function Chip({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`ios-pressable rounded-full px-3 py-1 text-sm font-medium ${
+      title={title}
+      className={`ios-pressable max-w-[13rem] truncate rounded-full px-3 py-1 text-sm font-medium ${
         active
           ? 'bg-foreground text-background'
           : 'bg-muted text-muted-foreground hover:text-foreground'

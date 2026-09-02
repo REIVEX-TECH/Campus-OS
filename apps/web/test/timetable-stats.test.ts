@@ -48,6 +48,36 @@ describe('timetableStats', () => {
     expect(s.utilisationPct).toBe(50);
   });
 
+  it('collapses repeats of one course into a single tally with its class count', () => {
+    const s = timetableStats(
+      [
+        entry({ startsAt: '09:00', endsAt: '10:00', dayOfWeek: 1 }),
+        entry({ startsAt: '11:00', endsAt: '12:00', dayOfWeek: 2 }),
+        entry({ startsAt: '13:00', endsAt: '14:00', dayOfWeek: 3 }),
+      ],
+      { startsAt: '08:00', endsAt: '17:00', days: [1, 2, 3] },
+    );
+    expect(s.courses).toHaveLength(1);
+    expect(s.courses[0]!.classes).toBe(3);
+  });
+
+  it('keeps a course and its lab separate, since they are different courses', () => {
+    const s = timetableStats(
+      [
+        entry({ startsAt: '09:00', endsAt: '10:00', dayOfWeek: 1 }),
+        entry({
+          startsAt: '11:00',
+          endsAt: '12:00',
+          dayOfWeek: 1,
+          course: { id: 'c1-lab', code: 'CS101-lab', title: 'Intro Lab' },
+        }),
+      ],
+      WINDOW,
+    );
+    expect(s.courses.map((c) => c.id)).toEqual(['c1', 'c1-lab']);
+    expect(s.courses.every((c) => c.classes === 1)).toBe(true);
+  });
+
   it('has no utilisation when the tenant has no window yet', () => {
     const s = timetableStats([], { startsAt: null, endsAt: null, days: [] });
     expect(s.utilisationPct).toBeNull();

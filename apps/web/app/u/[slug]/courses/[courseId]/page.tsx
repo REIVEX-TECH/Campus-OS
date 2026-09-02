@@ -23,9 +23,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const tenant = tenantRegistry.resolveBySlug(slug);
   if (!tenant) return {};
   const course = await getQueries(slug).getCourse(courseId);
-  const title = course
-    ? `${course.title} (${course.code})`
-    : translator(tenant.locale)('search.heading');
+  const title = course ? course.title : translator(tenant.locale)('search.heading');
   return pageMetadata({ tenant, title, path: `${await tenantBase(slug)}/courses/${courseId}` });
 }
 
@@ -57,7 +55,7 @@ export default async function CoursePage({ params }: Params) {
       <JsonLd data={courseLd({ course, url: courseUrl, tenant, tenantUrl, sessions: views })} />
       <header className="flex flex-col gap-1 px-1">
         <Link href={`${base}/search`} className="text-sm text-primary hover:underline">
-          {course.code}
+          {t('search.heading')}
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{course.title}</h1>
         <p className="text-sm text-muted-foreground">{t('search.courseWhere')}</p>
