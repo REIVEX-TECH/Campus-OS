@@ -78,9 +78,12 @@ test('the picker shows all three steps, enabling section only after a program', 
 });
 
 test('the results skeleton shows while the next section loads', async ({ page }) => {
-  const [pid] = await programIds(page);
+  const programs = await programIds(page);
+  expect(programs.length).toBeGreaterThan(0);
+  const pid = programs[0]!;
   const sids = await sectionIds(page, pid);
   expect(sids.length).toBeGreaterThan(0);
+  const sid = sids[0]!;
 
   await page.goto(`/u/lgu/timetable?program=${pid}`);
   await expect(page.locator('#pick-section')).toBeEnabled();
@@ -98,13 +101,13 @@ test('the results skeleton shows while the next section loads', async ({ page })
     await route.continue();
   });
 
-  await page.locator('#pick-section').selectOption(sids[0]);
+  await page.locator('#pick-section').selectOption(sid);
 
   // The results column is marked busy (and shows the skeleton) while the section
   // loads, then clears once the new content arrives. The pending state is driven
   // by the picker's transition, so it is reliable on a soft navigation.
   await expect(page.locator('[aria-busy="true"]')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`section=${sids[0]}`), { timeout: 6000 });
+  await expect(page).toHaveURL(new RegExp(`section=${sid}`), { timeout: 6000 });
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 6000 });
 });
 
