@@ -1,24 +1,18 @@
 /**
- * Regenerate every brand asset from the two source logos. Run when a source
- * changes:  pnpm --filter web brand:assets
+ * Regenerate every brand asset from the filled logo source. Run when it changes:
+ *   pnpm --filter web brand:assets
  *
- * Two sources, both a 1254x1254 teal-on-black PNG with no alpha:
- *   assets/photos/logo.png         teal mark on black  (reads on dark surfaces)
- *   assets/photos/logo_filled.png  teal disc with a dark mark on black
- *                                  (reads on light surfaces)
+ * Source: assets/photos/logo_filled.png, a teal disc with a knocked-out mark on
+ * black. Everything derives from it so the brand is one consistent silhouette:
+ *   - The in-app logo mark (logo-mark.png): the disc on transparent, one look in
+ *     both themes (self-contained, so it reads on light and dark).
+ *   - App icons: a transparent disc for the browser tab (favicon.ico, icon.png)
+ *     and opaque disc tiles for launchers and the PWA (apple-icon.png,
+ *     icon-192/512, maskable), where a solid field is expected.
  *
- * From them we derive:
- *   - The in-app logo mark, theme-aware: logo-mark.png (the teal mark, black
- *     turned to alpha) for dark, logo-mark-light.png (the teal disc, circular
- *     alpha) for light. The component swaps them on the theme class.
- *   - App icons from the filled disc: a transparent disc for the browser tab
- *     (favicon.ico, icon.png) and opaque disc tiles for launchers and the PWA
- *     (apple-icon.png, icon-192/512, maskable), where a solid field is expected.
- *
- * For the mark, black -> alpha is exact: a pixel is (facet colour x coverage)
- * over pure black, so dividing by coverage recovers the facet with straight
- * alpha and no dark fringe. No dependency beyond sharp (Apache-2.0), already used
- * by Next for image optimisation and declared as a devDependency here.
+ * (assets/photos/logo.png, the open teal mark, is kept as an archived alternate
+ * and is not used here.) No dependency beyond sharp (Apache-2.0), already used by
+ * Next for image optimisation and declared as a devDependency here.
  */
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -27,7 +21,6 @@ import sharp from 'sharp';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const SRC = resolve(repoRoot, 'assets/photos/logo.png');
 const SRC_FILLED = resolve(repoRoot, 'assets/photos/logo_filled.png');
 const APP = resolve(here, '../app');
 const PUBLIC = resolve(here, '../public');
@@ -48,43 +41,6 @@ async function tile(src, size, innerRatio) {
     create: { width: size, height: size, channels: 3, background: '#000000' },
   })
     .composite([{ input: content, gravity: 'center' }])
-    .png()
-    .toBuffer();
-}
-
-// The teal mark on transparent: black -> alpha, un-premultiplied so edges stay
-// teal (used on the filled-mark source, for dark surfaces).
-async function transparentMark(src, size) {
-  const { data, info } = await sharp(await trimmed(src))
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const { width, height, channels } = info;
-  // Brightest channel anywhere ~= a solidly covered teal pixel; use it to map
-  // coverage so solid facets land at alpha 255, not at teal's own brightness.
-  let solidMax = 1;
-  for (let i = 0; i < data.length; i += channels) {
-    const m = Math.max(data[i], data[i + 1], data[i + 2]);
-    if (m > solidMax) solidMax = m;
-  }
-  const out = Buffer.alloc(width * height * 4);
-  for (let p = 0, q = 0; p < data.length; p += channels, q += 4) {
-    const r = data[p];
-    const g = data[p + 1];
-    const b = data[p + 2];
-    const cov = Math.min(1, Math.max(r, g, b) / solidMax); // 0..1 coverage
-    const a = Math.round(cov * 255);
-    if (a === 0) {
-      out[q] = out[q + 1] = out[q + 2] = out[q + 3] = 0;
-    } else {
-      out[q] = Math.min(255, Math.round(r / cov));
-      out[q + 1] = Math.min(255, Math.round(g / cov));
-      out[q + 2] = Math.min(255, Math.round(b / cov));
-      out[q + 3] = a;
-    }
-  }
-  return sharp(out, { raw: { width, height, channels: 4 } })
-    .resize(size, size, { fit: 'inside', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
 }
@@ -147,11 +103,11 @@ async function main() {
   await writeFile(resolve(PUBLIC, 'icon-512.png'), await tile(SRC_FILLED, 512, 0.92));
   await writeFile(resolve(PUBLIC, 'icon-maskable-512.png'), await tile(SRC_FILLED, 512, 0.66));
 
-  // In-app logo mark, theme-aware: teal mark for dark, teal disc for light.
-  await writeFile(resolve(PUBLIC, 'logo-mark.png'), await transparentMark(SRC, 128));
-  await writeFile(resolve(PUBLIC, 'logo-mark-light.png'), await disc(SRC_FILLED, 128));
+  // In-app logo mark: the filled disc, one silhouette in both themes (it is
+  // self-contained, so it reads on light and dark and matches the app icons).
+  await writeFile(resolve(PUBLIC, 'logo-mark.png'), await disc(SRC_FILLED, 128));
 
-  console.log('brand assets written from logo.png + logo_filled.png');
+  console.log('brand assets written from logo_filled.png');
 }
 
 main().catch((err) => {

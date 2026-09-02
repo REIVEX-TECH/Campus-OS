@@ -183,7 +183,7 @@ export function Sidebar({
             title={collapseLabel}
             className="sidebar-collapse ios-pressable"
           >
-            <ChevronIcon />
+            <MenuIcon />
           </button>
           <button
             type="button"
@@ -250,23 +250,6 @@ function MenuIcon() {
       aria-hidden="true"
     >
       <path d="M3 6h18M3 12h18M3 18h18" />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      className="chevron h-[18px] w-[18px]"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M15 6l-6 6 6 6" />
     </svg>
   );
 }
