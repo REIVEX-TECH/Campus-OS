@@ -31,13 +31,20 @@ a separate design session); the future modules are "coming soon" stubs only.
 | #36 loading skeleton                 | `e1ed024` | A calm on-brand loading skeleton for the timetable picker (its reads are the heaviest tenant page). Scoped to that leaf route on purpose: a route-group-wide loading boundary streams every tenant page, which turns a `notFound()`/`redirect()` into a committed 200 (the e2e caught exactly this). Verified the skeleton renders via a temporary delay.                                                                       |
 | #37 grid keyboard a11y               | `fbcf656` | Make the flagship week grid a keyboard-focusable, screen-reader-named scroll region (`role="region"`, `aria-label`, `tabIndex=0`, focus ring). It scrolls sideways on narrow screens, so keyboard users can now reach and scroll it (WCAG 2.1.1). e2e asserts the region + tabindex.                                                                                                                                            |
 | #38 report wrap-up (docs)            | `4e1a5be` | Backfilled the final merge SHA and added this session summary (verification approach, performance budget, hard rules, test growth). Docs only.                                                                                                                                                                                                                                                                                  |
-| #39 print stylesheet                 | pending   | A print stylesheet for timetables: drops the interactive chrome (`data-print-hide` on the app header, view switcher, subscribe), forces a clean light layout regardless of theme, flattens elevation, and lets the week grid expand instead of scrolling. The page heading and schedule still print. e2e (print-media emulation) confirms the chrome hides and the heading stays.                                               |
+| #39 print stylesheet                 | `5c46433` | A print stylesheet for timetables: drops the interactive chrome (`data-print-hide` on the app header, view switcher, subscribe), forces a clean light layout regardless of theme, flattens elevation, and lets the week grid expand instead of scrolling. The page heading and schedule still print. e2e (print-media emulation) confirms the chrome hides and the heading stays.                                               |     | #40 report finalize (docs) | pending | Backfill #39's SHA and record the accessibility audit result below. Docs only; the closing entry. |
 
 ### Session summary
 
-**19 PRs, all merged to `main` first-try green** (#21 through #39): the eight
-scoped items (#21 to #28) plus eleven polish/hardening changes (#29 to #39, one
-of them this docs wrap-up).
+**20 PRs, all merged to `main` first-try green** (#21 through #40): the eight
+scoped items (#21 to #28) plus twelve polish/hardening changes (#29 to #40, two
+of them docs: the wrap-up and this finalize).
+
+- **Accessibility audit (no code change).** Confirmed every form control is
+  labelled: the search box (`aria-label`), the free-rooms day/from/to controls
+  and the room-rename field (`<Field>` + `htmlFor`/`id`), and the admin login
+  password (`<Field>` + `htmlFor`/`id`); action buttons carry visible text. The
+  codebase already meets the CLAUDE.md form-labelling rule, so nothing was
+  changed.
 
 - **Verification.** Every change ran the full gate (`typecheck lint format build`
   - unit/integration + Playwright e2e) locally and in CI before merge. UI was
