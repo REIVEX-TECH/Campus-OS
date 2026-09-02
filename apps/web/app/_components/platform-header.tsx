@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { translator } from '@/lib/i18n';
+import { LogoMark } from './logo-mark';
 import { ThemeToggle } from './theme-toggle';
 
 const GITHUB_URL = 'https://github.com/REIVEX-TECH/Campus-OS';
@@ -17,7 +18,8 @@ export function PlatformHeader({ locale = 'en' }: { locale?: string }) {
       className="sticky top-0 z-20 bg-background/85 shadow-[var(--shadow-card)] backdrop-blur"
     >
       <div className="mx-auto flex h-14 w-full max-w-[120rem] items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="text-base font-semibold tracking-tight">
+        <Link href="/" className="flex items-center gap-2 text-base font-semibold tracking-tight">
+          <LogoMark size={24} className="shrink-0" />
           CampusOS
         </Link>
         <nav className="flex items-center gap-1">

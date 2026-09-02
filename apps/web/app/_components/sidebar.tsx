@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModuleIconName } from '@/lib/modules';
+import { LogoMark } from './logo-mark';
 import { ModuleIcon } from './module-icon';
 import { ThemeToggle } from './theme-toggle';
 
@@ -134,8 +135,11 @@ export function Sidebar({
         >
           <MenuIcon />
         </button>
-        <Link href={homeHref} className="min-w-0 truncate text-base font-semibold tracking-tight">
-          {tenantName}
+        <Link href={homeHref} aria-label={tenantName} className="flex min-w-0 items-center gap-2">
+          <LogoMark size={22} className="shrink-0" />
+          <span className="min-w-0 truncate text-base font-semibold tracking-tight">
+            {tenantName}
+          </span>
         </Link>
         <div className="ml-auto">
           <ThemeToggle label={labels.theme} />
@@ -165,9 +169,11 @@ export function Sidebar({
           <Link
             href={homeHref}
             onClick={closeForNav}
-            className="sidebar-brand sidebar-label min-w-0 truncate"
+            aria-label={tenantName}
+            className="sidebar-brand-link min-w-0"
           >
-            {tenantName}
+            <LogoMark size={22} className="shrink-0" />
+            <span className="sidebar-brand sidebar-label min-w-0 truncate">{tenantName}</span>
           </Link>
           <button
             type="button"
