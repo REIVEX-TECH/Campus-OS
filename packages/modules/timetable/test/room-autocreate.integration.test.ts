@@ -8,7 +8,7 @@ import {
   runAsMigrationRole,
   runBaseMigrations,
 } from '@campusos/db/migrate';
-import { rooms, universities } from '@campusos/db/schema';
+import { buildings, rooms, universities } from '@campusos/db/schema';
 import type { NormalizedBatch } from '@campusos/core/ingestion';
 import { migrationsFolder } from '../src/manifest';
 import { TimetableSink } from '../src/ingestion/sink';
@@ -167,5 +167,38 @@ describe('TimetableSink (room auto-create)', () => {
 
     expect((await roomList('aaa')).map((r) => r.name)).toEqual(['Room 25 NB']);
     expect((await roomList('bbb')).map((r) => r.name)).toEqual(['Room 99 OB']);
+  });
+});
+
+describe('TimetableSink (building inference)', () => {
+  async function buildingOf(tenant: string, roomName: string) {
+    const rows = await withTenant(tenant, (tx) =>
+      tx
+        .select({ name: buildings.name, code: buildings.code })
+        .from(rooms)
+        .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
+        .where(and(eq(rooms.name, roomName), isNull(rooms.deletedAt))),
+    );
+    return rows[0] ?? null;
+  }
+
+  it('files a room under the building its trailing block code names', async () => {
+    await ingest('aaa', ['Lab 15 NB', 'Lab 18 OB', 'Room 25 NB']);
+    expect(await buildingOf('aaa', 'Lab 15 NB')).toEqual({ name: 'NB', code: 'NB' });
+    expect(await buildingOf('aaa', 'Room 25 NB')).toEqual({ name: 'NB', code: 'NB' });
+    expect(await buildingOf('aaa', 'Lab 18 OB')).toEqual({ name: 'OB', code: 'OB' });
+    // One building per code, not one per room.
+    const all = await withTenant('aaa', (tx) =>
+      tx.select({ code: buildings.code }).from(buildings).where(isNull(buildings.deletedAt)),
+    );
+    expect(all.filter((b) => b.code === 'NB')).toHaveLength(1);
+  });
+
+  it('keeps the safety valve: a name with no code stays unassigned', async () => {
+    await ingest('aaa', ['Kitchen Lab']);
+    expect(await buildingOf('aaa', 'Kitchen Lab')).toEqual({
+      name: 'Unassigned Building',
+      code: null,
+    });
   });
 });

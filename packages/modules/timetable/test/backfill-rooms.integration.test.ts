@@ -310,3 +310,65 @@ describe('AdminRoomsRepository.backfillRooms', () => {
     expect(await roomList('bbb')).toHaveLength(0);
   });
 });
+
+describe('AdminRoomsRepository buildings', () => {
+  it('moves an unassigned room into the building its name declares, once', async () => {
+    await seedPendingRooms('aaa', ['Lab 15 NB']);
+    const repo = new AdminRoomsRepository('aaa');
+    // First run creates the room; with inference it lands in NB directly.
+    const first = await repo.backfillRooms();
+    expect(first.roomsCreated).toBe(1);
+
+    // Simulate a room that predates inference: put it back in the placeholder.
+    await withTenant('aaa', async (tx) => {
+      const [placeholder] = await tx
+        .select({ id: buildings.id })
+        .from(buildings)
+        .where(eq(buildings.name, 'Unassigned Building'));
+      const [room] = await tx
+        .select({ id: rooms.id })
+        .from(rooms)
+        .where(eq(rooms.name, 'Lab 15 NB'));
+      if (!placeholder) {
+        const [campus] = await tx.select({ id: campuses.id }).from(campuses).limit(1);
+        const [made] = await tx
+          .insert(buildings)
+          .values({ tenantId: 'aaa', campusId: campus!.id, name: 'Unassigned Building' })
+          .returning({ id: buildings.id });
+        await tx.update(rooms).set({ buildingId: made!.id }).where(eq(rooms.id, room!.id));
+      } else {
+        await tx.update(rooms).set({ buildingId: placeholder.id }).where(eq(rooms.id, room!.id));
+      }
+    });
+
+    const second = await repo.backfillRooms();
+    expect(second.buildingsAssigned).toBe(1);
+    const list = await repo.listBuildings();
+    expect(list.find((b) => b.code === 'NB')?.roomCount).toBe(1);
+
+    // Idempotent: nothing left to move.
+    expect((await repo.backfillRooms()).buildingsAssigned).toBe(0);
+  });
+
+  it('renames a building without touching its code', async () => {
+    await seedPendingRooms('aaa', ['Lab 18 OB']);
+    const repo = new AdminRoomsRepository('aaa');
+    await repo.backfillRooms();
+    const ob = (await repo.listBuildings()).find((b) => b.code === 'OB');
+    expect(ob).toBeDefined();
+    expect(await repo.renameBuilding(ob!.id, '  Old Block ')).toEqual({
+      id: ob!.id,
+      name: 'Old Block',
+    });
+    expect(await repo.renameBuilding(ob!.id, '   ')).toBeNull();
+    const after = (await repo.listBuildings()).find((b) => b.id === ob!.id);
+    expect(after).toMatchObject({ name: 'Old Block', code: 'OB' });
+  });
+
+  it("is tenant isolated: one tenant cannot rename another tenant's building", async () => {
+    await seedPendingRooms('aaa', ['Lab 18 OB']);
+    await new AdminRoomsRepository('aaa').backfillRooms();
+    const ob = (await new AdminRoomsRepository('aaa').listBuildings()).find((b) => b.code === 'OB');
+    expect(await new AdminRoomsRepository('bbb').renameBuilding(ob!.id, 'Stolen')).toBeNull();
+  });
+});

@@ -74,7 +74,7 @@ describe('AdminRoomsRepository (read-mostly list + rename)', () => {
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({
       name: 'Room 25 NB',
-      buildingName: 'Unassigned Building',
+      buildingName: 'NB',
       capacity: null,
       entryCount: 1,
     });

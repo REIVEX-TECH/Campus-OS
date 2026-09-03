@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { roomDedupKey, roomDisplayName } from '../src/domain/room-key';
+import { inferBuildingCode, roomDedupKey, roomDisplayName } from '../src/domain/room-key';
 
 describe('roomDedupKey', () => {
   it('collapses case, whitespace, and separator variants to one key', () => {
@@ -34,5 +34,23 @@ describe('roomDisplayName', () => {
     expect(roomDisplayName('  Lab 15   NB ')).toBe('Lab 15 NB');
     expect(roomDisplayName('LAB-15-NB')).toBe('LAB-15-NB');
     expect(roomDisplayName('Kitchen Lab')).toBe('Kitchen Lab');
+  });
+});
+
+describe('inferBuildingCode', () => {
+  it('reads a trailing two or three letter block code', () => {
+    expect(inferBuildingCode('Lab 15 NB')).toBe('NB');
+    expect(inferBuildingCode('Lab 18 OB')).toBe('OB');
+    expect(inferBuildingCode('Room 25  NB ')).toBe('NB');
+    expect(inferBuildingCode('Seminar Hall ABC')).toBe('ABC');
+  });
+
+  it('keeps the safety valve: no recognisable suffix means no building', () => {
+    expect(inferBuildingCode('Kitchen Lab')).toBeNull();
+    expect(inferBuildingCode('Room 101')).toBeNull();
+    expect(inferBuildingCode('Lab 15 nb')).toBeNull();
+    expect(inferBuildingCode('Auditorium A')).toBeNull();
+    expect(inferBuildingCode('NB')).toBeNull();
+    expect(inferBuildingCode('')).toBeNull();
   });
 });

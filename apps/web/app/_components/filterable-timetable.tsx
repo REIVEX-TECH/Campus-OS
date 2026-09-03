@@ -31,10 +31,19 @@ export function FilterableTimetable({
 }) {
   const t = useMemo(() => translator(locale), [locale]);
   const { filtered, open, setOpen, activeCount, filterProps } = useTimetableFilters(views, locale);
+  // One quiet note for the whole schedule, as the section page does, instead
+  // of a badge on every row. view.pending already folds in the section's own
+  // pending status, so this one line covers both.
+  const anyPending = views.some((v) => v.pending);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end" data-print-hide>
+      <div className="flex flex-wrap items-center justify-between gap-2" data-print-hide>
+        {anyPending ? (
+          <p className="text-xs text-muted-foreground">{t('timetable.pendingNote')}</p>
+        ) : (
+          <span />
+        )}
         <FilterToggle open={open} setOpen={setOpen} activeCount={activeCount} t={t} />
       </div>
 

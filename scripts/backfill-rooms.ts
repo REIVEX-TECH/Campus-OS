@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     const r = await new AdminRoomsRepository(tenant.slug).backfillRooms();
     duplicateKeys += r.duplicateKeys;
     console.log(
-      `✓ backfill ${tenant.slug} keys=${r.keysBackfilled} rooms=${r.roomsCreated} ` +
+      `✓ backfill ${tenant.slug} keys=${r.keysBackfilled} buildings=${r.buildingsAssigned} rooms=${r.roomsCreated} ` +
         `relinked=${r.entriesRelinked} closed=${r.entriesClosed} resolved=${r.pendingResolved} ` +
         `dupkeys=${r.duplicateKeys}`,
     );
