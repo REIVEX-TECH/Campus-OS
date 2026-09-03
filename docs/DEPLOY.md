@@ -34,23 +34,29 @@ deployment at **lgu.campusos.reivex.io**, using **Vercel** (Next.js hosting) and
    - **Direct** (unpooled): used for migrations, seeding, and ingestion (they do
      DDL and benefit from a stable session).
    - **Pooled** (has `-pooler` in the host): used for the serverless app runtime.
-3. Create the least-privilege app role and the production database. In the Neon
-   SQL editor (connected as your project owner role), run, replacing the
-   password with a strong secret you generate (do NOT reuse the dev password):
+3. Create the two roles and the production database. In the Neon SQL editor
+   (connected as your project owner role), run, replacing each password with a
+   strong secret you generate (do NOT reuse the dev password, and use a different
+   one for each role):
 
    ```sql
+   CREATE ROLE campusos_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+     NOBYPASSRLS PASSWORD '<STRONG_OWNER_SECRET>';
    CREATE ROLE campusos_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-     NOBYPASSRLS PASSWORD '<STRONG_SECRET>';
-   CREATE DATABASE campusos OWNER campusos_app;
+     NOBYPASSRLS PASSWORD '<STRONG_APP_SECRET>';
+   CREATE DATABASE campusos OWNER campusos_owner;
    ```
 
-   `NOBYPASSRLS` is essential: it guarantees RLS applies to the app role. Build
-   the app's connection strings by putting `campusos_app` and `<STRONG_SECRET>`
-   into the Neon direct and pooled hosts, database `campusos`.
+   Then, connected to the `campusos` database, apply `scripts/db-grants.sql`,
+   which is the single definition of what the runtime role may do.
 
-   > Neon roles never bypass RLS and there is no superuser for users, so even the
-   > owner role is safe behind our `FORCE ROW LEVEL SECURITY`. A dedicated
-   > `campusos_app` role is still the least-privilege choice.
+   `campusos_owner` owns the schema and runs migrations; `campusos_app` serves
+   traffic, owns nothing, and holds only SELECT, INSERT, UPDATE and DELETE. It has
+   no TRUNCATE on purpose: TRUNCATE ignores RLS, so a runtime role holding it
+   could empty every tenant in one statement. `NOBYPASSRLS` on both is essential.
+
+   Build `DATABASE_URL` from `campusos_app` and `MIGRATION_DATABASE_URL` from
+   `campusos_owner`, using the Neon pooled and direct hosts respectively.
 
 ## 2. Migrate, seed, and do the first full ingest (against Neon)
 
