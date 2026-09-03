@@ -4,4 +4,5 @@ export * from './hash';
 export * from './diff';
 export * from './conflicts';
 export * from './free-rooms';
+export * from './intervals';
 export * from './room-key';

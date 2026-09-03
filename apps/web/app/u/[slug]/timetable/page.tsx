@@ -82,7 +82,6 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
   const nowT = tenantNow(tenant.timezone);
   const freeNow = term
     ? await queries.freeRooms({
-        termId: term,
         dayOfWeek: nowT.dayOfWeek,
         startsAt: toHHMM(nowT.minutes),
         endsAt: toHHMM(Math.min(nowT.minutes + 60, 24 * 60 - 1)),

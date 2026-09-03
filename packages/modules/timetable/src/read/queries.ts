@@ -1,7 +1,7 @@
 import { and, count, desc, eq, exists, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { TenantScopedRepository, type TenantTransaction } from '@campusos/db';
 import { buildings, rooms } from '@campusos/db/schema';
-import { freeRooms as computeFreeRooms, type TimeWindow } from '../domain/index';
+import { freeRooms as computeFreeRooms, type OccupiedSlot, type TimeWindow } from '../domain/index';
 import { academicTerms, courses, programs, sections, teachers } from '../schema/catalog';
 import { timetableEntries } from '../schema/entries';
 import { timetableEntryKind, type TimetableEntryKind } from '../schema/enums';
@@ -347,20 +347,19 @@ export class TimetableQueries extends TenantScopedRepository {
   }
 
   /**
-   * Public "free rooms": live rooms with no current entry overlapping the given
-   * day + time window in a term. Returns room name + building, sorted by name.
+   * Every current class in a room on one weekday, across every term.
+   *
+   * THE definition of "this room is busy" for the read model. The room page
+   * shows a room's schedule as its current entries with no term filter; anything
+   * that decides whether a room is free must look at exactly the same rows, or
+   * the two disagree. They did: free-rooms filtered by one term while the room
+   * page showed classes from another, and a room with a class in it was listed
+   * as free for that very slot. A closed version (`valid_to` set) is history,
+   * and an entry with no resolved room occupies nothing.
    */
-  freeRooms(
-    query: { termId: string } & TimeWindow,
-  ): Promise<{ id: string; name: string; building: string }[]> {
+  occupancy(dayOfWeek: number): Promise<OccupiedSlot[]> {
     return this.run(async (tx) => {
-      const roomRows = await tx
-        .select({ id: rooms.id, name: rooms.name, building: buildings.name })
-        .from(rooms)
-        .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
-        .where(isNull(rooms.deletedAt))
-        .orderBy(rooms.name);
-      const occupied = await tx
+      const rows = await tx
         .select({
           roomId: timetableEntries.roomId,
           dayOfWeek: timetableEntries.dayOfWeek,
@@ -368,14 +367,8 @@ export class TimetableQueries extends TenantScopedRepository {
           endsAt: timetableEntries.endsAt,
         })
         .from(timetableEntries)
-        .where(
-          and(
-            eq(timetableEntries.termId, query.termId),
-            eq(timetableEntries.dayOfWeek, query.dayOfWeek),
-            isNull(timetableEntries.validTo),
-          ),
-        );
-      const slots = occupied
+        .where(and(eq(timetableEntries.dayOfWeek, dayOfWeek), isNull(timetableEntries.validTo)));
+      return rows
         .filter((o): o is typeof o & { roomId: string } => o.roomId !== null)
         .map((o) => ({
           roomId: o.roomId,
@@ -383,15 +376,35 @@ export class TimetableQueries extends TenantScopedRepository {
           startsAt: o.startsAt,
           endsAt: o.endsAt,
         }));
-      const free = new Set(
-        computeFreeRooms(
-          roomRows.map((r) => r.id),
-          slots,
-          query,
-        ),
-      );
-      return roomRows.filter((r) => free.has(r.id));
     });
+  }
+
+  /**
+   * Public "free rooms": live rooms with no current class overlapping the
+   * window, on that weekday, in any term. Returns room name and building,
+   * sorted by name. Built on `occupancy`, so it cannot disagree with a room's
+   * own page about whether the room is in use.
+   */
+  async freeRooms(window: TimeWindow): Promise<{ id: string; name: string; building: string }[]> {
+    const [roomRows, slots] = await Promise.all([
+      this.run((tx) =>
+        tx
+          .select({ id: rooms.id, name: rooms.name, building: buildings.name })
+          .from(rooms)
+          .innerJoin(buildings, eq(buildings.id, rooms.buildingId))
+          .where(isNull(rooms.deletedAt))
+          .orderBy(rooms.name),
+      ),
+      this.occupancy(window.dayOfWeek),
+    ]);
+    const free = new Set(
+      computeFreeRooms(
+        roomRows.map((r) => r.id),
+        slots,
+        window,
+      ),
+    );
+    return roomRows.filter((r) => free.has(r.id));
   }
 
   async getRoom(roomId: string): Promise<RoomSummary | null> {

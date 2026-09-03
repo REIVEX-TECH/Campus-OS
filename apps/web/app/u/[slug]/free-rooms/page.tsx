@@ -46,11 +46,11 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
   const from = toHHMM(fromMin);
   const to = toHHMM(toMin);
 
+  // Terms decide only whether a timetable exists at all. Occupancy is read
+  // across every term, exactly as a room's own page reads its schedule.
   const terms = await queries.listTermsWithSections();
   const termId = terms[0]?.id;
-  const free = termId
-    ? await queries.freeRooms({ termId, dayOfWeek, startsAt: from, endsAt: to })
-    : [];
+  const free = termId ? await queries.freeRooms({ dayOfWeek, startsAt: from, endsAt: to }) : [];
 
   const days = [1, 2, 3, 4, 5, 6, 7].map((d) => dayName(tenant.locale, d));
 
