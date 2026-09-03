@@ -84,7 +84,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Bootstrap roles and databases
-        run: psql -h localhost -U postgres -f scripts/db-bootstrap.sql
+        run: psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f scripts/db-bootstrap.sql
+
+      - name: Verify the role split
+        run: |
+          psql -h localhost -U postgres -d campusos_dev -v ON_ERROR_STOP=1 -f scripts/db-verify.sql
+          psql -h localhost -U postgres -d campusos_test -v ON_ERROR_STOP=1 -f scripts/db-verify.sql
 
       - name: Run all migrations
         run: pnpm db:migrate:all
@@ -142,7 +147,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Bootstrap roles and databases
-        run: psql -h localhost -U postgres -f scripts/db-bootstrap.sql
+        run: psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f scripts/db-bootstrap.sql
+
+      - name: Verify the role split
+        run: |
+          psql -h localhost -U postgres -d campusos_dev -v ON_ERROR_STOP=1 -f scripts/db-verify.sql
+          psql -h localhost -U postgres -d campusos_test -v ON_ERROR_STOP=1 -f scripts/db-verify.sql
 
       - name: Migrate and seed
         run: pnpm db:migrate:all && pnpm db:seed
