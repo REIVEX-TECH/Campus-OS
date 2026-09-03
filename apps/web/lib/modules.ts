@@ -29,6 +29,11 @@ export interface ModuleCard {
   path?: string;
   soon: boolean;
   /**
+   * Kept out of the left navigation. The search box in the top bar is on every
+   * page, so a second way to reach the same page would only take a row.
+   */
+  hideFromNav?: boolean;
+  /**
    * Will need to know who is acting once it ships. Drives the sign in page's
    * list of where a handle will be used; the map is read only, so it is absent.
    */
@@ -38,7 +43,7 @@ export interface ModuleCard {
 export const MODULES: ModuleCard[] = [
   { key: 'timetable', icon: 'calendar', path: '/timetable', soon: false },
   { key: 'freeRooms', icon: 'door-open', path: '/free-rooms', soon: false },
-  { key: 'search', icon: 'search', path: '/search', soon: false },
+  { key: 'search', icon: 'search', path: '/search', soon: false, hideFromNav: true },
   { key: 'teachers', icon: 'users', path: '/teachers', soon: false },
   { key: 'rooms', icon: 'building', path: '/rooms', soon: false },
   { key: 'marketplace', needsIdentity: true, icon: 'shopping-bag', soon: true },

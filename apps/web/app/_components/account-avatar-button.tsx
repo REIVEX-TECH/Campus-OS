@@ -39,7 +39,7 @@ export function AccountAvatarButton({
         aria-haspopup="dialog"
         aria-label={labels.change}
         title={labels.change}
-        className="ios-pressable shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="ios-pressable avatar-pressable shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <IdentityAvatar seed={seed} label={handle} size={56} />
       </button>

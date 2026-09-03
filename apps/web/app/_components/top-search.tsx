@@ -84,7 +84,18 @@ export function TopSearch({
         <input
           ref={inputRef}
           type="search"
-          name="q"
+          // No `name`: a named field is what the browser files form history
+          // under, and it is not needed here because submitting is handled in
+          // script rather than by serialising the form. Everything else turns
+          // off the browser's own guesses, so the only suggestions a reader can
+          // see are this app's results and never their history from other sites.
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {

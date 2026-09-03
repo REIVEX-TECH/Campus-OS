@@ -143,6 +143,58 @@
  * content stays flat; a subtle card shadow marks grouped blocks and pressables.
  */
 @layer components {
+  /*
+   * Tailwind v4's preflight no longer gives buttons a pointer cursor, so every
+   * button in the app was showing the arrow: nothing looked clickable. Put it
+   * back once, here, rather than remembering it on each control. Anything
+   * disabled says so instead, and a non-interactive row keeps the arrow.
+   */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='radio'],
+  [role='menuitem'],
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  /*
+   * A picture that does something. The avatar carries no affordance of its own,
+   * so hovering lifts it very slightly and rings it in the accent: enough to
+   * read as a control, quiet enough not to fidget on a page full of them.
+   */
+  .avatar-pressable {
+    border-radius: 9999px;
+    transition:
+      box-shadow 150ms ease,
+      opacity 150ms ease;
+  }
+  .avatar-pressable:hover {
+    opacity: 0.92;
+    box-shadow:
+      0 0 0 2px var(--color-background),
+      0 0 0 4px var(--color-primary);
+  }
+  /* The same idea for a control shaped like a pill rather than a circle. */
+  .pill-pressable {
+    transition:
+      box-shadow 150ms ease,
+      background-color 150ms ease;
+  }
+  .pill-pressable:hover {
+    box-shadow: 0 0 0 1.5px var(--color-primary);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .avatar-pressable,
+    .pill-pressable {
+      transition: none;
+    }
+  }
+
   .ios-card {
     background-color: var(--color-card);
     color: var(--color-card-foreground);
