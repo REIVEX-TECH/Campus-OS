@@ -35,13 +35,32 @@ and `team` inside `Stream` say nothing about anyone and refusing them would make
 the rule feel arbitrary. A test asserts the generator can never produce a handle
 its own rules would reject, which is how the first, blunter version was caught.
 
+## The bug CI caught, and the guard against a fourth one
+
+`auth_handle_is_reserved` never found anything, so the reservation above did
+nothing at all. `handle_history` still had `FORCE ROW LEVEL SECURITY`, which
+applies a table's policies to its **owner** — which is what a `SECURITY DEFINER`
+function runs as. The function was filtered exactly as the caller would be,
+returned no rows, and answered "not reserved" every time. Nothing errored.
+
+This is the third time that has happened: once for `sessions`, once for `users`,
+now here. The failure is quiet by construction, and each time it was found only
+after the feature above it was already written. So `0007` drops `FORCE` on the
+last table that needed it, and a new integration test **pins the exact state of
+all six**, with the reason next to each. Adding a table, or a definer function
+that reads one, now fails that test until the choice is made deliberately.
+
+RLS is still on everywhere. `FORCE` is dropped only where a definer function has
+to read, and the application role owns nothing, so nothing it can see changes.
+
 ## Data & migration impact
 
-Two migrations. `0005_public_profiles` adds the view and
+Three migrations. `0005_public_profiles` adds the view and
 `auth_handle_is_reserved`, a definer function answering the single yes or no
 question a user is entitled to about a reserved handle without revealing whose it
 was. `0006_resolve_user_profile` widens the sign in lookup to carry the avatar
-seed and change time, so signing in still needs one read.
+seed and change time, so signing in still needs one read. `0007_handle_history_no_force`
+is the fix described above. All three are additive and safe to re-run.
 
 ## Tests
 
@@ -56,7 +75,8 @@ seed and change time, so signing in still needs one read.
   by someone else is refused, a **released handle is reserved against a squatter**,
   asking for the handle you already hold is a no-op that does not burn the
   cooldown, re rolling an avatar leaves the handle alone, and the public view
-  exposes exactly three columns with no email among them.
+  exposes exactly three columns with no email among them. Plus the row security
+  invariant above.
 - e2e (3 new, 43 total): the account page redirects when signed out, and both
   account endpoints refuse without a session.
 - `pnpm turbo run typecheck lint build test` (24 tasks) passes.
@@ -70,3 +90,8 @@ the avatar and the handle is untouched.
 ## Follow-ups
 
 - Identity PRs 4 and 5 are **out of scope pending review**, as agreed.
+- The identity integration suite needs a role-split database, which only CI has.
+  It refuses to run against an unsplit one rather than passing vacuously, which
+  is correct, but it means these tests cannot be run locally without a superuser.
+  A throwaway Postgres in docker-compose would close that gap and is worth doing
+  before the suite grows further.

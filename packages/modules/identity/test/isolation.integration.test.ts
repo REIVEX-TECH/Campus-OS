@@ -237,9 +237,8 @@ describe('sign in lifecycle', () => {
   it('creates a user on first sign in and finds the same one after', async () => {
     const first = await findOrCreateUser(identity);
     expect(first.email).toBe(identity.email);
-    // The handle is a placeholder until handles are properly generated, but it
-    // must already be unique and obviously not a chosen name.
-    expect(first.handle).toMatch(/^Member_/);
+    // A real generated handle from the first sign in, not a placeholder.
+    expect(first.handle).toMatch(HANDLE_PATTERN);
 
     const second = await findOrCreateUser(identity);
     expect(second.userId).toBe(first.userId);
@@ -398,5 +397,59 @@ describe('audit_log', () => {
     const after = await withTenant('aaa', (tx) => tx.select().from(auditLog));
     expect(after).toHaveLength(1);
     expect(after[0]!.action).toBe('admin.tenant.enter');
+  });
+});
+
+describe('row security invariants', () => {
+  /**
+   * The exact FORCE state of every identity table, pinned deliberately.
+   *
+   * FORCE applies a table's policies to its OWNER as well as everyone else. That
+   * is what a SECURITY DEFINER function runs as, so a table with FORCE is one no
+   * definer function can read: it gets filtered exactly as the caller would be,
+   * returns nothing, and the check it was written to perform silently passes.
+   *
+   * That failure is quiet, which is the problem. It cost three separate fixes
+   * here, once per table, each found only after the feature above it had been
+   * written. So the state is asserted rather than remembered: adding a table, or
+   * a definer function that reads one, fails this test until the choice is made
+   * on purpose.
+   *
+   * RLS itself is on everywhere and stays on. FORCE is dropped ONLY where a
+   * definer function needs to read, and the application role owns nothing, so
+   * dropping it changes nothing the application can see.
+   */
+  const FORCED: Record<string, boolean> = {
+    // Read by a definer function, so FORCE must be off.
+    users: false, // auth_resolve_user_by_subject, public_profiles
+    sessions: false, // auth_resolve_session
+    handle_history: false, // auth_handle_is_reserved
+    // Never read by one. FORCE stays on as a safety net if the application is
+    // ever pointed at the owner credential by mistake.
+    tenant_memberships: true,
+    platform_roles: true,
+    audit_log: true,
+  };
+
+  it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
+    const rows = [
+      ...(await getDb().execute(
+        sql`select relname, relrowsecurity, relforcerowsecurity
+            from pg_class
+            where relname in (${sql.join(
+              Object.keys(FORCED).map((t) => sql`${t}`),
+              sql`, `,
+            )})
+              and relkind = 'r'`,
+      )),
+    ] as { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[];
+
+    expect(rows).toHaveLength(Object.keys(FORCED).length);
+    for (const row of rows) {
+      expect(row.relrowsecurity, `${row.relname} must have RLS enabled`).toBe(true);
+      expect(row.relforcerowsecurity, `${row.relname} FORCE state changed`).toBe(
+        FORCED[row.relname],
+      );
+    }
   });
 });
