@@ -28,6 +28,11 @@ export interface ModuleCard {
   /** Path under the tenant base for a live module; absent for "soon" stubs. */
   path?: string;
   soon: boolean;
+  /**
+   * Will need to know who is acting once it ships. Drives the sign in page's
+   * list of where a handle will be used; the map is read only, so it is absent.
+   */
+  needsIdentity?: boolean;
 }
 
 export const MODULES: ModuleCard[] = [
@@ -36,10 +41,10 @@ export const MODULES: ModuleCard[] = [
   { key: 'search', icon: 'search', path: '/search', soon: false },
   { key: 'teachers', icon: 'users', path: '/teachers', soon: false },
   { key: 'rooms', icon: 'building', path: '/rooms', soon: false },
-  { key: 'marketplace', icon: 'shopping-bag', soon: true },
-  { key: 'communities', icon: 'message-circle', soon: true },
-  { key: 'lostFound', icon: 'package-search', soon: true },
-  { key: 'rides', icon: 'car', soon: true },
+  { key: 'marketplace', needsIdentity: true, icon: 'shopping-bag', soon: true },
+  { key: 'communities', needsIdentity: true, icon: 'message-circle', soon: true },
+  { key: 'lostFound', needsIdentity: true, icon: 'package-search', soon: true },
+  { key: 'rides', needsIdentity: true, icon: 'car', soon: true },
   { key: 'map', icon: 'map', soon: true },
 ];
 

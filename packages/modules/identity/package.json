@@ -11,7 +11,8 @@
     "./auth": "./src/auth/google-verifier.ts",
     "./sessions": "./src/sessions.ts",
     "./handles": "./src/handles/service.ts",
-    "./handle-rules": "./src/handles/handle.ts"
+    "./handle-rules": "./src/handles/handle.ts",
+    "./avatar-seed": "./src/avatar-seed.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

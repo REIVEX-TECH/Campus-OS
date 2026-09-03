@@ -5,17 +5,22 @@ import type { CSSProperties } from 'react';
  * are injected server-side on the tenant layout wrapper, so the tenant's accent
  * is live with no flash of the default. Tenant-agnostic: driven purely by config
  * (no hardcoded tenant), per CLAUDE.md.
+ *
+ * Only raw inputs are emitted, never `--primary` itself. An inline declaration
+ * beats any stylesheet rule on the same element, so when this used to set
+ * `--primary` directly the `.dark [data-tenant]` swap could never win and dark
+ * mode showed the raw accent. The `[data-tenant]` rules in globals.css now pick
+ * the light or dark input, and the cascade does what it was always meant to.
  */
 export function accentStyle(primaryHex: string): CSSProperties {
   // Dark-mode accent: the raw accent is often dark (LGU green), which fails AA as
-  // link text on a near-black page, so a lightened variant is used in dark mode
-  // (see the `.dark [data-tenant]` rule in globals.css).
+  // link text on a near-black page, so a lightened variant is used in dark mode.
   const dark = lightenForDark(primaryHex);
   const vars: Record<string, string> = {
-    '--primary': primaryHex,
-    '--primary-foreground': readableForeground(primaryHex),
-    '--primary-dark': dark,
-    '--primary-foreground-dark': readableForeground(dark),
+    '--tenant-primary': primaryHex,
+    '--tenant-primary-foreground': readableForeground(primaryHex),
+    '--tenant-primary-dark': dark,
+    '--tenant-primary-foreground-dark': readableForeground(dark),
   };
   return vars as CSSProperties;
 }

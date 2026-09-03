@@ -7,6 +7,15 @@ test('sign in reports plainly when the provider is not configured', async ({ pag
   await page.goto('/u/lgu/signin');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign in');
   await expect(page.getByText(/not set up on this deployment/)).toBeVisible();
+  // The rest of the page explains itself without a provider: the example
+  // identity, the three facts, and a real way back.
+  await expect(page.getByText('Amber_Cascade_4821')).toBeVisible();
+  await expect(page.locator('img[src^="/api/avatar/person/signin-preview"]')).toBeAttached();
+  await expect(page.getByRole('heading', { level: 3 })).toHaveCount(3);
+  await expect(page.getByRole('link', { name: 'Back to the timetable' })).toHaveAttribute(
+    'href',
+    '/u/lgu/timetable',
+  );
 });
 
 test('the account row in the sidebar offers sign in when signed out', async ({ page }) => {
@@ -15,6 +24,15 @@ test('the account row in the sidebar offers sign in when signed out', async ({ p
   const account = page.locator('.sidebar-foot a[href="/u/lgu/signin"]');
   await expect(account).toHaveCount(1);
   await expect(account).toContainText('Sign in');
+});
+
+test('the sidebar sign in row is a real link when no provider is configured', async ({ page }) => {
+  // With a provider the row signs you in on the spot. Without one it must still
+  // take you somewhere that explains why it cannot, rather than doing nothing.
+  await page.goto('/u/lgu/timetable');
+  await page.locator('.sidebar-foot a[href="/u/lgu/signin"]').click();
+  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign in');
 });
 
 test('the public site works with no session at all', async ({ page }) => {

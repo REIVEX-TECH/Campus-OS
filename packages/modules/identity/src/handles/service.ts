@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
+import { nextAvatarSeed } from '../avatar-seed';
 import { handleHistory, users } from '../schema/identity';
 import {
   canChangeHandle,
@@ -127,7 +128,7 @@ export async function changeHandle(userId: string, requested: string): Promise<C
 
 /** Re roll the generated avatar. It carries no meaning, so it is unrestricted. */
 export async function rerollAvatar(userId: string): Promise<string> {
-  const seed = `${userId}:${Date.now()}`;
+  const seed = nextAvatarSeed(userId, Date.now());
   await withActor(userId, (tx) =>
     tx.update(users).set({ avatarSeed: seed }).where(eq(users.id, userId)),
   );

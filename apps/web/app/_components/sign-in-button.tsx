@@ -1,34 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { LoaderCircle } from 'lucide-react';
+import { buttonVariants } from '@campusos/ui';
+import { useGoogleSignIn, type FirebaseWebConfig } from './use-google-sign-in';
+
+export type { FirebaseWebConfig };
 
 /**
- * Sign in with Google, via Firebase.
+ * The sign in page's button. The sign in itself lives in `useGoogleSignIn`, which
+ * the sidebar shares; this component only decides how the button looks on the
+ * page, where there is room for the accent button and a line of feedback.
  *
- * The Firebase SDK is loaded from Google's own ESM build, on click, rather than
- * bundled. It is a large library used by exactly one interaction, so bundling it
- * would put roughly a hundred kilobytes in front of every reader of a public
- * timetable to serve the few who sign in. Loading it on demand costs the signer
- * one fetch and costs everyone else nothing. Signing in already requires
- * reaching Google, so this adds no dependency the flow did not already have.
- *
- * The SDK's only job is to return a token proving the person controls a Google
- * account. The server verifies that token itself and mints its own session; the
- * provider token is never stored and never becomes the session.
+ * While Google is open the button is busy rather than disabled, so the working
+ * label keeps its full contrast. The click guard, not the disabled attribute,
+ * stops a second sign in from starting; the sidebar row does the same.
  */
-
-const FIREBASE_VERSION = '12.0.0';
-const CDN = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
-
-export type FirebaseWebConfig = {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-};
-
-type Status = 'idle' | 'working' | 'failed';
-
 export function SignInButton({
   config,
   labels,
@@ -36,49 +22,27 @@ export function SignInButton({
   config: FirebaseWebConfig;
   labels: { signIn: string; working: string; failed: string };
 }) {
-  const router = useRouter();
-  const [status, setStatus] = useState<Status>('idle');
-
-  async function signIn(): Promise<void> {
-    setStatus('working');
-    try {
-      const [{ initializeApp, getApps }, { getAuth, GoogleAuthProvider, signInWithPopup }] =
-        await Promise.all([
-          import(/* webpackIgnore: true */ `${CDN}/firebase-app.js`),
-          import(/* webpackIgnore: true */ `${CDN}/firebase-auth.js`),
-        ]);
-
-      const app = getApps().length ? getApps()[0] : initializeApp(config);
-      const credential = await signInWithPopup(getAuth(app), new GoogleAuthProvider());
-      const idToken = await credential.user.getIdToken();
-
-      const response = await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      });
-      if (!response.ok) throw new Error('session refused');
-
-      // The page is server rendered, so refreshing is what makes it show the
-      // signed in state rather than storing anything in the browser.
-      router.refresh();
-      setStatus('idle');
-    } catch {
-      // Includes the reader simply closing the Google popup, so this stays a
-      // quiet retryable state rather than an alarming error.
-      setStatus('failed');
-    }
-  }
+  const { status, signIn } = useGoogleSignIn(config);
+  const working = status === 'working';
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col gap-2 sm:items-start">
       <button
         type="button"
-        onClick={signIn}
-        disabled={status === 'working'}
-        className="ios-pressable ios-card rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+        onClick={() => {
+          if (!working) void signIn();
+        }}
+        aria-busy={working || undefined}
+        className={buttonVariants({ className: 'w-full sm:w-auto' })}
       >
-        {status === 'working' ? labels.working : labels.signIn}
+        {working ? (
+          <LoaderCircle
+            className="h-4 w-4 animate-spin motion-reduce:animate-none"
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+        ) : null}
+        {working ? labels.working : labels.signIn}
       </button>
       {status === 'failed' ? (
         <p className="text-sm text-muted-foreground" role="status">

@@ -170,9 +170,19 @@
  * (--primary-dark / --primary-foreground-dark from lib/branding.ts) takes over.
  * The rule sits on the wrapper element itself, so the vars it reads are in scope.
  */
+/*
+ * The tenant accent. The tenant wrapper carries the raw inputs inline (see
+ * lib/branding.ts); these rules choose between them, so the dark swap is a real
+ * cascade decision rather than an inline value nothing can override. The
+ * fallbacks are the neutral defaults from the root, for a wrapper with no accent.
+ */
+[data-tenant] {
+  --primary: var(--tenant-primary, oklch(0.205 0 0));
+  --primary-foreground: var(--tenant-primary-foreground, oklch(0.985 0 0));
+}
 .dark [data-tenant] {
-  --primary: var(--primary-dark, var(--primary));
-  --primary-foreground: var(--primary-foreground-dark, var(--primary-foreground));
+  --primary: var(--tenant-primary-dark, oklch(0.985 0 0));
+  --primary-foreground: var(--tenant-primary-foreground-dark, oklch(0.205 0 0));
 }
 
 /*

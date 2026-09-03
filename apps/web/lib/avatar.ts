@@ -21,6 +21,13 @@ const BACKGROUNDS = [
   '#C2410C',
 ] as const;
 
+/**
+ * What a seed may contain. Entity ids, slugs and the identity module's avatar
+ * seeds all have to pass this, because the avatar route refuses anything else:
+ * it keeps the cache key bounded and the seed inert in a URL.
+ */
+export const AVATAR_SEED_PATTERN = /^[A-Za-z0-9_.-]+$/;
+
 /** FNV-1a (32-bit): small, stable, dependency-free, and reproducible. */
 export function seedHash(seed: string): number {
   let h = 0x811c9dc5;
