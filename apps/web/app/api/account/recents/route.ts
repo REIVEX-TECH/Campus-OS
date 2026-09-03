@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import {
   RECENT_KINDS,
   clearRecents,
@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = recordSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'bad_request' }, { status: 400 });
   const { tenant: named, ...item } = parsed.data;
-  const tenant = tenantRegistry.resolveBySlug(named);
+  const tenant = (await getTenantRegistry()).resolveBySlug(named);
   if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
   await recordRecent(actor.userId, tenant.slug, item);
@@ -56,7 +56,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
 
   const named = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
-  const tenant = named.success ? tenantRegistry.resolveBySlug(named.data) : null;
+  const tenant = named.success ? (await getTenantRegistry()).resolveBySlug(named.data) : null;
   if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
   const items = await listRecents(actor.userId, tenant.slug);
@@ -71,7 +71,7 @@ export async function DELETE(request: Request): Promise<Response> {
   if (!isSameOrigin(request.headers)) return Response.json({ error: 'origin' }, { status: 403 });
 
   const named = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
-  const tenant = named.success ? tenantRegistry.resolveBySlug(named.data) : null;
+  const tenant = named.success ? (await getTenantRegistry()).resolveBySlug(named.data) : null;
   if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
   await clearRecents(actor.userId, tenant.slug);

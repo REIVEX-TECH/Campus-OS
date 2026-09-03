@@ -47,7 +47,7 @@ function CoverageRow({
 
 export default async function AdminAnalyticsPage({ params }: Props) {
   const { slug } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const { actor, permissions } = await requirePermission(slug, 'view-analytics');
   const base = await tenantBase(slug);

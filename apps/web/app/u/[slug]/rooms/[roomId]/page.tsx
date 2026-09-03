@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { buttonVariants } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FilterableTimetable } from '@/app/_components/filterable-timetable';
@@ -24,7 +24,7 @@ type Params = { params: Promise<{ slug: string; roomId: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, roomId } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   const room = await getQueries(slug).getRoom(roomId);
   const title = room?.name ?? translator(tenant.locale)('timetable.roomTimetable');
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  */
 export default async function RoomProfile({ params }: Params) {
   const { slug, roomId } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const queries = getQueries(slug);

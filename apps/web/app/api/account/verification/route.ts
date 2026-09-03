@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import {
   requestVerification,
   verificationDetailsSchema,
@@ -35,7 +35,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
 
   // The canonical slug, never the client's spelling of it.
-  const tenant = tenantRegistry.resolveBySlug(parsed.data.tenant);
+  const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
   if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
   const { tenant: _named, ...details } = parsed.data;

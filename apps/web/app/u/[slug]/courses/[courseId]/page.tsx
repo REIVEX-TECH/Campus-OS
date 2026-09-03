@@ -3,7 +3,7 @@ import { formatTime } from '@campusos/core/time';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { Card } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { JsonLd } from '@/app/_components/json-ld';
@@ -20,7 +20,7 @@ type Params = { params: Promise<{ slug: string; courseId: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, courseId } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   const course = await getQueries(slug).getCourse(courseId);
   const title = course ? course.title : translator(tenant.locale)('search.heading');
@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function CoursePage({ params }: Params) {
   const { slug, courseId } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const queries = getQueries(slug);

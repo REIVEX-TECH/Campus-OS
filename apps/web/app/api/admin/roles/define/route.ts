@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isPermission } from '@campusos/core';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { createRole, setRolePermissions } from '@campusos/module-identity/rbac';
 import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(await readJson(request));
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
-  const tenant = tenantRegistry.resolveBySlug(parsed.data.tenant);
+  const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
   const manager = tenant ? await permitted(tenant.slug, 'manage-roles') : null;
   if (!tenant || !manager) return Response.json({ error: 'not_found' }, { status: 404 });
 

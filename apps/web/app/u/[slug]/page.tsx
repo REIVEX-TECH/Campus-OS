@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { JsonLd } from '@/app/_components/json-ld';
 import { LogoMark } from '@/app/_components/logo-mark';
 import { ModuleIcon } from '@/app/_components/module-icon';
@@ -20,14 +20,14 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({ tenant, title: tenant.displayName, path: (await tenantBase(slug)) || '/' });
 }
 
 export default async function TenantHome({ params }: Params) {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) notFound();
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);

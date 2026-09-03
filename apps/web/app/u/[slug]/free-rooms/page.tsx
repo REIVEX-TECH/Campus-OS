@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { formatTime } from '@campusos/core/time';
 import { DoorClosed } from 'lucide-react';
 import Link from 'next/link';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { FreeRoomsControl } from '@/app/_components/free-rooms-control';
@@ -21,7 +21,7 @@ type Params = {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({
     tenant,
@@ -33,7 +33,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function FreeRoomsPage({ params, searchParams }: Params) {
   const { slug } = await params;
   const sp = await searchParams;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const queries = getQueries(slug);

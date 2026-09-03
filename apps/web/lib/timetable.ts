@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation';
 import type { TenantConfig } from '@campusos/core/tenant';
 import { createTimetableQueries, type TimetableQueries } from '@campusos/module-timetable/read';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from './tenants';
 
 /** Resolve a tenant by slug or render the 404 page. */
-export function requireTenant(slug: string): TenantConfig {
-  const tenant = tenantRegistry.resolveBySlug(slug);
+export async function requireTenant(slug: string): Promise<TenantConfig> {
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) notFound();
   return tenant;
 }

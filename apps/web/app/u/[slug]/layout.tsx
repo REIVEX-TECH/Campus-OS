@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { AppShell } from '@/app/_components/app-shell';
 import { accentStyle } from '@/lib/branding';
 import { tenantBase } from '@/lib/tenant-url';
@@ -10,7 +10,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return { title: 'Not found' };
   return {
     title: { default: tenant.displayName, template: tenant.seo.titleTemplate },
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function TenantLayout({ children, params }: Params & { children: ReactNode }) {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) notFound();
   const base = await tenantBase(slug);
   // Inject the tenant accent server-side (no FOUC). The inline style carries the

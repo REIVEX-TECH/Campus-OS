@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { decideRequest } from '@campusos/module-identity/verification';
 import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
@@ -32,7 +32,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(await readJson(request));
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
-  const tenant = tenantRegistry.resolveBySlug(parsed.data.tenant);
+  const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
   const admin = tenant ? await permitted(tenant.slug, 'approve-verifications') : null;
   if (!tenant || !admin) return Response.json({ error: 'not_found' }, { status: 404 });
 

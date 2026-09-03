@@ -18,7 +18,9 @@
     "./verification": "./src/verification.ts",
     "./rbac": "./src/rbac.ts",
     "./members": "./src/members.ts",
-    "./analytics": "./src/analytics.ts"
+    "./analytics": "./src/analytics.ts",
+    "./platform": "./src/platform.ts",
+    "./tenants": "./src/tenants.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -17,6 +17,7 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration --concurrency=1",
     "db:migrate:all": "tsx scripts/migrate-all.ts",
+    "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",
     "backfill:rooms": "tsx scripts/backfill-rooms.ts",

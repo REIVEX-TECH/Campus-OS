@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { buttonVariants } from '@campusos/ui';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
@@ -15,7 +15,7 @@ type Params = { params: Promise<{ slug: string; module: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, module } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   const mod = soonModule(module);
   if (!tenant || !mod) return {};
   const label = translator(tenant.locale)(`module.${mod.key}.label` as MessageKey);
@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function ComingSoonPage({ params }: Params) {
   const { slug, module } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const mod = soonModule(module);
   if (!mod) notFound();
   const t = translator(tenant.locale);

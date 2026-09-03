@@ -156,30 +156,44 @@ submitted details. Everywhere else a person is their handle.
 
 ## 4. Tenant configuration: file to database
 
-Today `tenants/*/tenant.config.ts` is compiled in and read synchronously
-everywhere, including middleware.
+Until Phase 4, `tenants/*/tenant.config.ts` was compiled in and read
+synchronously everywhere.
 
-**The trap:** middleware runs on the edge runtime and cannot open a Postgres
-connection, but middleware is exactly where host → tenant resolution happens.
+**What middleware needs, and does not.** Host → tenant resolution happens in
+middleware, on the edge runtime, which cannot open a Postgres connection. It
+turned out middleware never needed the configuration: it takes the subdomain
+label (or the `/u/{slug}` path) as the slug and passes it down in
+`x-tenant-slug`; whether that slug is a real tenant is decided by the first
+server component that resolves it, which 404s otherwise. So there is no edge
+snapshot to publish and nothing to revalidate at the edge. The database is the
+source of truth and the app reads it where the app already runs.
 
-**The shape of the answer:** the database is the source of truth; middleware
-reads a _snapshot_.
+- `tenant_configs` (identity `0012`; the base folder stays frozen, see the
+  migration's header) holds the whole validated config as
+  JSON, keyed by slug, with a version; `universities` keeps the columns other
+  tables and RLS key on and is kept in step by the code that writes.
+- `apps/web/lib/tenants.ts` builds the registry from the database rows merged
+  over the file configs (`mergeTenantConfigs` in core): per slug a valid row
+  wins, a missing row falls back to the file, an invalid row is skipped and
+  logged. Cached per process for 30 seconds and invalidated by a write in that
+  process, so a page pays at most one read.
+- Reads need no context: the rows are what render a tenant's public pages.
+  Writes are allowed by policy only to a platform administrator, checked
+  against their own `platform_roles` row (identity `0012`); no definer
+  function, no FORCE change.
+- The platform admin (`/admin` on the platform host) lists tenants with their
+  source, creates one (universities row, config row, the three system roles,
+  one audit line, in one transaction) and edits one. Saving a file tenant
+  writes its first row, which is the migration path through the UI.
+- The bootstrap from §5 arrives here too, because tenant creation needs someone
+  to do it: a sign in whose address is in `SUPERADMIN_EMAILS` writes a
+  `platform_roles` row once. Cross-tenant access, the rest of §5, does not.
 
-- `tenants` table holds slug, display name, aliases, timezone, locale, branding
-  (colours, logo), join mode, allowed email domains, enabled modules and SEO.
-- A snapshot of only what middleware needs (host, alias and slug) is published to
-  a small, edge-readable store and revalidated on write. Middleware never queries
-  Postgres; it reads the snapshot and passes `x-tenant-slug` down exactly as now.
-- Server components load the full config from the database through a request-
-  scoped cache, so a page pays one read.
-- The file registry stays as the **fallback** while the migration runs: if a slug
-  is missing from the database, the file config answers. That is what makes the
-  cutover safe rather than a flag day.
-
-**LGU is migrated by copying its file config into the database**, verifying the
-site still serves from the database, and only then removing the file. Rollback is
-to stop reading the database, which the fallback already supports. The live
-migration ships as a runbook to be run by a human, as with the role split.
+**LGU is migrated by copying its file config into the database**, either by
+saving it once in the platform admin or with `pnpm tenants:sync`, confirming
+the source chip reads "Database", and only then removing the file. Rollback is
+deleting the row: the file answers again within the cache window. The live
+steps are a runbook (`docs/runbooks/tenant-config-to-db.md`) run by a human.
 
 ---
 

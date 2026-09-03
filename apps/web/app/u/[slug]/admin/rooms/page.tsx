@@ -17,7 +17,7 @@ type Props = {
 export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const sp = await searchParams;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const { permissions } = await requirePermission(slug, 'manage-rooms');
   const base = await tenantBase(slug);

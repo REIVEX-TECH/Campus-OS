@@ -18,6 +18,7 @@ import {
   rolePermissions,
   roles,
   sessions,
+  tenantConfigs,
   tenantMemberships,
   userRecents,
   users,
@@ -39,6 +40,8 @@ import {
 } from '../src/rbac';
 import { listMembers, setMemberStatus } from '../src/members';
 import { tenantActivity } from '../src/analytics';
+import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
+import { createTenant, listTenantConfigs, updateTenantConfig } from '../src/tenants';
 import {
   decideRequest,
   latestRequest,
@@ -489,6 +492,10 @@ describe('row security invariants', () => {
     roles: false,
     role_permissions: false,
     membership_roles: false,
+    // Base schema, written by the owner in the sync script and by a platform
+    // admin under policies; never read by a definer function. No FORCE so the
+    // owner can write it; the application owns nothing, so RLS binds it anyway.
+    tenant_configs: false,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
@@ -1365,5 +1372,99 @@ describe('activity timing', () => {
         where table_schema = 'public' and column_name = 'ip_hash'`)),
     ];
     expect(rows).toEqual([]);
+  });
+});
+
+describe('platform administration', () => {
+  async function platformAdmin(subject: string) {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@example.com` });
+    await ensurePlatformAdmin(actor, [`${subject}@example.com`]);
+    return actor;
+  }
+  const config = (slug: string) => ({
+    slug,
+    displayName: `${slug.toUpperCase()} University`,
+    timezone: 'Asia/Karachi',
+    locale: 'en',
+    branding: { colors: { primary: '#123456' }, logoPath: '/x.svg' },
+    seo: { titleTemplate: '%s · X', description: 'X.' },
+    allowedEmailDomains: [`${slug}.edu`],
+  });
+
+  it('makes a listed address a platform admin once, and never an unlisted one', async () => {
+    const a = await findOrCreateUser({ subject: 'pa-1', email: 'pa-1@example.com' });
+    expect(await ensurePlatformAdmin(a, ['other@example.com'])).toBe(false);
+    expect(await isPlatformAdmin(a.userId)).toBe(false);
+    expect(await ensurePlatformAdmin(a, ['PA-1@example.com'])).toBe(true);
+    // Already granted: nothing to do, and no second audit line.
+    expect(await ensurePlatformAdmin(a, ['pa-1@example.com'])).toBe(false);
+    expect(await isPlatformAdmin(a.userId)).toBe(true);
+    const trail = await withActor(a.userId, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.actorUserId, a.userId)),
+    );
+    expect(trail.filter((r) => r.action === 'platform.admin_granted')).toHaveLength(1);
+  });
+
+  it('creates a tenant with its system roles and one audit line, in one transaction', async () => {
+    const root = await platformAdmin('root-create');
+    const created = await createTenant(root, config('ccc'));
+    expect(created).toMatchObject({ ok: true, version: 1 });
+    // Readable with no context at all: this is what renders public pages.
+    const rows = await listTenantConfigs();
+    expect(rows.find((r) => r.slug === 'ccc')?.config).toMatchObject({
+      displayName: 'CCC University',
+    });
+    const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'ccc'));
+    expect(u).toMatchObject({ name: 'CCC University', timezone: 'Asia/Karachi' });
+    const seeded = await listRoles(root.userId, 'ccc');
+    expect(seeded.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    const trail = await withActorInTenant(root.userId, 'ccc', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.tenantId, 'ccc')),
+    );
+    expect(trail.map((r) => r.action)).toEqual(['tenant.created']);
+
+    expect(await createTenant(root, config('ccc'))).toEqual({ ok: false, reason: 'exists' });
+    expect(await createTenant(root, { ...config('ddd'), branding: {} })).toMatchObject({
+      ok: false,
+      reason: 'invalid',
+    });
+  });
+
+  it('refuses everyone who is not a platform admin, at the application and at the row', async () => {
+    const s = await findOrCreateUser({ subject: 'pa-student', email: 'pa-student@aaa.edu' });
+    expect(await createTenant(s, config('eee'))).toEqual({ ok: false, reason: 'not_allowed' });
+    expect(await updateTenantConfig(s, 'aaa', config('aaa'))).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    // Even a direct write under their own context matches no policy.
+    await expect(
+      withActorInTenant(s.userId, 'aaa', (tx) =>
+        tx.insert(tenantConfigs).values({ slug: 'aaa', config: config('aaa') }),
+      ),
+    ).rejects.toThrow();
+    expect((await listTenantConfigs()).find((r) => r.slug === 'aaa')).toBeUndefined();
+  });
+
+  it('updates a tenant at the next version and keeps the slug immutable', async () => {
+    const root = await platformAdmin('root-update');
+    // aaa exists as a universities row with no config yet, as LGU does today.
+    expect(await updateTenantConfig(root, 'aaa', config('aaa'))).toMatchObject({
+      ok: true,
+      version: 1,
+    });
+    expect(
+      await updateTenantConfig(root, 'aaa', { ...config('aaa'), displayName: 'Alpha Renamed' }),
+    ).toMatchObject({ ok: true, version: 2 });
+    const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'aaa'));
+    expect(u?.name).toBe('Alpha Renamed');
+    expect(await updateTenantConfig(root, 'aaa', config('zzz'))).toEqual({
+      ok: false,
+      reason: 'slug_mismatch',
+    });
+    expect(await updateTenantConfig(root, 'nope', config('nope'))).toEqual({
+      ok: false,
+      reason: 'not_found',
+    });
   });
 });

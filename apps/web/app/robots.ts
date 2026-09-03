@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { headers } from 'next/headers';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { baseUrlFromHost } from '../lib/tenant';
 import { isPlatformHost, tenantBaseDomain } from '../lib/tenant-routing';
 
@@ -11,7 +11,8 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   const baseUrl = baseUrlFromHost(host);
   // Both the platform root and a resolved tenant expose a sitemap.
   const known =
-    isPlatformHost(host) || tenantRegistry.resolveByHost(host, tenantBaseDomain()) !== null;
+    isPlatformHost(host) ||
+    (await getTenantRegistry()).resolveByHost(host, tenantBaseDomain()) !== null;
 
   return {
     rules: [{ userAgent: '*', allow: '/' }],

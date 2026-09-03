@@ -9,3 +9,9 @@ export {
   type TenantConfigInput,
 } from './schema';
 export { createTenantRegistry, subdomainOf, type TenantRegistry } from './registry';
+export {
+  mergeTenantConfigs,
+  type DatabaseTenantConfig,
+  type MergedTenantConfigs,
+  type TenantConfigSource,
+} from './sources';

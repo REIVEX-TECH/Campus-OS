@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { SectionTimetableView } from '@/app/_components/section-timetable-view';
 import { translator } from '@/lib/i18n';
@@ -15,7 +15,7 @@ type Params = { params: Promise<{ slug: string; sectionId: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, sectionId } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   const section = await getQueries(slug).getSection(sectionId);
   const title = section
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function SectionTimetable({ params }: Params) {
   const { slug, sectionId } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const queries = getQueries(slug);
