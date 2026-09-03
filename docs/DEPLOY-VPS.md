@@ -60,36 +60,55 @@ node -v               # expect v22.x (>= 22.13, satisfies engines)
 
 ## 2. Database 🟥 SHARED INFRA (your hands)
 
-Create ONLY the CampusOS role and database on the shared cluster. The provided
+Create ONLY the CampusOS roles and database on the shared cluster. The provided
 `scripts/db-bootstrap-prod.sql` is idempotent and never touches other databases.
+
+> **Already running an older install?** If `campusos` exists with its tables owned
+> by `campusos_app`, do NOT run this. Follow `docs/db-role-split.md`, which moves
+> an existing database onto the two-role layout without losing data.
+
+CampusOS uses **two** database roles, and the separation is the point:
+
+- `campusos_owner` owns the database, the schema, and every object. It runs
+  migrations and never serves traffic.
+- `campusos_app` is the runtime role. It owns nothing, so row-level security
+  applies to it structurally rather than because someone remembered to set
+  `FORCE` on a table. It holds SELECT, INSERT, UPDATE and DELETE and nothing
+  else: no DDL, and no TRUNCATE (TRUNCATE ignores RLS, so a runtime role holding
+  it could empty every tenant in one statement).
 
 ```bash
 cd /root/codes/campusos
 
-# Choose a strong password (no single quotes). Store it; you will put it in .env.
-# Run the bootstrap as the postgres superuser, passing the password at runtime:
-sudo -u postgres psql -v app_password="PASTE_STRONG_PASSWORD_HERE" \
+# Two strong passwords, different from each other, no single quotes. Store both;
+# each goes into .env below. Run as the postgres superuser:
+sudo -u postgres psql \
+  -v owner_password="PASTE_STRONG_OWNER_PASSWORD" \
+  -v app_password="PASTE_STRONG_APP_PASSWORD" \
   -f scripts/db-bootstrap-prod.sql
 ```
 
 What it does (and nothing else):
 
-- `CREATE ROLE campusos_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`
-  — **NOBYPASSRLS is critical**; without it row-level security is void.
-- `CREATE DATABASE campusos OWNER campusos_app` — only if absent.
-- Makes `campusos_app` own the `public` schema inside `campusos` so migrations
-  can create tables.
+- Creates both roles `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`
+  — **NOBYPASSRLS is critical on both**; without it row-level security is void.
+- `CREATE DATABASE campusos OWNER campusos_owner` — only if absent.
+- Applies `scripts/db-grants.sql`, the single definition of what the runtime role
+  may do, shared with development and CI so the three cannot drift.
 
-Confirm the role and database exist and nothing else changed:
+Confirm the split is right before going further:
 
 ```bash
-sudo -u postgres psql -c "\du campusos_app"
-sudo -u postgres psql -c "\l campusos"
+sudo -u postgres psql -d campusos -f scripts/db-verify.sql
 ```
 
-If your `pg_hba.conf` restricts local TCP auth, ensure `campusos_app` can connect
-to `campusos` over `127.0.0.1` with a password (scram-sha-256/md5). This is the
-only pg_hba consideration and it is scoped to this role+db.
+Expect `campusos_app` with `can_create = f`, `campusos_owner` with
+`can_create = t`, both `bypasses_rls = f`, and zero tables owned by the app.
+
+If your `pg_hba.conf` restricts local TCP auth, ensure `campusos_app` and
+`campusos_owner` can connect to `campusos` over `127.0.0.1` with a password
+(scram-sha-256/md5). This is the only pg_hba consideration and it is scoped to
+these roles and this database.
 
 Then apply the schema and seed the tenant row 🟩 (CampusOS-local, but writes to
 the shared cluster's `campusos` DB only). Do this after step 3 creates `.env`:
@@ -116,8 +135,10 @@ cat > .env <<'EOF'
 NODE_ENV=production
 PORT=3003
 
-# Local shared Postgres via the least-privilege app role (no SSL for localhost):
-DATABASE_URL=postgres://campusos_app:PASTE_STRONG_PASSWORD_HERE@127.0.0.1:5432/campusos
+# Runtime: the role that owns nothing, so RLS always applies to it.
+DATABASE_URL=postgres://campusos_app:PASTE_STRONG_APP_PASSWORD@127.0.0.1:5432/campusos
+# Migrations only: the schema owner. Never used to serve traffic.
+MIGRATION_DATABASE_URL=postgres://campusos_owner:PASTE_STRONG_OWNER_PASSWORD@127.0.0.1:5432/campusos
 
 # Tenants nest under the platform host: lgu.campusos.reivex.io resolves to `lgu`.
 TENANT_BASE_DOMAIN=campusos.reivex.io
@@ -363,24 +384,28 @@ Run after step 5 (and again after step 6/8):
 - [ ] "Last updated" freshness line shows the latest ingest.
 - [ ] `pm2 status` shows `campusos` online; `pm2 restart campusos` survives; a
       reboot brings it back (pm2 resurrect).
-- [ ] RLS active: the app connects as `campusos_app` (`NOBYPASSRLS`), so it cannot
-      read across tenants.
+- [ ] RLS active: the app connects as `campusos_app` (`NOBYPASSRLS`) and owns
+      nothing, so it cannot read across tenants. `scripts/db-verify.sql` reports
+      zero tables owned by the app.
+- [ ] The app cannot escalate: `CREATE TABLE` and `TRUNCATE` as `campusos_app`
+      both fail with a permission error.
 
 ---
 
 ## Environment variables (VPS)
 
-| Variable             | Value                                                     |
-| -------------------- | --------------------------------------------------------- |
-| `NODE_ENV`           | `production`                                              |
-| `PORT`               | `3003`                                                    |
-| `DATABASE_URL`       | `postgres://campusos_app:<pw>@127.0.0.1:5432/campusos`    |
-| `TENANT_BASE_DOMAIN` | `campusos.reivex.io` (tenants nest as `{slug}.` under it) |
-| `PLATFORM_HOST`      | `campusos.reivex.io` (the platform landing host)          |
-| `APP_DOMAIN`         | `reivex.io` (LEGACY; only powers the removable 308)       |
-| `ADMIN_SECRET`       | a long random secret (`openssl rand -hex 32`)             |
-| `SOURCE_MODE`        | `fixture` now; the cron uses `live` regardless            |
-| `CAMPUSOS_NODE`      | (shell only, for `pm2 start`) the `nvm which 22` path     |
+| Variable                 | Value                                                     |
+| ------------------------ | --------------------------------------------------------- |
+| `NODE_ENV`               | `production`                                              |
+| `PORT`                   | `3003`                                                    |
+| `DATABASE_URL`           | `postgres://campusos_app:<pw>@127.0.0.1:5432/campusos`    |
+| `MIGRATION_DATABASE_URL` | `postgres://campusos_owner:<pw>@127.0.0.1:5432/campusos`  |
+| `TENANT_BASE_DOMAIN`     | `campusos.reivex.io` (tenants nest as `{slug}.` under it) |
+| `PLATFORM_HOST`          | `campusos.reivex.io` (the platform landing host)          |
+| `APP_DOMAIN`             | `reivex.io` (LEGACY; only powers the removable 308)       |
+| `ADMIN_SECRET`           | a long random secret (`openssl rand -hex 32`)             |
+| `SOURCE_MODE`            | `fixture` now; the cron uses `live` regardless            |
+| `CAMPUSOS_NODE`          | (shell only, for `pm2 start`) the `nvm which 22` path     |
 
 ## Host model: platform, tenants, and the legacy redirect
 
