@@ -186,6 +186,12 @@ export const en = {
   'admin.rooms.renamed': 'Renamed to {name}.',
   'admin.rooms.error': 'Could not rename that room. Please try again.',
   'admin.rooms.signOut': 'Sign out',
+  'admin.rooms.buildings': 'Buildings',
+  'admin.rooms.buildingsIntro':
+    'Inferred from the block code at the end of each room name. Give a code a proper name here; rooms with no code stay unassigned.',
+  'admin.rooms.buildingMeta': '{count} rooms',
+  'admin.rooms.buildingName': 'Building name',
+  'admin.rooms.renamedBuilding': 'Building renamed to {name}.',
 
   'admin.nav.rooms': 'Rooms',
   'admin.nav.analytics': 'Analytics',

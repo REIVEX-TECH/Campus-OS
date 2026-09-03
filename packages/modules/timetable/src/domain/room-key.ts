@@ -33,3 +33,23 @@ export function roomDedupKey(raw: string): string {
 export function roomDisplayName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ');
 }
+
+/**
+ * The building a room name declares, if it declares one.
+ *
+ * Campus room strings often end in a short block code ("Lab 15 NB", "Room 7
+ * OB"): two or three capital letters after the last space. That code is the
+ * only building signal a crawl carries, so it becomes the building's `code`,
+ * and the room is filed under it instead of the importer's placeholder. Names
+ * without such a suffix return null and stay unassigned: the safety valve is
+ * kept deliberately, because guessing a building is worse than admitting none.
+ *
+ * Only the trailing token is read, and only when the name has more than one
+ * token, so a room called "NB" alone is a room, not a building.
+ */
+export function inferBuildingCode(roomName: string): string | null {
+  const tokens = roomDisplayName(roomName).split(' ');
+  if (tokens.length < 2) return null;
+  const last = tokens[tokens.length - 1]!;
+  return /^[A-Z]{2,3}$/.test(last) ? last : null;
+}

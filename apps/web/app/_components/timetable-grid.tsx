@@ -87,11 +87,6 @@ function EntryRow({
           )}
         </span>
       </div>
-      {view.pending ? (
-        <span className="inline-flex">
-          <PendingBadge t={t} />
-        </span>
-      ) : null}
     </li>
   );
 }

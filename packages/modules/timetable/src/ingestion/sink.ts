@@ -16,7 +16,7 @@ import {
   roomDisplayName,
   type TimetableEntryInput,
 } from '../domain/index';
-import { ensureUnassignedBuilding } from './ensure-building';
+import { ensureBuildingForRoom } from './ensure-building';
 import {
   academicTerms,
   courses,
@@ -260,7 +260,6 @@ export class TimetableSink implements IngestionSink {
       const key = r.dedupKey ?? roomDedupKey(r.name);
       if (key && !roomByKey.has(key)) roomByKey.set(key, r.id);
     }
-    let unassignedBuildingId: string | null = null;
 
     const byTerm = new Map<string, TimetableEntryInput[]>();
     for (const e of batch.entries) {
@@ -281,12 +280,13 @@ export class TimetableSink implements IngestionSink {
         if (key) {
           roomId = roomByKey.get(key) ?? null;
           if (!roomId) {
-            unassignedBuildingId ??= await ensureUnassignedBuilding(tx, tid);
             const ins = await tx
               .insert(rooms)
               .values({
                 tenantId: tid,
-                buildingId: unassignedBuildingId,
+                // The trailing block code ("NB") names the building; without one
+                // the room stays unassigned rather than guessed.
+                buildingId: await ensureBuildingForRoom(tx, tid, e.roomName),
                 name: roomDisplayName(e.roomName),
                 dedupKey: key,
               })

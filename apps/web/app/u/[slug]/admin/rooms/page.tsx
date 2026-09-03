@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ renamed?: string; error?: string }>;
+  searchParams: Promise<{ renamed?: string; renamedBuilding?: string; error?: string }>;
 };
 
 export default async function AdminRoomsPage({ params, searchParams }: Props) {
@@ -22,7 +22,8 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   await requireTenantAdmin(slug);
   const base = await tenantBase(slug);
 
-  const rooms = await getAdminRooms(slug).listRooms();
+  const admin = getAdminRooms(slug);
+  const [rooms, buildingsList] = await Promise.all([admin.listRooms(), admin.listBuildings()]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -58,10 +59,67 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
           {t('admin.rooms.renamed', { name: sp.renamed })}
         </p>
       ) : null}
+      {sp.renamedBuilding ? (
+        <p className="rounded-xl bg-surface p-4 text-sm text-surface-foreground">
+          {t('admin.rooms.renamedBuilding', { name: sp.renamedBuilding })}
+        </p>
+      ) : null}
       {sp.error ? (
         <p className="rounded-xl bg-surface p-4 text-sm text-destructive">
           {t('admin.rooms.error')}
         </p>
+      ) : null}
+
+      {buildingsList.length > 0 ? (
+        <section aria-labelledby="admin-buildings" className="flex flex-col gap-2">
+          <div className="flex flex-col gap-0.5 px-1">
+            <h2 id="admin-buildings" className="text-base font-semibold">
+              {t('admin.rooms.buildings')}
+            </h2>
+            <p className="max-w-prose text-sm text-muted-foreground">
+              {t('admin.rooms.buildingsIntro')}
+            </p>
+          </div>
+          <Card className="flex flex-col gap-4 p-4">
+            <ul className="flex flex-col gap-4">
+              {buildingsList.map((b) => (
+                <li key={b.id} className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <span className="font-semibold">
+                      {b.name}
+                      {b.code && b.code !== b.name ? (
+                        <span className="ml-2 text-xs font-medium text-muted-foreground">
+                          {b.code}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {t('admin.rooms.buildingMeta', { count: b.roomCount })}
+                    </span>
+                  </div>
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-primary">
+                      {t('admin.rooms.rename')}
+                    </summary>
+                    <form
+                      method="post"
+                      action={`${base}/admin/rooms/buildings/rename`}
+                      className="mt-2 flex items-end gap-2"
+                    >
+                      <input type="hidden" name="buildingId" value={b.id} />
+                      <Field label={t('admin.rooms.buildingName')} htmlFor={`bname-${b.id}`}>
+                        <Input id={`bname-${b.id}`} name="name" defaultValue={b.name} required />
+                      </Field>
+                      <Button type="submit" variant="outline" size="sm">
+                        {t('admin.rooms.rename')}
+                      </Button>
+                    </form>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
       ) : null}
 
       {rooms.length === 0 ? (

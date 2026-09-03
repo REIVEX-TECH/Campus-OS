@@ -1,8 +1,17 @@
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { TenantScopedRepository } from '@campusos/db';
 import { buildings, rooms } from '@campusos/db/schema';
-import { computeContentHash, roomDedupKey, roomDisplayName } from '../domain/index';
-import { ensureUnassignedBuilding } from '../ingestion/ensure-building';
+import {
+  computeContentHash,
+  inferBuildingCode,
+  roomDedupKey,
+  roomDisplayName,
+} from '../domain/index';
+import {
+  UNASSIGNED_BUILDING,
+  ensureBuildingByCode,
+  ensureBuildingForRoom,
+} from '../ingestion/ensure-building';
 import { timetableEntries } from '../schema/entries';
 import { unmappedSourceValues } from '../schema/ingestion';
 
@@ -15,9 +24,20 @@ export interface RoomListItem {
   entryCount: number;
 }
 
+export interface BuildingListItem {
+  id: string;
+  name: string;
+  /** The short code the building was inferred from ("NB"), or null if hand made. */
+  code: string | null;
+  /** Live rooms filed under it. */
+  roomCount: number;
+}
+
 export interface BackfillRoomsResult {
   /** Existing rooms that had `dedup_key` populated by this run. */
   keysBackfilled: number;
+  /** Rooms moved out of the unassigned placeholder into the building their name declares. */
+  buildingsAssigned: number;
   /** Canonical rooms created from previously-pending room strings. */
   roomsCreated: number;
   /** TBA entries relinked to a room. */
@@ -72,6 +92,51 @@ export class AdminRoomsRepository extends TenantScopedRepository {
     });
   }
 
+  /** Every live building with how many rooms it holds, placeholder included. */
+  listBuildings(): Promise<BuildingListItem[]> {
+    return this.run(async (tx) => {
+      const rows = await tx
+        .select({
+          id: buildings.id,
+          name: buildings.name,
+          code: buildings.code,
+          roomCount: sql<number>`count(${rooms.id})::int`,
+        })
+        .from(buildings)
+        .leftJoin(rooms, and(eq(rooms.buildingId, buildings.id), isNull(rooms.deletedAt)))
+        .where(isNull(buildings.deletedAt))
+        .groupBy(buildings.id, buildings.name, buildings.code)
+        .orderBy(buildings.name);
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        code: r.code,
+        roomCount: Number(r.roomCount ?? 0),
+      }));
+    });
+  }
+
+  /**
+   * Rename a building's DISPLAY name. The code it was inferred from is never
+   * touched, so later crawls still resolve to the same building. Returns the
+   * updated `{ id, name }`, or null if it does not exist or the name is blank.
+   */
+  async renameBuilding(
+    buildingId: string,
+    name: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const display = roomDisplayName(name);
+    if (!display) return null;
+    return this.run(async (tx) => {
+      const updated = await tx
+        .update(buildings)
+        .set({ name: display, updatedAt: new Date() })
+        .where(and(eq(buildings.id, buildingId), isNull(buildings.deletedAt)))
+        .returning({ id: buildings.id, name: buildings.name });
+      return updated[0] ?? null;
+    });
+  }
+
   /**
    * Rename a room's DISPLAY name only. `dedup_key` is deliberately left unchanged
    * so a re-crawl of the original source string still resolves to this room (no
@@ -121,6 +186,32 @@ export class AdminRoomsRepository extends TenantScopedRepository {
         if (key && !roomByKey.has(key)) roomByKey.set(key, r.id);
       }
 
+      // (a2) Rooms filed under the placeholder whose name declares a building
+      // move to it. Existing rooms predate the inference; this is the one-time
+      // catch up, idempotent because a moved room is no longer in the placeholder.
+      let buildingsAssigned = 0;
+      const placeholder = await tx
+        .select({ id: buildings.id })
+        .from(buildings)
+        .where(and(eq(buildings.name, UNASSIGNED_BUILDING), isNull(buildings.deletedAt)))
+        .limit(1);
+      if (placeholder[0]) {
+        const unassigned = await tx
+          .select({ id: rooms.id, name: rooms.name })
+          .from(rooms)
+          .where(and(eq(rooms.buildingId, placeholder[0].id), isNull(rooms.deletedAt)));
+        for (const r of unassigned) {
+          const code = inferBuildingCode(r.name);
+          if (!code) continue;
+          const buildingId = await ensureBuildingByCode(tx, this.tenantId, code);
+          await tx
+            .update(rooms)
+            .set({ buildingId, updatedAt: new Date() })
+            .where(eq(rooms.id, r.id));
+          buildingsAssigned += 1;
+        }
+      }
+
       // (b) Resolve each pending room value.
       const pending = await tx
         .select({ rawValue: unmappedSourceValues.rawValue })
@@ -134,19 +225,17 @@ export class AdminRoomsRepository extends TenantScopedRepository {
       let entriesRelinked = 0;
       let entriesClosed = 0;
       let pendingResolved = 0;
-      let unassignedBuildingId: string | null = null;
 
       for (const p of pending) {
         const key = roomDedupKey(p.rawValue);
         if (!key) continue; // pending values are non-blank, but guard the valve
         let roomId = roomByKey.get(key) ?? null;
         if (!roomId) {
-          unassignedBuildingId ??= await ensureUnassignedBuilding(tx, this.tenantId);
           const ins = await tx
             .insert(rooms)
             .values({
               tenantId: this.tenantId,
-              buildingId: unassignedBuildingId,
+              buildingId: await ensureBuildingForRoom(tx, this.tenantId, p.rawValue),
               name: roomDisplayName(p.rawValue),
               dedupKey: key,
             })
@@ -245,6 +334,7 @@ export class AdminRoomsRepository extends TenantScopedRepository {
 
       return {
         keysBackfilled,
+        buildingsAssigned,
         roomsCreated,
         entriesRelinked,
         entriesClosed,
