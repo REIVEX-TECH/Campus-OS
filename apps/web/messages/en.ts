@@ -268,11 +268,32 @@ export const en = {
   'signin.withGoogle': 'Continue with Google',
   'signin.working': 'Opening Google',
   'signin.failed': 'That did not complete. You can try again.',
+  'signin.retry': 'Try again',
   'signin.signedInAs': 'Signed in as {handle}',
   'signin.handleNote': 'This is a temporary name. You will be able to change it soon.',
   'signin.signOut': 'Sign out',
   'signin.signingOut': 'Signing out',
   'signin.notConfigured': 'Sign in is not set up on this deployment yet.',
+  'signin.exampleTag': 'Example',
+  'signin.exampleHandle': 'Amber_Cascade_4821',
+  'signin.exampleNote':
+    'You get a handle like this one at your first sign in. It is the name other people will see.',
+  'signin.popupNote':
+    'Google opens in a new window or tab to confirm it is you. An account is created only after it has.',
+  'signin.factsHeading': 'What signing in means',
+  'signin.fact.email.title': 'Your email is not shown',
+  'signin.fact.email.body':
+    'It signs you in and is never shown publicly. From Google we keep only the address it verifies and an account id. No name, no photo.',
+  'signin.fact.handle.title': 'A handle, not your name',
+  'signin.fact.handle.body':
+    'You get a generated handle and an illustrated avatar. Neither comes from your name or your email, and they are all anyone else will see.',
+  'signin.fact.change.title': 'Change it, or keep it',
+  'signin.fact.change.body':
+    'You can change your handle once every {cooldown} days. One you let go is held for {reserved} days so nobody else can take it.',
+  'signin.futureTitle': 'Where this handle will be used',
+  'signin.futureBody':
+    'Nothing here needs an account today. These are planned, not built. When one arrives it will need to know who is posting, and your handle is the name you post under.',
+  'signin.back': 'Back to the timetable',
 
   'account.heading': 'Your account',
   'account.intro':

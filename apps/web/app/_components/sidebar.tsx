@@ -3,11 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LogIn } from 'lucide-react';
 import type { ModuleIconName } from '@/lib/modules';
-import { IdentityAvatar } from './identity-avatar';
 import { LogoMark } from './logo-mark';
 import { ModuleIcon } from './module-icon';
+import {
+  SidebarAccountRow,
+  type SidebarAccount,
+  type SidebarAccountLabels,
+} from './sidebar-account';
+import type { FirebaseWebConfig } from './use-google-sign-in';
 import { ThemeToggle } from './theme-toggle';
 
 export type SidebarItem = {
@@ -18,8 +22,7 @@ export type SidebarItem = {
   soon: boolean;
 };
 
-/** Who is signed in, or null. Only the public handle crosses to the client. */
-export type SidebarAccount = { handle: string; avatarSeed: string; href: string } | null;
+export type { SidebarAccount };
 
 export type SidebarLabels = {
   modules: string;
@@ -29,7 +32,7 @@ export type SidebarLabels = {
   expand: string;
   theme: string;
   comingSoon: string;
-  signIn: string;
+  account: SidebarAccountLabels;
 };
 
 /**
@@ -47,6 +50,7 @@ export function Sidebar({
   homeHref,
   signInHref,
   account,
+  firebase,
   items,
   labels,
 }: {
@@ -54,6 +58,8 @@ export function Sidebar({
   homeHref: string;
   signInHref: string;
   account: SidebarAccount;
+  /** Null when the deployment has no provider, so the row is a plain link. */
+  firebase: FirebaseWebConfig | null;
   items: SidebarItem[];
   labels: SidebarLabels;
 }) {
@@ -241,29 +247,13 @@ export function Sidebar({
         </nav>
 
         <div className="sidebar-foot">
-          <Link
-            href={account ? account.href : signInHref}
-            onClick={closeForNav}
-            aria-label={account ? account.handle : labels.signIn}
-            title={account ? account.handle : labels.signIn}
-            className="sidebar-item ios-pressable"
-          >
-            <span className="sidebar-icon">
-              {account ? (
-                <IdentityAvatar
-                  seed={account.avatarSeed}
-                  label={account.handle}
-                  size={20}
-                  className="sidebar-icon-svg"
-                />
-              ) : (
-                <LogIn className="sidebar-icon-svg" strokeWidth={2} aria-hidden="true" />
-              )}
-            </span>
-            <span className="sidebar-label truncate">
-              {account ? account.handle : labels.signIn}
-            </span>
-          </Link>
+          <SidebarAccountRow
+            account={account}
+            signInHref={signInHref}
+            firebase={firebase}
+            labels={labels.account}
+            onNavigate={closeForNav}
+          />
           <ThemeToggle label={labels.theme} />
         </div>
       </div>

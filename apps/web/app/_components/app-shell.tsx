@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { currentActor } from '@/lib/auth';
+import { firebaseWebConfig } from '@/lib/firebase-config';
 import { MODULES } from '@/lib/modules';
 import { Sidebar, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
@@ -55,6 +56,7 @@ export async function AppShell({
             ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
             : null
         }
+        firebase={firebaseWebConfig()}
         items={items}
         labels={{
           modules: t('nav.modules'),
@@ -64,7 +66,12 @@ export async function AppShell({
           expand: t('nav.expand'),
           theme: t('theme.toggle'),
           comingSoon: t('modules.comingSoon'),
-          signIn: t('signin.heading'),
+          account: {
+            signIn: t('signin.heading'),
+            working: t('signin.working'),
+            failed: t('signin.failed'),
+            retry: t('signin.retry'),
+          },
         }}
       />
       <main id="main" tabIndex={-1} className="app-content outline-none">
