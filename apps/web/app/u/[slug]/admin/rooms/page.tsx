@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { Button, Card, Field, Input } from '@campusos/ui';
-import { requireAdmin } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
+import { SignOutButton } from '@/app/_components/sign-out-button';
+import { requireTenantAdmin } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -18,7 +19,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  await requireAdmin(slug);
+  await requireTenantAdmin(slug);
   const base = await tenantBase(slug);
 
   const rooms = await getAdminRooms(slug).listRooms();
@@ -33,16 +34,22 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href={`${base}/admin/verification`}
+            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('admin.nav.verification')}
+          </Link>
+          <Link
             href={`${base}/admin/analytics`}
             className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             {t('admin.nav.analytics')}
           </Link>
-          <form method="post" action={`${base}/admin/logout`}>
-            <Button type="submit" variant="ghost" size="sm">
-              {t('admin.rooms.signOut')}
-            </Button>
-          </form>
+          <SignOutButton
+            label={t('admin.rooms.signOut')}
+            working={t('signin.signingOut')}
+            redirectTo={base || '/'}
+          />
         </div>
       </header>
 

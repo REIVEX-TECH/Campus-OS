@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import { isAdminAuthed } from '@/lib/admin-auth';
 import { getAdminRooms } from '@/lib/admin-rooms';
+import { tenantAdmin } from '@/lib/auth';
+import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { relativeRedirect } from '@/lib/redirects';
+import { isSameOrigin } from '@/lib/same-origin';
 import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
@@ -14,10 +16,13 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   const { slug } = await params;
   const base = `${tenantBaseForHost(request.headers.get('host') ?? '', slug)}/admin/rooms`;
 
-  // Server-side authorization on the mutation itself, not just the page.
-  if (!(await isAdminAuthed(slug))) {
-    return new Response('Unauthorized', { status: 401 });
+  if (!isSameOrigin(request.headers)) return new Response('Forbidden', { status: 403 });
+  if (!rateLimit(`admin-rename:${clientKey(request.headers)}`, 60, 60_000)) {
+    return new Response('Too Many Requests', { status: 429 });
   }
+  // The role on the mutation itself, not just the page in front of it. Without
+  // it there is nothing here to find.
+  if (!(await tenantAdmin(slug))) return new Response('Not Found', { status: 404 });
 
   const form = await request.formData();
   const parsed = schema.safeParse({ roomId: form.get('roomId'), name: form.get('name') });

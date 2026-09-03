@@ -148,10 +148,6 @@ PLATFORM_HOST=campusos.reivex.io
 # Remove this line later to drop the legacy redirect.
 APP_DOMAIN=reivex.io
 
-# Admin gate secret (enables /u/lgu/admin). Generate one and keep it secret:
-#   openssl rand -hex 32
-ADMIN_SECRET=PASTE_A_LONG_RANDOM_SECRET
-
 # Deploy with the recorded fixture data now; the cron (step 7) refreshes live.
 SOURCE_MODE=fixture
 EOF
@@ -176,7 +172,13 @@ verified `tenant_admin` member of that tenant. It is an upgrade only: removing a
 address from the list does not remove the role, which is a manual step
 (`update tenant_memberships set role = 'student' where ...`). Tenant admins reach
 their queue at `https://{slug}.<tenant base>/admin/verification`, or `/admin`,
-which sends them there when they hold the role. No secret is involved.
+which sends them there when they hold the role.
+
+There is no admin secret of any kind. The old shared password login was retired
+once this role could reach everything it gated: the session cookie is an opaque
+token stored hashed, nothing is signed, and nothing in the environment opens the
+admin area. If an older `.env` on the VPS still carries the old variable, delete
+the line; it is read by nothing.
 
 This list moves to database backed tenant configuration when platform
 administration lands; until then a change here is a deploy.
@@ -195,7 +197,7 @@ pnpm turbo run build --filter=web     # next build; reads DB lazily, no DB neede
 # Point pm2 at Node 22 for THIS app only (from `nvm which 22`):
 export CAMPUSOS_NODE="$(nvm which 22)"
 
-# Load the env so pm2 captures DATABASE_URL / ADMIN_SECRET / the host vars
+# Load the env so pm2 captures DATABASE_URL and the host vars
 # (TENANT_BASE_DOMAIN, PLATFORM_HOST, APP_DOMAIN), then start. ecosystem.config.cjs
 # forwards these explicitly, so a var you forgot to source shows up empty at boot.
 set -a; . ./.env; set +a
@@ -422,7 +424,6 @@ Run after step 5 (and again after step 6/8):
 | `TENANT_BASE_DOMAIN`     | `campusos.reivex.io` (tenants nest as `{slug}.` under it) |
 | `PLATFORM_HOST`          | `campusos.reivex.io` (the platform landing host)          |
 | `APP_DOMAIN`             | `reivex.io` (LEGACY; only powers the removable 308)       |
-| `ADMIN_SECRET`           | a long random secret (`openssl rand -hex 32`)             |
 | `SOURCE_MODE`            | `fixture` now; the cron uses `live` regardless            |
 | `CAMPUSOS_NODE`          | (shell only, for `pm2 start`) the `nvm which 22` path     |
 

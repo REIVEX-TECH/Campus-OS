@@ -63,6 +63,21 @@ export default async function AdminVerificationPage({ params }: Params) {
           </p>
         </header>
 
+        <nav aria-label={t('admin.nav.label')} className="flex flex-wrap items-center gap-2 px-1">
+          <Link
+            href={`${base}/admin/rooms`}
+            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('admin.nav.rooms')}
+          </Link>
+          <Link
+            href={`${base}/admin/analytics`}
+            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('admin.nav.analytics')}
+          </Link>
+        </nav>
+
         <section aria-labelledby="admin-queue" className="flex flex-col gap-2">
           <h2
             id="admin-queue"
