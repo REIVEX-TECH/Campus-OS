@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { formatTime } from '@campusos/core/time';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -6,7 +7,6 @@ import { tenantRegistry } from '@campusos/tenants';
 import { Card } from '@campusos/ui';
 import { EmptyState } from '@/app/_components/empty-state';
 import { JsonLd } from '@/app/_components/json-ld';
-import { hhmm } from '@/app/_components/views/time-scale';
 import { dayName, kindName, translator } from '@/lib/i18n';
 import { courseLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
@@ -89,8 +89,8 @@ export default async function CoursePage({ params }: Params) {
                         </span>
                         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                           {t('timetable.timeRange', {
-                            start: hhmm(v.startsAt),
-                            end: hhmm(v.endsAt),
+                            start: formatTime(v.startsAt, tenant.timeFormat),
+                            end: formatTime(v.endsAt, tenant.timeFormat),
                           })}
                         </span>
                       </div>

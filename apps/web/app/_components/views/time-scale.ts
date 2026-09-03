@@ -17,11 +17,6 @@ export function minutes(time: string): number {
   return Number(h) * 60 + Number(m);
 }
 
-/** Trim a wall-clock time to "HH:MM" for display. */
-export function hhmm(time: string): string {
-  return time.slice(0, 5);
-}
-
 export interface Interval {
   startsAt: string;
   endsAt: string;

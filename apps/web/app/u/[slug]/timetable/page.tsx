@@ -175,6 +175,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
                     }}
                   />
                   <SectionTimetableView
+                    timeFormat={tenant.timeFormat}
                     views={views}
                     base={base}
                     locale={tenant.locale}

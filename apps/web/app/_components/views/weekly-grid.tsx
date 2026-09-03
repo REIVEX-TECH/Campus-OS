@@ -1,3 +1,4 @@
+import { formatHourLabel } from '@campusos/core/time';
 import { dayName, dayShort } from '../../../lib/i18n';
 import { ClassBlock, type ViewProps } from './parts';
 import { assignLanes, bounds, minutes } from './time-scale';
@@ -16,6 +17,7 @@ export function WeeklyGrid({
   views,
   base,
   locale,
+  timeFormat,
   t,
   now,
 }: ViewProps & { now: { day: number; minutes: number } | null }) {
@@ -48,7 +50,7 @@ export function WeeklyGrid({
                 className="absolute right-1 text-[11px] tabular-nums text-muted-foreground"
                 style={{ top: (h - startHour) * HOUR_PX - 6 }}
               >
-                {String(h).padStart(2, '0')}:00
+                {formatHourLabel(h, timeFormat)}
               </div>
             ))}
           </div>
@@ -70,6 +72,7 @@ export function WeeklyGrid({
                     view={v}
                     base={base}
                     locale={locale}
+                    timeFormat={timeFormat}
                     t={t}
                     style={{
                       top: (minutes(v.startsAt) - axisStart) * pxPerMin,

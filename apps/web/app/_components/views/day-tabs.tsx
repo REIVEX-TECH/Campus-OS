@@ -8,6 +8,7 @@ export function DayTabs({
   views,
   base,
   locale,
+  timeFormat,
   t,
   days,
   day,
@@ -28,7 +29,14 @@ export function DayTabs({
         <Card className="p-4">
           <ul className="flex flex-col gap-5">
             {dayViews.map((v) => (
-              <ClassRow key={v.entryId} view={v} base={base} locale={locale} t={t} />
+              <ClassRow
+                key={v.entryId}
+                view={v}
+                base={base}
+                locale={locale}
+                timeFormat={timeFormat}
+                t={t}
+              />
             ))}
           </ul>
         </Card>

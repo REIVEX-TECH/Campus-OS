@@ -129,6 +129,7 @@ export default async function TeacherProfile({ params }: Params) {
             </section>
 
             <FreeSlotsCard
+              timeFormat={tenant.timeFormat}
               freeByDay={stats.freeByDay}
               window={window}
               locale={tenant.locale}
@@ -137,6 +138,7 @@ export default async function TeacherProfile({ params }: Params) {
           </div>
 
           <FilterableTimetable
+            timeFormat={tenant.timeFormat}
             views={views}
             title={teacher.name}
             locale={tenant.locale}

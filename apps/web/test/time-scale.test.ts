@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { assignLanes, bounds, hhmm, minutes } from '../app/_components/views/time-scale';
+import { assignLanes, bounds, minutes } from '../app/_components/views/time-scale';
 
-describe('minutes / hhmm', () => {
+describe('minutes', () => {
   it('parses HH:MM and HH:MM:SS to minutes since midnight', () => {
     expect(minutes('08:00')).toBe(480);
     expect(minutes('09:30:00')).toBe(570);
     expect(minutes('00:00')).toBe(0);
-  });
-  it('trims to HH:MM for display', () => {
-    expect(hhmm('08:00:00')).toBe('08:00');
-    expect(hhmm('14:30')).toBe('14:30');
   });
 });
 
