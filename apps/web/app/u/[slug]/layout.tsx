@@ -24,9 +24,9 @@ export default async function TenantLayout({ children, params }: Params & { chil
   const tenant = tenantRegistry.resolveBySlug(slug);
   if (!tenant) notFound();
   const base = await tenantBase(slug);
-  // Inject the tenant accent server-side (no FOUC). Overrides --primary for the
-  // whole subtree; tokens cascade from here. The `.dark [data-tenant]` rule swaps
-  // in the lightened accent for dark mode.
+  // Inject the tenant accent server-side (no FOUC). The inline style carries the
+  // raw light and dark inputs; the `[data-tenant]` rules in globals.css resolve
+  // --primary from them per theme, so the whole subtree follows.
   return (
     <div data-tenant={tenant.slug} style={accentStyle(tenant.branding.colors.primary)}>
       <AppShell tenantName={tenant.displayName} base={base} locale={tenant.locale}>
