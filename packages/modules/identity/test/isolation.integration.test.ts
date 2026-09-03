@@ -476,7 +476,8 @@ describe('row security invariants', () => {
     handle_history: false, // auth_handle_is_reserved
     // Never read by one. FORCE stays on as a safety net if the application is
     // ever pointed at the owner credential by mistake.
-    tenant_memberships: true,
+    // Joined by auth_effective_permissions, so FORCE must stay off here too.
+    tenant_memberships: false,
     platform_roles: true,
     audit_log: true,
     user_recents: true,

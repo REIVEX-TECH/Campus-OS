@@ -81,6 +81,24 @@ CREATE POLICY "membership_roles_in_tenant" ON "membership_roles"
 	WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true));
 --> statement-breakpoint
 
+-- tenant_memberships drops FORCE, because the function below joins it.
+--
+-- The fourth time this has come up, and the first caught by a test rather than
+-- by a feature quietly doing nothing. FORCE applies a table's policies to its
+-- owner, which is what a SECURITY DEFINER function runs as, so joining a FORCEd
+-- table filters the function exactly as its caller would be filtered. Here that
+-- made auth_effective_permissions return no rows at all: every member resolved
+-- to no permissions, and every permission check would have failed closed and
+-- silently. Failing closed is the safe direction, which is precisely why it
+-- would have been hard to notice.
+--
+-- Nothing the application can see changes: it owns no tables, so the own-row and
+-- tenant policies bind it either way. What FORCE protected against was the
+-- application being pointed at the owner credential, which the role split made
+-- a deployment mistake rather than a design.
+ALTER TABLE "tenant_memberships" NO FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+
 -- What may this person do in this tenant.
 --
 -- The union of the permissions of every role attached to their membership, and

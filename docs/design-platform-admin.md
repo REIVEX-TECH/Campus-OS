@@ -92,9 +92,14 @@ only when their membership is `active`. It is the same narrow-privileged-read
 pattern already used by `auth_resolve_session` and `auth_handle_is_reserved`.
 
 Because a definer function runs as the table owner, these three tables enable RLS
-**without** `FORCE` — the trap that cost three separate fixes earlier in this
-project. The FORCE invariant test is extended to cover them so the reason is
-recorded rather than remembered.
+**without** `FORCE`, and so does `tenant_memberships`, which the function joins
+to check the membership is active. That last one is the trap: it had `FORCE`, the
+join was filtered, and the function returned nothing, so every member resolved to
+no permissions at all. It failed **closed**, which is the safe direction and
+exactly why it would have been easy to miss. The FORCE invariant test covers all
+four, so the rule is recorded rather than remembered:
+
+> a `SECURITY DEFINER` function cannot read, or join, a table with `FORCE`.
 
 ### The guard
 
