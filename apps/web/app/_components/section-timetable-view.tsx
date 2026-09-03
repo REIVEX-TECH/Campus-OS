@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { TimeFormat } from '@campusos/core/time';
 import { buttonVariants } from '@campusos/ui';
 import type { TimetableView } from '@campusos/module-timetable/read';
 import { translator } from '../../lib/i18n';
@@ -17,12 +18,14 @@ export function SectionTimetableView({
   views,
   base,
   locale,
+  timeFormat,
   subscribeHref,
   title,
 }: {
   views: TimetableView[];
   base: string;
   locale: string;
+  timeFormat: TimeFormat;
   subscribeHref: string;
   title?: string;
 }) {
@@ -50,7 +53,7 @@ export function SectionTimetableView({
           {t('timetable.subscribe')}
         </Link>
       </div>
-      <TimetableViews views={views} base={base} locale={locale} />
+      <TimetableViews views={views} base={base} locale={locale} timeFormat={timeFormat} />
     </section>
   );
 }

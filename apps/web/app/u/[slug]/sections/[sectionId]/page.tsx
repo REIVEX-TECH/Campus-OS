@@ -56,6 +56,7 @@ export default async function SectionTimetable({ params }: Params) {
       </header>
 
       <SectionTimetableView
+        timeFormat={tenant.timeFormat}
         views={views}
         base={base}
         locale={tenant.locale}

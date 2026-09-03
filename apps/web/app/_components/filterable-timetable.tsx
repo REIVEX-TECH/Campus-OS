@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import type { TimeFormat } from '@campusos/core/time';
 import { Card } from '@campusos/ui';
 import type { TimetableView } from '@campusos/module-timetable/read';
 import { translator } from '../../lib/i18n';
@@ -20,11 +21,13 @@ export function FilterableTimetable({
   title,
   base,
   locale,
+  timeFormat,
 }: {
   views: TimetableView[];
   title: string;
   base: string;
   locale: string;
+  timeFormat: TimeFormat;
 }) {
   const t = useMemo(() => translator(locale), [locale]);
   const { filtered, open, setOpen, activeCount, filterProps } = useTimetableFilters(views, locale);
@@ -49,7 +52,14 @@ export function FilterableTimetable({
           {t('timetable.filters.none')}
         </Card>
       ) : (
-        <TimetableGrid views={filtered} title={title} locale={locale} base={base} t={t} />
+        <TimetableGrid
+          views={filtered}
+          title={title}
+          locale={locale}
+          timeFormat={timeFormat}
+          base={base}
+          t={t}
+        />
       )}
     </div>
   );

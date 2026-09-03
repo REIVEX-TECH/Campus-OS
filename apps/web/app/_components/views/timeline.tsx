@@ -1,3 +1,4 @@
+import { formatHourLabel } from '@campusos/core/time';
 import { Card } from '@campusos/ui';
 import { ClassBlock, type ViewProps } from './parts';
 import { DaySelector } from './day-selector';
@@ -15,6 +16,7 @@ export function Timeline({
   views,
   base,
   locale,
+  timeFormat,
   t,
   days,
   day,
@@ -55,7 +57,7 @@ export function Timeline({
                   className="absolute right-1 text-[11px] tabular-nums text-muted-foreground"
                   style={{ top: (h - startHour) * HOUR_PX - 6 }}
                 >
-                  {String(h).padStart(2, '0')}:00
+                  {formatHourLabel(h, timeFormat)}
                 </div>
               ))}
             </div>
@@ -72,6 +74,7 @@ export function Timeline({
                   view={v}
                   base={base}
                   locale={locale}
+                  timeFormat={timeFormat}
                   t={t}
                   style={{
                     top: (minutes(v.startsAt) - axisStart) * pxPerMin,

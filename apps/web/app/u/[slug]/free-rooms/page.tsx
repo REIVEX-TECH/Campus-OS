@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { formatTime } from '@campusos/core/time';
 import { DoorClosed } from 'lucide-react';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
@@ -83,8 +84,8 @@ export default async function FreeRoomsPage({ params, searchParams }: Params) {
             {t('freeRooms.count', {
               count: free.length,
               day: dayName(tenant.locale, dayOfWeek),
-              from,
-              to,
+              from: formatTime(from, tenant.timeFormat),
+              to: formatTime(to, tenant.timeFormat),
             })}
           </p>
 

@@ -1,5 +1,6 @@
 import type { DayFreeSlots } from '@/lib/timetable-stats';
 import { formatDuration } from '@/lib/timetable-stats';
+import { formatTime, type TimeFormat } from '@campusos/core/time';
 import { dayName, type Translate } from '@/lib/i18n';
 
 /**
@@ -12,11 +13,13 @@ export function FreeSlotsCard({
   freeByDay,
   window,
   locale,
+  timeFormat,
   t,
 }: {
   freeByDay: DayFreeSlots[];
   window: { startsAt: string | null; endsAt: string | null };
   locale: string;
+  timeFormat: TimeFormat;
   t: Translate;
 }) {
   if (freeByDay.length === 0 || !window.startsAt || !window.endsAt) return null;
@@ -26,7 +29,10 @@ export function FreeSlotsCard({
       <div className="flex flex-col gap-0.5">
         <h2 className="text-base font-semibold">{t('profile.freeSlots')}</h2>
         <p className="text-xs text-muted-foreground">
-          {t('profile.freeSlotsIntro', { start: window.startsAt, end: window.endsAt })}
+          {t('profile.freeSlotsIntro', {
+            start: formatTime(window.startsAt, timeFormat),
+            end: formatTime(window.endsAt, timeFormat),
+          })}
         </p>
       </div>
       <ul className="flex flex-col gap-2.5">
@@ -44,7 +50,10 @@ export function FreeSlotsCard({
                     key={`${s.startsAt}-${s.endsAt}`}
                     className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
                   >
-                    {t('timetable.timeRange', { start: s.startsAt, end: s.endsAt })}
+                    {t('timetable.timeRange', {
+                      start: formatTime(s.startsAt, timeFormat),
+                      end: formatTime(s.endsAt, timeFormat),
+                    })}
                   </span>
                 ))}
               </span>

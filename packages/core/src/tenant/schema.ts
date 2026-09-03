@@ -62,6 +62,12 @@ export const tenantConfigSchema = z.object({
   timezone: z.string().min(1),
   /** BCP-47 locale, e.g. "en" or "ur-PK". */
   locale: z.string().min(1),
+  /**
+   * How times are shown: "1:30 PM" or "13:30". Presentation only; storage is
+   * always local wall-clock "HH:MM". A tenant setting because it is a cultural
+   * convention of the university, not of the platform.
+   */
+  timeFormat: z.enum(['12h', '24h']).default('12h'),
   branding: brandingSchema,
   allowedEmailDomains: z.array(emailDomain).default([]),
   joinMode: joinModeSchema.default('domain'),

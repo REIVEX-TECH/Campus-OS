@@ -123,6 +123,7 @@ export default async function RoomProfile({ params }: Params) {
             </section>
 
             <FreeSlotsCard
+              timeFormat={tenant.timeFormat}
               freeByDay={stats.freeByDay}
               window={window}
               locale={tenant.locale}
@@ -130,7 +131,13 @@ export default async function RoomProfile({ params }: Params) {
             />
           </div>
 
-          <FilterableTimetable views={views} title={room.name} locale={tenant.locale} base={base} />
+          <FilterableTimetable
+            views={views}
+            title={room.name}
+            locale={tenant.locale}
+            timeFormat={tenant.timeFormat}
+            base={base}
+          />
         </>
       )}
       <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>

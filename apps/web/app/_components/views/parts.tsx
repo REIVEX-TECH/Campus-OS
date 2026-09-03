@@ -1,26 +1,37 @@
 import Link from 'next/link';
 import type { TimetableView } from '@campusos/module-timetable/read';
 import { dayName, kindName, type Translate } from '../../../lib/i18n';
-import { eventColorClass, hhmm } from './time-scale';
+import { formatTime, type TimeFormat } from '@campusos/core/time';
+import { eventColorClass } from './time-scale';
 
 export interface ViewProps {
   views: TimetableView[];
   base: string;
   locale: string;
+  /** The tenant's clock convention. Every time these views print goes through it. */
+  timeFormat: TimeFormat;
   t: Translate;
 }
 
-export function timeRange(view: TimetableView, t: Translate): string {
-  return t('timetable.timeRange', { start: hhmm(view.startsAt), end: hhmm(view.endsAt) });
+export function timeRange(view: TimetableView, t: Translate, timeFormat: TimeFormat): string {
+  return t('timetable.timeRange', {
+    start: formatTime(view.startsAt, timeFormat),
+    end: formatTime(view.endsAt, timeFormat),
+  });
 }
 
-export function cellAria(view: TimetableView, locale: string, t: Translate): string {
+export function cellAria(
+  view: TimetableView,
+  locale: string,
+  t: Translate,
+  timeFormat: TimeFormat,
+): string {
   return t('timetable.cellAria', {
     course: view.course.title,
     kind: kindName(locale, view.kind),
     day: dayName(locale, view.dayOfWeek),
-    start: hhmm(view.startsAt),
-    end: hhmm(view.endsAt),
+    start: formatTime(view.startsAt, timeFormat),
+    end: formatTime(view.endsAt, timeFormat),
     teacher: view.teacher?.name ?? t('timetable.tba'),
     room: view.room?.name ?? t('timetable.tba'),
   });
@@ -74,15 +85,17 @@ export function ClassRow({
   view,
   base,
   locale,
+  timeFormat,
   t,
 }: {
   view: TimetableView;
   base: string;
   locale: string;
+  timeFormat: TimeFormat;
   t: Translate;
 }) {
   return (
-    <li className="flex flex-col gap-1" aria-label={cellAria(view, locale, t)}>
+    <li className="flex flex-col gap-1" aria-label={cellAria(view, locale, t, timeFormat)}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="flex min-w-0 items-baseline gap-2">
           <span
@@ -92,7 +105,7 @@ export function ClassRow({
           <span className="font-semibold">{view.course.title}</span>
         </span>
         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          {timeRange(view, t)}
+          {timeRange(view, t, timeFormat)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -108,11 +121,13 @@ export function ClassBlock({
   view,
   base,
   locale,
+  timeFormat,
   t,
   style,
 }: {
   view: TimetableView;
   base: string;
+  timeFormat: TimeFormat;
   locale: string;
   t: Translate;
   style?: React.CSSProperties;
@@ -121,11 +136,11 @@ export function ClassBlock({
     <div
       className={`evt absolute overflow-hidden rounded-lg p-1.5 shadow-[var(--shadow-card)] ${eventColorClass(view.course.id)}`}
       style={style}
-      aria-label={cellAria(view, locale, t)}
+      aria-label={cellAria(view, locale, t, timeFormat)}
     >
       <p className="truncate text-xs font-semibold leading-tight">{view.course.title}</p>
       <p className="truncate text-[11px] leading-tight text-muted-foreground">
-        {hhmm(view.startsAt)}
+        {formatTime(view.startsAt, timeFormat)}
       </p>
       {view.room ? (
         <p className="truncate text-[11px] leading-tight">

@@ -5,7 +5,7 @@ import { minutes } from './time-scale';
 
 /** Day-grouped vertical list: one white card per weekday, classes as rows
  *  separated by spacing (no divider lines). The tightened, de-noised default. */
-export function CompactList({ views, base, locale, t }: ViewProps) {
+export function CompactList({ views, base, locale, timeFormat, t }: ViewProps) {
   const byDay = new Map<number, typeof views>();
   for (const v of views) {
     const list = byDay.get(v.dayOfWeek) ?? [];
@@ -28,7 +28,14 @@ export function CompactList({ views, base, locale, t }: ViewProps) {
             <Card className="p-4">
               <ul className="flex flex-col gap-5">
                 {dayViews.map((v) => (
-                  <ClassRow key={v.entryId} view={v} base={base} locale={locale} t={t} />
+                  <ClassRow
+                    key={v.entryId}
+                    view={v}
+                    base={base}
+                    locale={locale}
+                    timeFormat={timeFormat}
+                    t={t}
+                  />
                 ))}
               </ul>
             </Card>

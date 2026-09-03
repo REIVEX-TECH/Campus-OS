@@ -10,6 +10,7 @@ export const lgu: TenantConfigInput = {
   aliases: [],
   timezone: 'Asia/Karachi',
   locale: 'en',
+  timeFormat: '12h',
   branding: {
     colors: {
       primary: '#0b5d3b',

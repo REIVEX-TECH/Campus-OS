@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { TimetableView } from '@campusos/module-timetable/read';
+import type { TimeFormat } from '@campusos/core/time';
 import { translator } from '../../lib/i18n';
 import { Card } from '@campusos/ui';
 import { CompactList } from './views/compact-list';
@@ -28,10 +29,12 @@ export function TimetableViews({
   views,
   base,
   locale,
+  timeFormat,
 }: {
   views: TimetableView[];
   base: string;
   locale: string;
+  timeFormat: TimeFormat;
 }) {
   const t = useMemo(() => translator(locale), [locale]);
   const { filtered, open, setOpen, activeCount, filterProps } = useTimetableFilters(views, locale);
@@ -121,16 +124,30 @@ export function TimetableViews({
       ) : (
         <>
           {view === 'grid' ? (
-            <WeeklyGrid views={filtered} base={base} locale={locale} t={t} now={now} />
+            <WeeklyGrid
+              views={filtered}
+              base={base}
+              locale={locale}
+              timeFormat={timeFormat}
+              t={t}
+              now={now}
+            />
           ) : null}
           {view === 'list' ? (
-            <CompactList views={filtered} base={base} locale={locale} t={t} />
+            <CompactList
+              views={filtered}
+              base={base}
+              locale={locale}
+              timeFormat={timeFormat}
+              t={t}
+            />
           ) : null}
           {view === 'days' ? (
             <DayTabs
               views={filtered}
               base={base}
               locale={locale}
+              timeFormat={timeFormat}
               t={t}
               days={days}
               day={day}
@@ -142,6 +159,7 @@ export function TimetableViews({
               views={filtered}
               base={base}
               locale={locale}
+              timeFormat={timeFormat}
               t={t}
               days={days}
               day={day}
