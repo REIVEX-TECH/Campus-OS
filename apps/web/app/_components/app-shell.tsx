@@ -42,7 +42,7 @@ export async function AppShell({
   // Cheap when nobody is signed in: with no session cookie this does not touch
   // the database at all, so a public timetable pays nothing for it.
   const actor = await currentActor();
-  const items: SidebarItem[] = MODULES.map((m) => ({
+  const items: SidebarItem[] = MODULES.filter((m) => !m.hideFromNav).map((m) => ({
     key: m.key,
     label: t(`module.${m.key}.label` as MessageKey),
     icon: m.icon,

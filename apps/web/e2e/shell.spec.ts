@@ -14,7 +14,8 @@ test('the tenant app shell shows the module sidebar with the active page marked'
     'page',
   );
   await expect(nav.getByRole('link', { name: 'Free rooms' })).toBeVisible();
-  await expect(nav.getByRole('link', { name: 'Search' })).toBeVisible();
+  // Search is not here: it lives in the top bar, on every page.
+  await expect(nav.getByRole('link', { name: 'Search' })).toHaveCount(0);
 
   // Coming-soon modules are present as non-link rows (no href to click).
   await expect(nav.getByText('Marketplace')).toBeVisible();
