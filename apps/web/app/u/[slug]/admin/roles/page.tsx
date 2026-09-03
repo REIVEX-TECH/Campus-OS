@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PERMISSIONS } from '@campusos/core';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { RoleEditor } from '@/app/_components/admin/role-editor';
@@ -19,7 +19,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({
     tenant,
@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  */
 export default async function AdminRolesPage({ params }: Params) {
   const { slug } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const { actor, permissions } = await requirePermission(slug, 'manage-roles');

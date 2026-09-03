@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AdminIndex({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  requireTenant(slug); // unknown tenant -> 404, same as the rest of the tenant tree
+  await requireTenant(slug); // unknown tenant -> 404, same as the rest of the tenant tree
   const base = await tenantBase(slug);
 
   const permissions = await currentPermissions(slug);

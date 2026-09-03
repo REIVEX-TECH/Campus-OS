@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { listPendingRequests } from '@campusos/module-identity/verification';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { MemberVerify } from '@/app/_components/admin/member-verify';
@@ -19,7 +19,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({
     tenant,
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  */
 export default async function AdminVerificationPage({ params }: Params) {
   const { slug } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const { actor, permissions } = await requirePermission(slug, 'approve-verifications');

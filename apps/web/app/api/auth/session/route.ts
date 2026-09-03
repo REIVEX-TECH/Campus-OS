@@ -6,11 +6,13 @@ import {
   ensureConfiguredAdmin,
   ensureDomainMembership,
 } from '@campusos/module-identity/membership';
+import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
 import { findOrCreateUser, issueSession, revokeSession } from '@campusos/module-identity/sessions';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { SESSION_COOKIE, requestFingerprint, sessionCookieOptions } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
+import { superadminEmails } from '@/lib/superadmins';
 import { isSameOrigin } from '@/lib/same-origin';
 
 /**
@@ -55,10 +57,15 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const identity = await verifier.verify(parsed.data.idToken);
     const actor = await findOrCreateUser(identity);
+    // The platform bootstrap: an address listed in SUPERADMIN_EMAILS becomes a
+    // platform admin, once. Nothing here reports whether that happened.
+    await ensurePlatformAdmin(actor, superadminEmails());
     // Membership is a consequence of signing in, not part of it: a person whose
     // address is not on the tenant's list still gets an account and a session,
     // and simply is not a member. Nothing here reports which happened.
-    const tenant = parsed.data.tenant ? tenantRegistry.resolveBySlug(parsed.data.tenant) : null;
+    const tenant = parsed.data.tenant
+      ? (await getTenantRegistry()).resolveBySlug(parsed.data.tenant)
+      : null;
     if (tenant) {
       await ensureDomainMembership(actor, tenant);
       // The configured administrators, an upgrade only. See the tenant config.

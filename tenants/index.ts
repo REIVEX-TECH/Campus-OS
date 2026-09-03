@@ -6,6 +6,9 @@ import { lgu } from './lgu/tenant.config';
  * folder and listing it here — no core changes required. Configs are validated at
  * load; an invalid one throws.
  */
-export const tenantRegistry = createTenantRegistry([lgu]);
+/** The file configs, raw, for the database backed registry to merge over. */
+export const fileTenantConfigs = [lgu];
+
+export const tenantRegistry = createTenantRegistry(fileTenantConfigs);
 
 export { lgu };

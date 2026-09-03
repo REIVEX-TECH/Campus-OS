@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AtSign, CalendarClock, EyeOff, LogIn, type LucideIcon } from 'lucide-react';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import {
   HANDLE_CHANGE_COOLDOWN_DAYS,
   HANDLE_RESERVATION_DAYS,
@@ -51,7 +51,7 @@ const FACTS: { key: string; Icon: LucideIcon; title: MessageKey; body: MessageKe
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({
     tenant,
@@ -74,7 +74,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  */
 export default async function SignInPage({ params }: Params) {
   const { slug } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
 

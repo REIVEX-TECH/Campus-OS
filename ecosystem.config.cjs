@@ -35,6 +35,7 @@ module.exports = {
         TENANT_BASE_DOMAIN: process.env.TENANT_BASE_DOMAIN,
         PLATFORM_HOST: process.env.PLATFORM_HOST,
         APP_DOMAIN: process.env.APP_DOMAIN,
+        SUPERADMIN_EMAILS: process.env.SUPERADMIN_EMAILS,
       },
     },
   ],

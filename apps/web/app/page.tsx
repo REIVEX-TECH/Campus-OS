@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import { Blocks, CalendarDays, Search, Unlock } from 'lucide-react';
 import { buttonVariants, Card } from '@campusos/ui';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { websiteLd } from '@/lib/json-ld';
 import { baseUrlFromHost } from '@/lib/tenant';
@@ -43,7 +43,7 @@ const FEATURES = [
 
 export default async function PlatformHome() {
   const t = translator('en');
-  const tenants = tenantRegistry.all();
+  const tenants = (await getTenantRegistry()).all();
   // Host-reflective: the landing is served on the platform host, so a tenant is
   // a subdomain of THIS host (single hop, no legacy redirect). Path-based in dev.
   const host = (await headers()).get('host') ?? '';

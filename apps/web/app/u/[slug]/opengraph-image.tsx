@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 
 // A generated OpenGraph/Twitter card image per tenant (1200x630). Server-only
 // via next/og (first-party, no client bundle, no external asset). Next wires the
@@ -13,7 +13,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export default async function OpengraphImage({ params }: Params) {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   const name = tenant?.displayName ?? 'CampusOS';
   const accent = tenant?.branding.colors.primary ?? '#0b5d3b';
 

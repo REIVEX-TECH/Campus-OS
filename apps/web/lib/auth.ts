@@ -1,5 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { isPlatformAdmin } from '@campusos/module-identity/platform';
 import { effectivePermissions } from '@campusos/module-identity/rbac';
 import type { Permission, PermissionSet } from '@campusos/core';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
@@ -93,4 +94,26 @@ export async function requirePermission(
   const allowed = await permitted(slug, permission);
   if (!allowed) notFound();
   return allowed;
+}
+
+export interface PlatformAdmin {
+  actor: Actor;
+}
+
+/**
+ * The signed in platform administrator, or null: a `platform_roles` row, read
+ * as the person themselves on this request. Never a cookie claim, never the
+ * environment; `SUPERADMIN_EMAILS` only decides who may get the row at sign in.
+ */
+export async function platformAdmin(): Promise<PlatformAdmin | null> {
+  const actor = await currentActor();
+  if (!actor) return null;
+  return (await isPlatformAdmin(actor.userId)) ? { actor } : null;
+}
+
+/** As above, for a page: anyone else gets a 404, not a hint. */
+export async function requirePlatformAdmin(): Promise<PlatformAdmin> {
+  const admin = await platformAdmin();
+  if (!admin) notFound();
+  return admin;
 }

@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import postgres from 'postgres';
+import postgres, { type Sql } from 'postgres';
 
 /**
  * The connection migrations run on.
@@ -33,6 +33,20 @@ export async function runAsMigrationRole(...statements: string[]): Promise<void>
   const client = postgres(migrationDatabaseUrl(), { max: 1 });
   try {
     for (const statement of statements) await client.unsafe(statement);
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * A short lived owner connection for maintenance scripts, such as copying the
+ * file tenant configs into the database. Parameterised, unlike the statement
+ * runner above, so values never meet the SQL text.
+ */
+export async function withMigrationClient<T>(fn: (client: Sql) => Promise<T>): Promise<T> {
+  const client = postgres(migrationDatabaseUrl(), { max: 1 });
+  try {
+    return await fn(client);
   } finally {
     await client.end();
   }

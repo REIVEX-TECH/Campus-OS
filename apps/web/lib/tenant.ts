@@ -1,11 +1,11 @@
 import { headers } from 'next/headers';
 import type { TenantConfig } from '@campusos/core/tenant';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from './tenants';
 
 /** Resolve the current tenant from the request header set by middleware. */
 export async function getCurrentTenant(): Promise<TenantConfig | null> {
   const slug = (await headers()).get('x-tenant-slug');
-  return slug ? tenantRegistry.resolveBySlug(slug) : null;
+  return slug ? (await getTenantRegistry()).resolveBySlug(slug) : null;
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);

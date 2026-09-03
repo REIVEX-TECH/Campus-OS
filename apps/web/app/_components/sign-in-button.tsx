@@ -21,7 +21,8 @@ export function SignInButton({
   labels,
 }: {
   config: FirebaseWebConfig;
-  tenant: string;
+  /** Null on the platform host, where signing in joins no university. */
+  tenant: string | null;
   labels: { signIn: string; working: string; failed: string };
 }) {
   const { status, signIn } = useGoogleSignIn(config, tenant);

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Users } from 'lucide-react';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { Directory, type DirectoryItem } from '@/app/_components/profile/directory';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
@@ -15,7 +15,7 @@ type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const tenant = tenantRegistry.resolveBySlug(slug);
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
   return pageMetadata({
     tenant,
@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 /** The teacher directory: everyone with published classes, searchable. */
 export default async function TeachersDirectory({ params }: Params) {
   const { slug } = await params;
-  const tenant = requireTenant(slug);
+  const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const teachers = await getQueries(slug).listTeachersWithCounts();

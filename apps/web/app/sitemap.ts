@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { headers } from 'next/headers';
-import { tenantRegistry } from '@campusos/tenants';
+import { getTenantRegistry } from '@/lib/tenants';
 import { MODULES } from '@/lib/modules';
 import { getQueries } from '@/lib/timetable';
 import { baseUrlFromHost } from '@/lib/tenant';
@@ -28,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (isPlatformHost(host)) {
     return [
       { url: `${baseUrl}/`, lastModified: now, changeFrequency: 'weekly', priority: 1 },
-      ...tenantRegistry.all().map((tnt) => ({
+      ...(await getTenantRegistry()).all().map((tnt) => ({
         url: instanceUrl(host, baseUrl, tnt.slug),
         lastModified: now,
         changeFrequency: 'daily' as const,
@@ -38,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // Tenant host: the tenant home, picker, and every section timetable.
-  const tenant = tenantRegistry.resolveByHost(host, tenantBaseDomain());
+  const tenant = (await getTenantRegistry()).resolveByHost(host, tenantBaseDomain());
   if (!tenant) return [];
 
   const base = `${baseUrl}${tenantBaseForHost(host, tenant.slug)}`;
