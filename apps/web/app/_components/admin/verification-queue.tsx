@@ -16,7 +16,7 @@ import { IdentityAvatar } from '../identity-avatar';
 
 export type QueueItem = {
   id: string;
-  handle: string;
+  handle: string | null;
   avatarSeed: string;
   fullName: string;
   rollNumber: string;
@@ -36,6 +36,7 @@ export type QueueLabels = {
   fullName: string;
   rollNumber: string;
   note: string;
+  noProfile: string;
 };
 
 type Outcome = { id: string; message: string };
@@ -81,9 +82,9 @@ export function VerificationQueue({
       {items.map((r) => (
         <li key={r.id} className="ios-card flex flex-col gap-3 rounded-2xl p-4">
           <div className="flex items-center gap-3">
-            <IdentityAvatar seed={r.avatarSeed} label={r.handle} size={40} />
+            <IdentityAvatar seed={r.avatarSeed} label={r.handle ?? labels.noProfile} size={40} />
             <div className="flex min-w-0 flex-col">
-              <p className="truncate text-sm font-semibold">{r.handle}</p>
+              <p className="truncate text-sm font-semibold">{r.handle ?? labels.noProfile}</p>
               <p className="text-xs text-muted-foreground">{r.requested}</p>
             </div>
           </div>

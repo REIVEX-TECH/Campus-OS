@@ -3,6 +3,7 @@ import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { membershipFor, type Membership } from '@campusos/module-identity/membership';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
+import { clientKey } from './rate-limit';
 
 /**
  * Who is signed in, for server components and route handlers.
@@ -50,10 +51,11 @@ export async function currentActor(): Promise<Actor | null> {
 export async function requestFingerprint(): Promise<{ userAgent?: string; ipHash?: string }> {
   const h = await headers();
   const userAgent = h.get('user-agent') ?? undefined;
-  const forwarded = h.get('x-forwarded-for')?.split(',')[0]?.trim();
+  // The proxy vouched address, the same one the rate limiter keys on.
+  const address = clientKey(h);
   return {
     userAgent,
-    ipHash: forwarded ? createHash('sha256').update(forwarded).digest('hex') : undefined,
+    ipHash: address !== 'unknown' ? createHash('sha256').update(address).digest('hex') : undefined,
   };
 }
 

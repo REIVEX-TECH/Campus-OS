@@ -9,6 +9,9 @@ import {
 import { findOrCreateUser, issueSession, revokeSession } from '@campusos/module-identity/sessions';
 import { tenantRegistry } from '@campusos/tenants';
 import { SESSION_COOKIE, requestFingerprint, sessionCookieOptions } from '@/lib/auth';
+import { clientKey, rateLimit } from '@/lib/rate-limit';
+import { readJson } from '@/lib/read-json';
+import { isSameOrigin } from '@/lib/same-origin';
 
 /**
  * Exchange a provider token for a CampusOS session, and sign out.
@@ -32,13 +35,21 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  // Signing in is a mutation like any other. Without these a page elsewhere
+  // could plant its author's session in a reader's browser and collect what the
+  // reader then does under it.
+  if (!isSameOrigin(request.headers)) return Response.json({ error: 'origin' }, { status: 403 });
+  if (!rateLimit(`signin:${clientKey(request.headers)}`, 10, 60_000)) {
+    return Response.json({ error: 'rate_limited' }, { status: 429 });
+  }
+
   const verifier = googleVerifierFromEnv();
   if (!verifier) {
     // Not the caller's fault, and worth saying plainly rather than as a 401.
     return Response.json({ error: 'sign_in_not_configured' }, { status: 503 });
   }
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = bodySchema.safeParse(await readJson(request));
   if (!parsed.success) return Response.json({ error: 'bad_request' }, { status: 400 });
 
   try {
@@ -70,7 +81,8 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 /** Sign out. The session is revoked server side, not just forgotten by the browser. */
-export async function DELETE(): Promise<Response> {
+export async function DELETE(request: Request): Promise<Response> {
+  if (!isSameOrigin(request.headers)) return Response.json({ error: 'origin' }, { status: 403 });
   const jar = await cookies();
   await revokeSession(jar.get(SESSION_COOKIE)?.value);
   jar.delete(SESSION_COOKIE);

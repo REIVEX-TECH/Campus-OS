@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { recordAudit } from './audit';
-import { tenantMemberships } from './schema/identity';
+import { tenantMemberships, verificationRequests } from './schema/identity';
 
 /**
  * A person's place in a tenant, and how they got it.
@@ -100,9 +100,16 @@ export async function grantVerified(
     actorUserId: string;
     /** Only for a membership created here. An existing role is never changed. */
     role?: string;
+    /**
+     * A request still waiting when the person is verified another way is
+     * superseded and purged here, so its details never outlive their purpose.
+     * A decision on that very request turns this off and closes it itself.
+     */
+    closePendingRequests?: boolean;
   },
 ): Promise<{ membership: Membership; created: boolean; alreadyVerified: boolean }> {
   const role = input.role ?? 'student';
+  const close = input.closePendingRequests ?? true;
   const [inserted] = await tx
     .insert(tenantMemberships)
     .values({
@@ -124,6 +131,7 @@ export async function grantVerified(
       targetId: inserted.id,
       meta: { method: input.method, role, targetUserId: input.userId },
     });
+    if (close) await supersedePending(tx, input);
     return { membership: toMembership(inserted), created: true, alreadyVerified: false };
   }
 
@@ -154,7 +162,43 @@ export async function grantVerified(
     targetId: existing.id,
     meta: { method: input.method, targetUserId: input.userId },
   });
+  if (close) await supersedePending(tx, input);
   return { membership: toMembership(updated!), created: false, alreadyVerified: false };
+}
+
+/** Close, and purge, any request of theirs still waiting in this tenant. */
+async function supersedePending(
+  tx: TenantTransaction,
+  input: { tenantId: string; userId: string; actorUserId: string },
+): Promise<void> {
+  const closed = await tx
+    .update(verificationRequests)
+    .set({
+      status: 'superseded',
+      decidedBy: input.actorUserId,
+      decidedAt: new Date(),
+      fullName: null,
+      rollNumber: null,
+      note: null,
+    })
+    .where(
+      and(
+        eq(verificationRequests.tenantId, input.tenantId),
+        eq(verificationRequests.userId, input.userId),
+        eq(verificationRequests.status, 'pending'),
+      ),
+    )
+    .returning({ id: verificationRequests.id });
+  for (const row of closed) {
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      tenantId: input.tenantId,
+      action: 'verification.superseded',
+      targetType: 'verification_request',
+      targetId: row.id,
+      meta: { targetUserId: input.userId },
+    });
+  }
 }
 
 /**

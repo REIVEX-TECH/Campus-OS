@@ -95,6 +95,7 @@ export default async function AdminVerificationPage({ params }: Params) {
                 fullName: t('admin.queue.fullName'),
                 rollNumber: t('admin.queue.rollNumber'),
                 note: t('admin.queue.note'),
+                noProfile: t('admin.noProfile'),
               }}
             />
           )}
@@ -138,9 +139,15 @@ export default async function AdminVerificationPage({ params }: Params) {
             <ul className="ios-card flex flex-col rounded-2xl p-2">
               {memberRows.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 rounded-xl px-2 py-2">
-                  <IdentityAvatar seed={m.avatarSeed} label={m.handle} size={32} />
+                  <IdentityAvatar
+                    seed={m.avatarSeed}
+                    label={m.handle ?? t('admin.noProfile')}
+                    size={32}
+                  />
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <p className="truncate text-sm font-medium">{m.handle}</p>
+                    <p className="truncate text-sm font-medium">
+                      {m.handle ?? t('admin.noProfile')}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {t(`admin.members.role.${m.role}` as MessageKey)}
                     </p>

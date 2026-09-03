@@ -48,11 +48,15 @@ CREATE POLICY "requests_insert" ON "verification_requests" FOR INSERT
 	);
 --> statement-breakpoint
 -- Answering: only in a tenant context, which a person's own request never runs
--- in. This is the row that stops anyone deciding their own request from the
--- database's side, whatever the application above it does.
+-- in. And nobody may be recorded as the decider of their own request, whatever
+-- the application above says. A request SUPERSEDED because the person was
+-- verified another way is not a decision, and stays allowed.
 CREATE POLICY "requests_update" ON "verification_requests" FOR UPDATE
 	USING ("tenant_id" = current_setting('app.tenant_id', true))
-	WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true));
+	WITH CHECK (
+		"tenant_id" = current_setting('app.tenant_id', true)
+		AND NOT ("status" IN ('approved', 'rejected') AND "decided_by" = "user_id")
+	);
 --> statement-breakpoint
 -- No DELETE policy on purpose: nothing deletes a request. Details are purged on
 -- decision instead, and the row stays so the rate limit has a memory.

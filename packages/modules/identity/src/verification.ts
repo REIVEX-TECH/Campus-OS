@@ -50,7 +50,8 @@ export const verificationDetailsSchema = z.object({
 });
 export type VerificationDetails = z.infer<typeof verificationDetailsSchema>;
 
-export type RequestStatus = 'pending' | 'approved' | 'rejected';
+/** `superseded`: the person was verified another way while this was waiting. */
+export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'superseded';
 
 export interface VerificationRequest {
   id: string;
@@ -189,7 +190,8 @@ async function isTenantAdmin(
 export interface PendingRequest {
   id: string;
   userId: string;
-  handle: string;
+  /** Null when the account is no longer active; the request can still be closed. */
+  handle: string | null;
   avatarSeed: string;
   fullName: string;
   rollNumber: string;
@@ -211,16 +213,17 @@ export async function listPendingRequests(
     if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
     const rows = [
       ...(await tx.execute(sql`
-        select r.id, r.user_id, p.handle, p.avatar_seed, r.full_name, r.roll_number, r.note, r.created_at
+        select r.id, r.user_id, p.handle, coalesce(p.avatar_seed, r.user_id::text) as avatar_seed,
+               r.full_name, r.roll_number, r.note, r.created_at
         from verification_requests r
-        join public_profiles p on p.user_id = r.user_id
+        left join public_profiles p on p.user_id = r.user_id
         where r.tenant_id = ${tenantId} and r.status = 'pending'
         order by r.created_at asc
         limit 100`)),
     ] as {
       id: string;
       user_id: string;
-      handle: string;
+      handle: string | null;
       avatar_seed: string;
       full_name: string;
       roll_number: string;
@@ -284,6 +287,8 @@ export async function decideRequest(
         userId: request.userId,
         method: 'admin',
         actorUserId: admin.userId,
+        // This request is the one being decided, below.
+        closePendingRequests: false,
       });
       membershipCreated = granted.created;
     }
@@ -355,7 +360,8 @@ export async function userIdByHandle(handle: string): Promise<string | null> {
 
 export interface MemberSummary {
   userId: string;
-  handle: string;
+  /** Null when the account is no longer active. */
+  handle: string | null;
   avatarSeed: string;
   role: string;
   status: string;
@@ -374,15 +380,16 @@ export async function listMembers(
     if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
     const rows = [
       ...(await tx.execute(sql`
-        select m.user_id, p.handle, p.avatar_seed, m.role, m.status, m.verified_at, m.verification_method, m.created_at
+        select m.user_id, p.handle, coalesce(p.avatar_seed, m.user_id::text) as avatar_seed,
+               m.role, m.status, m.verified_at, m.verification_method, m.created_at
         from tenant_memberships m
-        join public_profiles p on p.user_id = m.user_id
+        left join public_profiles p on p.user_id = m.user_id
         where m.tenant_id = ${tenantId}
         order by m.created_at desc
         limit ${limit}`)),
     ] as {
       user_id: string;
-      handle: string;
+      handle: string | null;
       avatar_seed: string;
       role: string;
       status: string;

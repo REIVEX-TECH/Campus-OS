@@ -808,6 +808,16 @@ describe('deciding requests', () => {
       ok: false,
       error: 'self',
     });
+    // And the database says the same, whatever the application does: nobody is
+    // recorded as the decider of their own request.
+    await expect(
+      withActorInTenant(admin.userId, 'aaa', (tx) =>
+        tx
+          .update(verificationRequests)
+          .set({ status: 'approved', decidedBy: admin.userId, decidedAt: new Date() })
+          .where(eq(verificationRequests.id, own!.id)),
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
   });
 
   it('refuses a member without the role, and an admin of another tenant', async () => {
@@ -854,6 +864,19 @@ describe('verifying by hand', () => {
       value: { created: false, alreadyVerified: true },
     });
     expect(await verifyMember(admin, 'aaa', admin.userId)).toEqual({ ok: false, error: 'self' });
+
+    // Verified another way while a request waits: the request is superseded
+    // and purged in the same transaction, never left in the queue.
+    const waiting = await findOrCreateUser({ subject: 'hand-2', email: 'wait@gmail.com' });
+    const asked = await requestVerification(waiting.userId, 'aaa', details);
+    expect(asked.ok).toBe(true);
+    expect(await verifyMember(admin, 'aaa', waiting.userId)).toMatchObject({ ok: true });
+    const [closed] = await withActor(waiting.userId, (tx) =>
+      tx.select().from(verificationRequests),
+    );
+    expect(closed).toMatchObject({ status: 'superseded', fullName: null, rollNumber: null });
+    const pending = await listPendingRequests(admin, 'aaa');
+    expect(pending.ok && pending.value.some((r) => r.userId === waiting.userId)).toBe(false);
     expect(await verifyMember(admin, 'aaa', '00000000-0000-0000-0000-000000000000')).toEqual({
       ok: false,
       error: 'not_found',

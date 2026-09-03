@@ -16,9 +16,24 @@ export function rateLimit(key: string, limit: number, windowMs: number, now = Da
   return true;
 }
 
-/** Best-effort client key from proxy headers; falls back to a shared bucket. */
+/**
+ * Best-effort client key from proxy headers; falls back to a shared bucket.
+ *
+ * `x-real-ip` is set by nginx from the socket and cannot be chosen by the
+ * client, so it wins. `X-Forwarded-For` is APPENDED to by the documented proxy
+ * config, so the only entry the proxy vouches for is the LAST one; taking the
+ * first would let a caller pick a fresh bucket per request.
+ */
 export function clientKey(headers: Headers): string {
+  const real = headers.get('x-real-ip')?.trim();
+  if (real) return real;
   const fwd = headers.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0]?.trim() ?? 'unknown';
-  return headers.get('x-real-ip') ?? 'unknown';
+  if (fwd) {
+    const hops = fwd
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean);
+    return hops[hops.length - 1] ?? 'unknown';
+  }
+  return 'unknown';
 }

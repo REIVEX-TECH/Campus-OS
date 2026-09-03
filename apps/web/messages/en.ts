@@ -373,4 +373,5 @@ export const en = {
   'admin.members.verified': 'Verified',
   'admin.members.unverified': 'Not verified',
   'admin.backToAccount': 'Back to your account',
+  'admin.noProfile': 'Account not active',
 } as const;
