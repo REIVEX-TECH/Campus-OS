@@ -29,6 +29,13 @@
       "when": 1756800003000,
       "tag": "0003_resolve_user",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1756800004000,
+      "tag": "0004_users_no_force",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import type { VerifiedIdentity } from '@campusos/core/auth';
@@ -144,7 +144,7 @@ async function touch(userId: string, sessionId: string): Promise<void> {
     tx
       .update(sessions)
       .set({ lastUsedAt: new Date() })
-      .where(and(eq(sessions.id, sessionId), sql`${sessions.lastUsedAt} < ${cutoff}`)),
+      .where(and(eq(sessions.id, sessionId), lt(sessions.lastUsedAt, cutoff))),
   );
 }
 
