@@ -1,21 +1,40 @@
--- Campus OS database bootstrap. Run ONCE as a superuser (e.g. `postgres`).
+-- Campus OS database bootstrap for DEVELOPMENT and CI.
+-- Run ONCE as a superuser (e.g. `postgres`):
 --
 --   psql -U postgres -h localhost -f scripts/db-bootstrap.sql
 --
--- Creates a least-privilege, NOSUPERUSER role and two databases owned by it:
---   * campusos_dev   — local development
---   * campusos_test  — integration tests (reset by the suite)
+-- Creates TWO least-privilege roles and two databases:
+--   * campusos_owner — owns the databases, the schema, and every object in it.
+--                      Runs migrations. Never used at runtime.
+--   * campusos_app   — the runtime role. Owns nothing. Holds SELECT, INSERT,
+--                      UPDATE and DELETE, and nothing else.
 --
--- The app connects as `campusos_app` for BOTH migrations and runtime. Because
--- this role is NOT a superuser and every tenant-scoped table has
--- FORCE ROW LEVEL SECURITY, it cannot read across tenants even though it owns
--- the tables. (A superuser WOULD bypass RLS — that is why the app must never
--- use one.) Splitting migration vs. runtime roles is a production follow-up.
+-- Why two roles. Row-level security does not apply to a table's owner unless the
+-- table sets FORCE. While the application WAS the owner, every table needed
+-- FORCE to stay isolated, and a SECURITY DEFINER function could gain nothing,
+-- because it elevated to the role already calling it. Splitting them makes the
+-- ownership boundary real: RLS applies to the application because it owns
+-- nothing, and a definer function can do the one privileged read that session
+-- resolution needs.
+--
+-- The application role deliberately has NO TRUNCATE. TRUNCATE ignores RLS, so a
+-- runtime role able to run it could empty every tenant in one statement.
+-- It also has no CREATE on the schema: it never makes tables.
 --
 -- Idempotent: safe to re-run.
 
 DO $$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'campusos_owner') THEN
+    CREATE ROLE campusos_owner WITH
+      LOGIN
+      NOSUPERUSER
+      NOCREATEDB
+      NOCREATEROLE
+      NOBYPASSRLS
+      PASSWORD 'campusos_dev_password';
+  END IF;
+
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'campusos_app') THEN
     CREATE ROLE campusos_app WITH
       LOGIN
@@ -30,19 +49,14 @@ $$;
 
 -- CREATE DATABASE cannot run inside a transaction or DO block; \gexec runs the
 -- generated statement only when the database does not already exist.
-SELECT 'CREATE DATABASE campusos_dev OWNER campusos_app'
+SELECT 'CREATE DATABASE campusos_dev OWNER campusos_owner'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'campusos_dev')\gexec
 
-SELECT 'CREATE DATABASE campusos_test OWNER campusos_app'
+SELECT 'CREATE DATABASE campusos_test OWNER campusos_owner'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'campusos_test')\gexec
 
--- Give campusos_app ownership of the public schema in each database so it can
--- create tables during migration. (Postgres 15+ no longer grants this to
--- PUBLIC by default.)
 \connect campusos_dev
-ALTER SCHEMA public OWNER TO campusos_app;
-GRANT ALL ON SCHEMA public TO campusos_app;
+\ir db-grants.sql
 
 \connect campusos_test
-ALTER SCHEMA public OWNER TO campusos_app;
-GRANT ALL ON SCHEMA public TO campusos_app;
+\ir db-grants.sql

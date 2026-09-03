@@ -2,7 +2,12 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
-import { applyMigrations, runBaseMigrations } from '@campusos/db/migrate';
+import {
+  applyMigrations,
+  migrationDatabaseUrl,
+  runAsMigrationRole,
+  runBaseMigrations,
+} from '@campusos/db/migrate';
 import { rooms, universities } from '@campusos/db/schema';
 import type { NormalizedBatch } from '@campusos/core/ingestion';
 import { migrationsFolder } from '../src/manifest';
@@ -10,11 +15,9 @@ import { TimetableSink } from '../src/ingestion/sink';
 import { timetableEntries } from '../src/schema/entries';
 import { unmappedSourceValues } from '../src/schema/ingestion';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? '';
-
 beforeAll(async () => {
-  await runBaseMigrations(DATABASE_URL);
-  await applyMigrations(DATABASE_URL, migrationsFolder);
+  await runBaseMigrations(migrationDatabaseUrl());
+  await applyMigrations(migrationDatabaseUrl(), migrationsFolder);
 });
 
 afterAll(async () => {
@@ -98,7 +101,7 @@ async function seedTenant(slug: string): Promise<void> {
 }
 
 beforeEach(async () => {
-  await getDb().execute(sql`truncate table "universities" restart identity cascade`);
+  await runAsMigrationRole(`truncate table "universities" restart identity cascade`);
   await seedTenant('aaa');
   await seedTenant('bbb');
 });

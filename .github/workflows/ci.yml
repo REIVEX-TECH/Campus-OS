@@ -64,6 +64,10 @@ jobs:
       PGPASSWORD: postgres
       DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_dev
       TEST_DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_test
+      # Migrations and test resets run as the schema owner; the app role owns
+      # nothing and holds no DDL or TRUNCATE. See docs/db-role-split.md.
+      MIGRATION_DATABASE_URL: postgres://campusos_owner:campusos_dev_password@localhost:5432/campusos_dev
+      TEST_MIGRATION_DATABASE_URL: postgres://campusos_owner:campusos_dev_password@localhost:5432/campusos_test
     steps:
       - uses: actions/checkout@v4
 
@@ -111,6 +115,10 @@ jobs:
       PGPASSWORD: postgres
       DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_dev
       TEST_DATABASE_URL: postgres://campusos_app:campusos_dev_password@localhost:5432/campusos_test
+      # Migrations and test resets run as the schema owner; the app role owns
+      # nothing and holds no DDL or TRUNCATE. See docs/db-role-split.md.
+      MIGRATION_DATABASE_URL: postgres://campusos_owner:campusos_dev_password@localhost:5432/campusos_dev
+      TEST_MIGRATION_DATABASE_URL: postgres://campusos_owner:campusos_dev_password@localhost:5432/campusos_test
       # Nested-host model (playwright.config.ts sets the same on the web server):
       # tenants are {slug}.localhost:3100, the bare host is the platform root, and
       # a DISTINCT legacy APP_DOMAIN drives the 308 in tenant-host.spec.ts.
