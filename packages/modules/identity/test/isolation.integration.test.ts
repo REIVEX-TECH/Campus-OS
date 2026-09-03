@@ -18,6 +18,7 @@ import {
   tenantMemberships,
   users,
 } from '../src/schema/identity';
+import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 
 beforeAll(async () => {
   await runBaseMigrations(migrationDatabaseUrl());
@@ -225,6 +226,59 @@ describe('tenant_memberships', () => {
   it('gives a signed in user in one tenant both their own rows and that tenant', async () => {
     const rows = await withActorInTenant(bob, 'bbb', (tx) => tx.select().from(tenantMemberships));
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe('sign in lifecycle', () => {
+  const identity = { subject: 'google-sub-1', email: 'new@aaa.edu' };
+
+  it('creates a user on first sign in and finds the same one after', async () => {
+    const first = await findOrCreateUser(identity);
+    expect(first.email).toBe(identity.email);
+    // The handle is a placeholder until handles are properly generated, but it
+    // must already be unique and obviously not a chosen name.
+    expect(first.handle).toMatch(/^Member_/);
+
+    const second = await findOrCreateUser(identity);
+    expect(second.userId).toBe(first.userId);
+  });
+
+  it('follows the provider subject when the email changes upstream', async () => {
+    const before = await findOrCreateUser(identity);
+    const after = await findOrCreateUser({ subject: identity.subject, email: 'moved@aaa.edu' });
+    expect(after.userId).toBe(before.userId);
+    expect(after.email).toBe('moved@aaa.edu');
+  });
+
+  it('issues a session that resolves back to its user', async () => {
+    const actor = await findOrCreateUser(identity);
+    const session = await issueSession(actor);
+    const resolved = await resolveSession(session.token);
+    expect(resolved?.userId).toBe(actor.userId);
+  });
+
+  it('does not resolve an unknown token', async () => {
+    expect(await resolveSession('not-a-real-token')).toBeNull();
+    expect(await resolveSession(undefined)).toBeNull();
+  });
+
+  it('stops working the moment it is revoked', async () => {
+    const actor = await findOrCreateUser(identity);
+    const session = await issueSession(actor);
+    expect(await resolveSession(session.token)).not.toBeNull();
+
+    await revokeSession(session.token);
+    // Signing out is server side, so the token is dead everywhere at once
+    // rather than merely forgotten by one browser.
+    expect(await resolveSession(session.token)).toBeNull();
+  });
+
+  it('stores only a hash, so the table never holds a usable token', async () => {
+    const actor = await findOrCreateUser(identity);
+    const session = await issueSession(actor);
+    const [row] = await withActor(actor.userId, (tx) => tx.select().from(sessions));
+    expect(row!.tokenHash).not.toBe(session.token);
+    expect(row!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 

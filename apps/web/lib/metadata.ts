@@ -16,6 +16,9 @@ export async function pageMetadata(opts: {
   title: string;
   description?: string;
   path: string;
+  /** Keep this page out of search results, for pages that are nobody's business
+   * but the reader's (an account page, an admin screen). */
+  noIndex?: boolean;
 }): Promise<Metadata> {
   const host = (await headers()).get('host') ?? APP_DOMAIN;
   const baseUrl = baseUrlFromHost(host);
@@ -24,6 +27,7 @@ export async function pageMetadata(opts: {
   const ogTitle = `${opts.title} · ${opts.tenant.displayName}`;
   return {
     metadataBase: new URL(baseUrl),
+    ...(opts.noIndex ? { robots: { index: false, follow: false } } : {}),
     title: opts.title,
     description,
     keywords: opts.tenant.seo.keywords,
