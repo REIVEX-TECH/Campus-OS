@@ -542,8 +542,12 @@ describe('membership by domain', () => {
       tx.select().from(auditLog).where(eq(auditLog.actorUserId, actor.userId)),
     );
     expect(rows.map((r) => r.action)).toContain('membership.joined');
-    // Ids and enum values only, never an address.
-    expect(JSON.stringify(rows)).not.toContain('@');
+    // Ids and enum values only, never an address. (The id is a bigint, which
+    // JSON cannot carry, so only the fields that could hold text are checked.)
+    const text = JSON.stringify(
+      rows.map((r) => [r.action, r.targetType, r.targetId, r.tenantId, r.meta]),
+    );
+    expect(text).not.toContain('@');
   });
 });
 
