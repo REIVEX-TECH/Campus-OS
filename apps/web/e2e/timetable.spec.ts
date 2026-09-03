@@ -148,9 +148,14 @@ test('the timetable page remembers what you looked at, even signed out', async (
   await cascadeToPopulatedSection(page);
   const section = new URL(page.url()).searchParams.get('section');
   expect(section).toBeTruthy();
-  // The note is written after hydration, so give it the chance before leaving.
-  await page.waitForFunction(() =>
-    Object.keys(localStorage).some((k) => k.startsWith('campusos_recents:')),
+  // The note is written after hydration, so wait for THIS section's entry: the
+  // cascade above may have recorded an earlier section already.
+  await page.waitForFunction(
+    (sid) =>
+      Object.entries(localStorage).some(
+        ([k, v]) => k.startsWith('campusos_recents:') && String(v).includes(String(sid)),
+      ),
+    section,
   );
 
   // Back on the bare picker, the section you just saw is one tap away.
@@ -158,7 +163,7 @@ test('the timetable page remembers what you looked at, even signed out', async (
   const panel = page.getByRole('region', { name: 'Recently viewed' });
   await expect(panel).toBeVisible();
   await panel.getByRole('link').first().click();
-  await expect.poll(() => new URL(page.url()).searchParams.get('section')).toBe(section);
+  await page.waitForURL((url) => url.searchParams.get('section') === section);
 
   // And it is the reader's to forget.
   await page.goto('/u/lgu/timetable');
