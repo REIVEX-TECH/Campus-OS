@@ -1,9 +1,11 @@
 import { sql } from 'drizzle-orm';
 import {
   bigserial,
+  boolean,
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -225,5 +227,72 @@ export const verificationRequests = pgTable(
     uniqueIndex('verification_requests_one_open_uq')
       .on(t.tenantId, t.userId)
       .where(sql`${t.status} = 'pending'`),
+  ],
+);
+
+/**
+ * A tenant's roles. Two tenants may both have a role keyed `moderator` meaning
+ * different things, and neither can see the other's. System roles ship with
+ * every tenant and cannot be deleted, so a tenant cannot remove the role that
+ * lets it administer itself.
+ */
+export const roles = pgTable(
+  'roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    name: text('name').notNull(),
+    isSystem: boolean('is_system').notNull().default(false),
+    createdAt,
+  },
+  (t) => [uniqueIndex('roles_tenant_key_uq').on(t.tenantId, t.key)],
+);
+
+/** What a role can do. The permission strings come from the catalogue in core. */
+export const rolePermissions = pgTable(
+  'role_permissions',
+  {
+    roleId: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    permission: text('permission').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.permission] }),
+    index('role_permissions_tenant_idx').on(t.tenantId),
+  ],
+);
+
+/**
+ * Which roles a member holds. A person may hold several in one tenant, and their
+ * effective permissions are the union.
+ */
+export const membershipRoles = pgTable(
+  'membership_roles',
+  {
+    membershipId: uuid('membership_id')
+      .notNull()
+      .references(() => tenantMemberships.id, { onDelete: 'cascade' }),
+    roleId: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    grantedBy: uuid('granted_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.membershipId, t.roleId] }),
+    index('membership_roles_user_tenant_idx').on(t.userId, t.tenantId),
   ],
 );

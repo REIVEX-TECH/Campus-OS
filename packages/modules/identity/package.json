@@ -15,7 +15,8 @@
     "./avatar-seed": "./src/avatar-seed.ts",
     "./membership": "./src/membership.ts",
     "./recents": "./src/recents.ts",
-    "./verification": "./src/verification.ts"
+    "./verification": "./src/verification.ts",
+    "./rbac": "./src/rbac.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
