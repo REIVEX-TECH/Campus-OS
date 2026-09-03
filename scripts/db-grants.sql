@@ -9,7 +9,7 @@
 -- The owner owns the schema and everything created in it. The database grant is
 -- implicit for an owner, but stating it means the split does not depend on the
 -- database having been created with the right OWNER in the first place.
-SELECT format('GRANT ALL ON DATABASE %I TO campusos_owner', current_database())gexec
+SELECT format('GRANT ALL ON DATABASE %I TO campusos_owner', current_database())\gexec
 ALTER SCHEMA public OWNER TO campusos_owner;
 
 -- The application connects, reads and writes rows, and does nothing else.
