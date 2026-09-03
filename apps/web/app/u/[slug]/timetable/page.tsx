@@ -5,8 +5,12 @@ import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { PageShell } from '@/app/_components/page-shell';
+import { RecentTimetables } from '@/app/_components/recent-timetables';
+import { RecordRecent } from '@/app/_components/record-recent';
 import { SectionTimetableView } from '@/app/_components/section-timetable-view';
 import { TimetableWorkspace } from '@/app/_components/timetable-workspace';
+import { listRecents } from '@campusos/module-identity/recents';
+import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { tenantNow, toHHMM } from '@/lib/tenant-time';
@@ -68,6 +72,11 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
   const section = sections.find((s) => s.id === sp.section)?.id;
   const sectionSummary = section ? sections.find((s) => s.id === section) : undefined;
   const views = section ? await queries.sectionTimetable(section) : [];
+
+  // Where they were recently. Cheap signed out: no cookie, no database.
+  const actor = await currentActor();
+  const recents = actor ? await listRecents(actor.userId, slug) : [];
+  const signedIn = actor !== null;
 
   // Rail (xl only): which rooms are free right now, plus quick links.
   const nowT = tenantNow(tenant.timezone);
@@ -135,17 +144,45 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
               programLocked: t('timetable.programLocked'),
               sectionLocked: t('timetable.sectionLocked'),
             }}
+            aside={
+              <RecentTimetables
+                tenant={slug}
+                signedIn={signedIn}
+                initial={recents.map((r) => ({ ...r, viewedAt: r.viewedAt.getTime() }))}
+                labels={{
+                  heading: t('timetable.recent.heading'),
+                  clear: t('timetable.recent.clear'),
+                  kind: {
+                    section: t('timetable.recent.kind.section'),
+                    teacher: t('timetable.recent.kind.teacher'),
+                    room: t('timetable.recent.kind.room'),
+                  },
+                }}
+              />
+            }
             skeleton={<ResultsSkeleton />}
             loadingLabel={t('a11y.loading')}
             results={
               section && sectionSummary ? (
-                <SectionTimetableView
-                  views={views}
-                  base={base}
-                  locale={tenant.locale}
-                  subscribeHref={`${base}/sections/${section}/timetable.ics`}
-                  title={`${sectionSummary.program.code} ${sectionSummary.name}`}
-                />
+                <>
+                  <RecordRecent
+                    tenant={slug}
+                    signedIn={signedIn}
+                    entry={{
+                      kind: 'section',
+                      key: section,
+                      label: `${sectionSummary.program.code} ${sectionSummary.name}`,
+                      href: `${base}/timetable?term=${encodeURIComponent(term ?? '')}&program=${encodeURIComponent(program ?? '')}&section=${encodeURIComponent(section)}`,
+                    }}
+                  />
+                  <SectionTimetableView
+                    views={views}
+                    base={base}
+                    locale={tenant.locale}
+                    subscribeHref={`${base}/sections/${section}/timetable.ics`}
+                    title={`${sectionSummary.program.code} ${sectionSummary.name}`}
+                  />
+                </>
               ) : (
                 <EmptyState title={t('timetable.pickPrompt')} icon={CalendarSearch} />
               )

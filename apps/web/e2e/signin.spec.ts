@@ -76,3 +76,10 @@ test('re rolling an avatar requires a session', async ({ request }) => {
   const response = await request.post('/api/account/avatar');
   expect(response.status()).toBe(401);
 });
+
+test('recording a recent view requires a session', async ({ request }) => {
+  const response = await request.post('/api/account/recents', {
+    data: { tenant: 'lgu', kind: 'section', key: 'x', label: 'x', href: '/u/lgu/timetable' },
+  });
+  expect(response.status()).toBe(401);
+});

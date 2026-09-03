@@ -9,12 +9,14 @@ import { FreshnessLine } from '@/app/_components/freshness';
 import { FreeSlotsCard } from '@/app/_components/profile/free-slots-card';
 import { ProfileBreadcrumb } from '@/app/_components/profile/profile-breadcrumb';
 import { ProfileHeader } from '@/app/_components/profile/profile-header';
+import { RecordRecent } from '@/app/_components/record-recent';
 import { StatGrid } from '@/app/_components/profile/stat-grid';
 import { PendingBadge } from '@/app/_components/timetable-grid';
 import { countText, dayName, translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { formatDuration, timetableStats } from '@/lib/timetable-stats';
 import { getQueries, requireTenant } from '@/lib/timetable';
+import { currentActor } from '@/lib/auth';
 import { tenantBase } from '@/lib/tenant-url';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +50,7 @@ export default async function TeacherProfile({ params }: Params) {
   const queries = getQueries(slug);
 
   const teacher = await queries.getTeacher(teacherId);
+  const signedIn = (await currentActor()) !== null;
   if (!teacher) notFound();
 
   const [views, freshness, window] = await Promise.all([
@@ -70,6 +73,16 @@ export default async function TeacherProfile({ params }: Params) {
 
   return (
     <div className="flex flex-col gap-5">
+      <RecordRecent
+        tenant={slug}
+        signedIn={signedIn}
+        entry={{
+          kind: 'teacher',
+          key: teacherId,
+          label: teacher.name,
+          href: `${base}/teachers/${teacherId}`,
+        }}
+      />
       <ProfileHeader
         seed={teacher.id}
         title={teacher.name}

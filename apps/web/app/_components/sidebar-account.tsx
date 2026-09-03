@@ -30,12 +30,15 @@ export function SidebarAccountRow({
   account,
   signInHref,
   firebase,
+  tenant,
   labels,
   onNavigate,
 }: {
   account: SidebarAccount;
   signInHref: string;
   firebase: FirebaseWebConfig | null;
+  /** The tenant slug, so signing in here can make you a member here. */
+  tenant: string;
   labels: SidebarAccountLabels;
   /** Closes the mobile drawer before a real navigation. */
   onNavigate: () => void;
@@ -79,7 +82,7 @@ export function SidebarAccountRow({
     );
   }
 
-  return <DirectSignIn href={signInHref} firebase={firebase} labels={labels} />;
+  return <DirectSignIn href={signInHref} firebase={firebase} tenant={tenant} labels={labels} />;
 }
 
 /**
@@ -92,13 +95,15 @@ export function SidebarAccountRow({
 function DirectSignIn({
   href,
   firebase,
+  tenant,
   labels,
 }: {
   href: string;
   firebase: FirebaseWebConfig;
+  tenant: string;
   labels: SidebarAccountLabels;
 }) {
-  const { status, signIn } = useGoogleSignIn(firebase);
+  const { status, signIn } = useGoogleSignIn(firebase, tenant);
 
   function onClick(event: MouseEvent<HTMLAnchorElement>): void {
     // A modified or middle click means "open the page", as it does on any link.

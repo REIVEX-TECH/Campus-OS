@@ -2,7 +2,9 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { IdentityProviderNotConfiguredError, InvalidIdentityTokenError } from '@campusos/core/auth';
 import { googleVerifierFromEnv } from '@campusos/module-identity/auth';
+import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser, issueSession, revokeSession } from '@campusos/module-identity/sessions';
+import { tenantRegistry } from '@campusos/tenants';
 import { SESSION_COOKIE, requestFingerprint, sessionCookieOptions } from '@/lib/auth';
 
 /**
@@ -15,7 +17,16 @@ import { SESSION_COOKIE, requestFingerprint, sessionCookieOptions } from '@/lib/
 
 export const dynamic = 'force-dynamic';
 
-const bodySchema = z.object({ idToken: z.string().min(1).max(4096) });
+const bodySchema = z.object({
+  idToken: z.string().min(1).max(4096),
+  /**
+   * Which university the person is signing in to. Middleware does not run on
+   * /api, so this comes from the client; that is safe, because naming a tenant
+   * grants nothing. Whether the address earns a membership is decided here,
+   * against that tenant's own config, from the email the provider verified.
+   */
+  tenant: z.string().min(1).max(64).optional(),
+});
 
 export async function POST(request: Request): Promise<Response> {
   const verifier = googleVerifierFromEnv();
@@ -30,6 +41,11 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const identity = await verifier.verify(parsed.data.idToken);
     const actor = await findOrCreateUser(identity);
+    // Membership is a consequence of signing in, not part of it: a person whose
+    // address is not on the tenant's list still gets an account and a session,
+    // and simply is not a member. Nothing here reports which happened.
+    const tenant = parsed.data.tenant ? tenantRegistry.resolveBySlug(parsed.data.tenant) : null;
+    if (tenant) await ensureDomainMembership(actor, tenant);
     const session = await issueSession(actor, await requestFingerprint());
 
     (await cookies()).set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));

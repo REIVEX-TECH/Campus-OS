@@ -21,10 +21,13 @@ export function TimetableWorkspace({
   program,
   section,
   labels,
+  aside,
   results,
   skeleton,
   loadingLabel,
 }: {
+  /** Sits under the picker: things that help choose, like recent views. */
+  aside?: ReactNode;
   terms: PickerOption[];
   programs: PickerOption[];
   sections: PickerOption[];
@@ -40,18 +43,21 @@ export function TimetableWorkspace({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
-      <Card className="p-4">
-        <TimetablePicker
-          terms={terms}
-          programs={programs}
-          sections={sections}
-          term={term}
-          program={program}
-          section={section}
-          labels={labels}
-          startTransition={startTransition}
-        />
-      </Card>
+      <div className="flex flex-col gap-3">
+        <Card className="p-4">
+          <TimetablePicker
+            terms={terms}
+            programs={programs}
+            sections={sections}
+            term={term}
+            program={program}
+            section={section}
+            labels={labels}
+            startTransition={startTransition}
+          />
+        </Card>
+        {aside}
+      </div>
       <div className="min-w-0" aria-busy={isPending}>
         {/* A permanent live region (text toggled on pending) so screen readers
          * announce the change reliably; a region inserted with its text at once

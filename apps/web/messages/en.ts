@@ -39,6 +39,11 @@ export const en = {
   'timetable.programLocked': 'Choose a semester first',
   'timetable.sectionLocked': 'Choose a program first',
   'timetable.pickPrompt': 'Choose a semester, program, and section to see the timetable.',
+  'timetable.recent.heading': 'Recently viewed',
+  'timetable.recent.clear': 'Clear',
+  'timetable.recent.kind.section': 'Section',
+  'timetable.recent.kind.teacher': 'Teacher',
+  'timetable.recent.kind.room': 'Room',
   'timetable.section': 'Section',
   'timetable.teacher': 'Teacher',
   'timetable.room': 'Room',
@@ -310,4 +315,7 @@ export const en = {
   'account.errorTaken': 'That handle is not available.',
   'account.errorTooSoon': 'You changed your handle recently. Try again later.',
   'account.emailNote': 'Signed in with {email}. Only you and moderators can see this.',
+  'account.verified': 'Verified member of {tenant}. Only you and the university can see this.',
+  'account.notVerified':
+    'Not yet a verified member of {tenant}. Only you and the university can see this.',
 } as const;

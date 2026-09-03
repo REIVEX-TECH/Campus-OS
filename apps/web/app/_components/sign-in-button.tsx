@@ -17,12 +17,14 @@ export type { FirebaseWebConfig };
  */
 export function SignInButton({
   config,
+  tenant,
   labels,
 }: {
   config: FirebaseWebConfig;
+  tenant: string;
   labels: { signIn: string; working: string; failed: string };
 }) {
-  const { status, signIn } = useGoogleSignIn(config);
+  const { status, signIn } = useGoogleSignIn(config, tenant);
   const working = status === 'working';
 
   return (

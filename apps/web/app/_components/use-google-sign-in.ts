@@ -40,7 +40,11 @@ export type FirebaseWebConfig = {
 
 export type SignInStatus = 'idle' | 'working' | 'failed';
 
-export function useGoogleSignIn(config: FirebaseWebConfig): {
+export function useGoogleSignIn(
+  config: FirebaseWebConfig,
+  /** The tenant being signed in to, so a membership can follow. Null on the platform. */
+  tenant: string | null,
+): {
   status: SignInStatus;
   signIn: () => Promise<void>;
 } {
@@ -63,7 +67,7 @@ export function useGoogleSignIn(config: FirebaseWebConfig): {
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, tenant: tenant ?? undefined }),
       });
       if (!response.ok) throw new Error('session refused');
 
@@ -76,7 +80,7 @@ export function useGoogleSignIn(config: FirebaseWebConfig): {
       // quiet retryable state rather than an alarming error.
       setStatus('failed');
     }
-  }, [config, router]);
+  }, [config, router, tenant]);
 
   return { status, signIn };
 }
