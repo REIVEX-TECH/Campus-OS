@@ -9,7 +9,9 @@
     "./manifest": "./src/manifest.ts",
     "./schema": "./src/schema/index.ts",
     "./auth": "./src/auth/google-verifier.ts",
-    "./sessions": "./src/sessions.ts"
+    "./sessions": "./src/sessions.ts",
+    "./handles": "./src/handles/service.ts",
+    "./handle-rules": "./src/handles/handle.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

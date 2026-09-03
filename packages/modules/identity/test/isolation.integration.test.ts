@@ -19,6 +19,8 @@ import {
   users,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
+import { changeHandle, rerollAvatar } from '../src/handles/service';
+import { HANDLE_PATTERN } from '../src/handles/handle';
 
 beforeAll(async () => {
   await runBaseMigrations(migrationDatabaseUrl());
@@ -279,6 +281,83 @@ describe('sign in lifecycle', () => {
     const [row] = await withActor(actor.userId, (tx) => tx.select().from(sessions));
     expect(row!.tokenHash).not.toBe(session.token);
     expect(row!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('handles', () => {
+  const identity = { subject: 'handle-sub', email: 'handles@aaa.edu' };
+
+  it('gives a new user a generated handle, not a placeholder', async () => {
+    const actor = await findOrCreateUser(identity);
+    expect(actor.handle).toMatch(HANDLE_PATTERN);
+  });
+
+  it('lets a user choose a new handle and remembers when', async () => {
+    const actor = await findOrCreateUser(identity);
+    const result = await changeHandle(actor.userId, 'Quiet_Harbour_7');
+    expect(result).toEqual({ ok: true, handle: 'Quiet_Harbour_7' });
+
+    const again = await findOrCreateUser(identity);
+    expect(again.handle).toBe('Quiet_Harbour_7');
+    expect(again.handleChangedAt).not.toBeNull();
+  });
+
+  it('refuses a second change inside the cooldown', async () => {
+    const actor = await findOrCreateUser(identity);
+    await changeHandle(actor.userId, 'Quiet_Harbour_7');
+    const second = await changeHandle(actor.userId, 'Other_Name_9');
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.reason).toBe('too_soon');
+  });
+
+  it('refuses a handle already held by someone else', async () => {
+    const a = await findOrCreateUser(identity);
+    const b = await findOrCreateUser({ subject: 'other-sub', email: 'other@aaa.edu' });
+    await changeHandle(a.userId, 'Shared_Name_1');
+    const clash = await changeHandle(b.userId, 'Shared_Name_1');
+    expect(clash.ok).toBe(false);
+    if (!clash.ok) expect(clash.reason).toBe('taken');
+  });
+
+  it('reserves a released handle so it cannot be used to impersonate', async () => {
+    const a = await findOrCreateUser(identity);
+    const original = a.handle;
+    await changeHandle(a.userId, 'Moved_Away_2');
+
+    // Someone else cannot pick up the name the first user has just left.
+    const b = await findOrCreateUser({ subject: 'squatter-sub', email: 'squatter@aaa.edu' });
+    const attempt = await changeHandle(b.userId, original);
+    expect(attempt.ok).toBe(false);
+    if (!attempt.ok) expect(attempt.reason).toBe('taken');
+  });
+
+  it('treats asking for the handle you already hold as a no-op', async () => {
+    const actor = await findOrCreateUser(identity);
+    const result = await changeHandle(actor.userId, actor.handle);
+    expect(result).toEqual({ ok: true, handle: actor.handle });
+    // It must not burn the cooldown, or a stray save would lock someone out.
+    const after = await changeHandle(actor.userId, 'Really_New_3');
+    expect(after.ok).toBe(true);
+  });
+
+  it('re rolls an avatar without touching the handle', async () => {
+    const actor = await findOrCreateUser(identity);
+    const seed = await rerollAvatar(actor.userId);
+    expect(seed).not.toBe(actor.avatarSeed);
+    expect((await findOrCreateUser(identity)).handle).toBe(actor.handle);
+  });
+
+  it('shows the public profile without ever exposing an email', async () => {
+    const actor = await findOrCreateUser(identity);
+    const rows = [
+      ...(await getDb().execute(
+        sql`select * from public_profiles where user_id = ${actor.userId}::uuid`,
+      )),
+    ];
+    expect(rows).toHaveLength(1);
+    // The protection is structural: email is not a column of the view, so no
+    // query against it can select one.
+    expect(Object.keys(rows[0]!)).toEqual(['user_id', 'handle', 'avatar_seed']);
   });
 });
 

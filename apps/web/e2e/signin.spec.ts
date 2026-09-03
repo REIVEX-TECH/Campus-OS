@@ -41,3 +41,20 @@ test('the session endpoint refuses a token it cannot verify', async ({ request }
   expect([401, 503]).toContain(response.status());
   expect(response.headers()['set-cookie']).toBeUndefined();
 });
+
+test('the account page is only for people who are signed in', async ({ page }) => {
+  // Signed out it sends you where you can do something about that, rather than
+  // rendering an empty shell of somebody's profile.
+  await page.goto('/u/lgu/account');
+  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+});
+
+test('changing a handle requires a session', async ({ request }) => {
+  const response = await request.post('/api/account/handle', { data: { handle: 'Quiet_Otter_9' } });
+  expect(response.status()).toBe(401);
+});
+
+test('re rolling an avatar requires a session', async ({ request }) => {
+  const response = await request.post('/api/account/avatar');
+  expect(response.status()).toBe(401);
+});

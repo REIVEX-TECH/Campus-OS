@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { LogIn } from 'lucide-react';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
-import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { SignInButton, type FirebaseWebConfig } from '@/app/_components/sign-in-button';
-import { SignOutButton } from '@/app/_components/sign-out-button';
 import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
@@ -54,7 +53,12 @@ export default async function SignInPage({ params }: Params) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  const [actor, config] = [await currentActor(), firebaseWebConfig()];
+  const base = await tenantBase(slug);
+
+  // Already signed in, so the account page is what they actually wanted.
+  if (await currentActor()) redirect(`${base}/account`);
+
+  const config = firebaseWebConfig();
 
   return (
     <PageShell>
@@ -64,20 +68,7 @@ export default async function SignInPage({ params }: Params) {
           <p className="max-w-prose text-sm text-muted-foreground">{t('signin.intro')}</p>
         </header>
 
-        {actor ? (
-          <section className="ios-card flex flex-wrap items-center gap-4 rounded-2xl p-4">
-            <IdentityAvatar seed={actor.userId} label={actor.handle} size={48} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="text-base font-semibold">
-                {t('signin.signedInAs', { handle: actor.handle })}
-              </p>
-              <p className="text-xs text-muted-foreground">{t('signin.handleNote')}</p>
-            </div>
-            <div className="ml-auto">
-              <SignOutButton label={t('signin.signOut')} working={t('signin.signingOut')} />
-            </div>
-          </section>
-        ) : config ? (
+        {config ? (
           <div className="px-1">
             <SignInButton
               config={config}

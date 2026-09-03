@@ -273,4 +273,20 @@ export const en = {
   'signin.signOut': 'Sign out',
   'signin.signingOut': 'Signing out',
   'signin.notConfigured': 'Sign in is not set up on this deployment yet.',
+
+  'account.heading': 'Your account',
+  'account.intro':
+    'You are anonymous here. Your university email signs you in and is never shown; this handle is what everyone else sees.',
+  'account.handleLabel': 'Handle',
+  'account.handleHint': 'Letters, numbers and underscores. You can change this once every 30 days.',
+  'account.save': 'Save handle',
+  'account.saving': 'Saving',
+  'account.saved': 'Saved.',
+  'account.reroll': 'New avatar',
+  'account.lockedUntil': 'You changed this recently, so it is fixed until {date}.',
+  'account.errorFormat': 'Use 3 to 24 letters, numbers or underscores, starting with a letter.',
+  'account.errorReserved': 'That one is reserved, because it could be mistaken for staff.',
+  'account.errorTaken': 'That handle is not available.',
+  'account.errorTooSoon': 'You changed your handle recently. Try again later.',
+  'account.emailNote': 'Signed in with {email}. Only you and moderators can see this.',
 } as const;

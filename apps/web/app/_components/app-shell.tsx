@@ -50,7 +50,11 @@ export async function AppShell({
         tenantName={tenantName}
         homeHref={base || '/'}
         signInHref={`${base}/signin`}
-        account={actor ? { handle: actor.handle, userId: actor.userId } : null}
+        account={
+          actor
+            ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
+            : null
+        }
         items={items}
         labels={{
           modules: t('nav.modules'),
