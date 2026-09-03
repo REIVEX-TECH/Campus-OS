@@ -143,3 +143,28 @@ test('a teacher name links to the teacher view', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // the teacher's name
   await expect(page.locator('section h3').first()).toBeVisible(); // their weekly grid
 });
+
+test('the timetable page remembers what you looked at, even signed out', async ({ page }) => {
+  await cascadeToPopulatedSection(page);
+  const section = new URL(page.url()).searchParams.get('section');
+  expect(section).toBeTruthy();
+  // The note is written after hydration, so give it the chance before leaving.
+  await page.waitForFunction(() =>
+    Object.keys(localStorage).some((k) => k.startsWith('campusos_recents:')),
+  );
+
+  // Back on the bare picker, the section you just saw is one tap away.
+  await page.goto('/u/lgu/timetable');
+  const panel = page.getByRole('region', { name: 'Recently viewed' });
+  await expect(panel).toBeVisible();
+  await panel.getByRole('link').first().click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('section')).toBe(section);
+
+  // And it is the reader's to forget.
+  await page.goto('/u/lgu/timetable');
+  await page
+    .getByRole('region', { name: 'Recently viewed' })
+    .getByRole('button', { name: 'Clear' })
+    .click();
+  await expect(page.getByRole('region', { name: 'Recently viewed' })).toHaveCount(0);
+});

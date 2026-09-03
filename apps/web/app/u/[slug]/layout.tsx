@@ -29,7 +29,12 @@ export default async function TenantLayout({ children, params }: Params & { chil
   // --primary from them per theme, so the whole subtree follows.
   return (
     <div data-tenant={tenant.slug} style={accentStyle(tenant.branding.colors.primary)}>
-      <AppShell tenantName={tenant.displayName} base={base} locale={tenant.locale}>
+      <AppShell
+        tenantName={tenant.displayName}
+        tenantSlug={tenant.slug}
+        base={base}
+        locale={tenant.locale}
+      >
         {children}
       </AppShell>
     </div>

@@ -51,10 +51,13 @@ export function Sidebar({
   signInHref,
   account,
   firebase,
+  tenant,
   items,
   labels,
 }: {
   tenantName: string;
+  /** The tenant slug. */
+  tenant: string;
   homeHref: string;
   signInHref: string;
   account: SidebarAccount;
@@ -251,6 +254,7 @@ export function Sidebar({
             account={account}
             signInHref={signInHref}
             firebase={firebase}
+            tenant={tenant}
             labels={labels.account}
             onNavigate={closeForNav}
           />

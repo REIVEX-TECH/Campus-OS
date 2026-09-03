@@ -91,6 +91,13 @@ export const tenantMemberships = pgTable(
     role: text('role').notNull(),
     /** active | invited | suspended */
     status: text('status').notNull().default('active'),
+    /**
+     * When the university came to trust who this person is, and how: `domain`
+     * (their verified email is on the tenant's list) or `admin`. Private. A
+     * suspended membership verifies nothing whatever this says.
+     */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verificationMethod: text('verification_method'),
     createdAt,
   },
   (t) => [
@@ -154,5 +161,34 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_tenant_at_idx').on(t.tenantId, t.at),
     index('audit_log_actor_idx').on(t.actorUserId),
+  ],
+);
+
+/**
+ * What a person viewed recently, per tenant, so a page can take them straight
+ * back. Own rows only. Generic on purpose: a kind, a key, a label and a relative
+ * href, so any module can record into it without this one knowing what it is.
+ */
+export const userRecents = pgTable(
+  'user_recents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    /** section | teacher | room */
+    kind: text('kind').notNull(),
+    key: text('key').notNull(),
+    label: text('label').notNull(),
+    /** Relative path only. */
+    href: text('href').notNull(),
+    viewedAt: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('user_recents_user_tenant_kind_key_uq').on(t.userId, t.tenantId, t.kind, t.key),
+    index('user_recents_user_viewed_idx').on(t.userId, t.viewedAt),
   ],
 );

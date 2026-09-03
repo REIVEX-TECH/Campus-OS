@@ -57,6 +57,13 @@
       "when": 1756800007000,
       "tag": "0007_handle_history_no_force",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1756800008000,
+      "tag": "0008_membership_verification",
+      "breakpoints": true
     }
   ]
 }

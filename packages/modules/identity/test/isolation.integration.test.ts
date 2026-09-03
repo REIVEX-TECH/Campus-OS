@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withActor, withActorInTenant, withTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
@@ -16,11 +16,14 @@ import {
   platformRoles,
   sessions,
   tenantMemberships,
+  userRecents,
   users,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, rerollAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
+import { ensureDomainMembership, membershipFor } from '../src/membership';
+import { clearRecents, listRecents, recordRecent } from '../src/recents';
 
 beforeAll(async () => {
   await runBaseMigrations(migrationDatabaseUrl());
@@ -199,13 +202,15 @@ describe('auth_resolve_session', () => {
 
 describe('tenant_memberships', () => {
   beforeEach(async () => {
-    await withActor(alice, (tx) =>
-      tx.insert(tenantMemberships).values([
-        { tenantId: 'aaa', userId: alice, role: 'student' },
-        { tenantId: 'bbb', userId: alice, role: 'teacher' },
-      ]),
+    // Memberships are written in a tenant context (0008): a person can read
+    // the ones they hold but never write one themselves.
+    await withActorInTenant(alice, 'aaa', (tx) =>
+      tx.insert(tenantMemberships).values({ tenantId: 'aaa', userId: alice, role: 'student' }),
     );
-    await withActor(bob, (tx) =>
+    await withActorInTenant(alice, 'bbb', (tx) =>
+      tx.insert(tenantMemberships).values({ tenantId: 'bbb', userId: alice, role: 'teacher' }),
+    );
+    await withActorInTenant(bob, 'bbb', (tx) =>
       tx.insert(tenantMemberships).values({ tenantId: 'bbb', userId: bob, role: 'student' }),
     );
   });
@@ -228,6 +233,28 @@ describe('tenant_memberships', () => {
   it('gives a signed in user in one tenant both their own rows and that tenant', async () => {
     const rows = await withActorInTenant(bob, 'bbb', (tx) => tx.select().from(tenantMemberships));
     expect(rows).toHaveLength(2);
+  });
+
+  it('never lets a person write their own membership', async () => {
+    // This is what makes "verified" unforgeable rather than merely hidden: no
+    // path a user controls can satisfy WITH CHECK on this table.
+    await expect(
+      withActor(bob, (tx) =>
+        tx.insert(tenantMemberships).values({ tenantId: 'aaa', userId: bob, role: 'student' }),
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      withActor(bob, (tx) =>
+        tx
+          .update(tenantMemberships)
+          .set({ verifiedAt: new Date(), verificationMethod: 'admin' })
+          .where(eq(tenantMemberships.userId, bob)),
+      ),
+    ).resolves.toBeDefined();
+    // An update the policy hides simply matches nothing, so it must have
+    // changed nothing either.
+    const [row] = await withActor(bob, (tx) => tx.select().from(tenantMemberships));
+    expect(row!.verifiedAt).toBeNull();
   });
 });
 
@@ -431,6 +458,7 @@ describe('row security invariants', () => {
     tenant_memberships: true,
     platform_roles: true,
     audit_log: true,
+    user_recents: true,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
@@ -453,5 +481,114 @@ describe('row security invariants', () => {
         FORCED[row.relname],
       );
     }
+  });
+});
+
+describe('membership by domain', () => {
+  const policy = { slug: 'aaa', joinMode: 'domain' as const, allowedEmailDomains: ['aaa.edu'] };
+
+  it('makes a person on the domain a verified student, silently', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-1', email: 'student@aaa.edu' });
+    const membership = await ensureDomainMembership(actor, policy);
+    expect(membership).toMatchObject({
+      tenantId: 'aaa',
+      role: 'student',
+      status: 'active',
+      verificationMethod: 'domain',
+    });
+    expect(membership!.verifiedAt).toBeInstanceOf(Date);
+    // Visible to the person themselves, and only as themselves.
+    expect(await membershipFor(actor.userId, 'aaa')).toMatchObject({ id: membership!.id });
+    expect(await membershipFor(actor.userId, 'bbb')).toBeNull();
+  });
+
+  it('does nothing for anyone else', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-2', email: 'someone@gmail.com' });
+    expect(await ensureDomainMembership(actor, policy)).toBeNull();
+    expect(await membershipFor(actor.userId, 'aaa')).toBeNull();
+  });
+
+  it('does nothing for a tenant that joins by invitation', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-3', email: 'student@aaa.edu' });
+    expect(await ensureDomainMembership(actor, { ...policy, joinMode: 'invite' })).toBeNull();
+  });
+
+  it('is idempotent across sign ins', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-4', email: 'again@aaa.edu' });
+    const first = await ensureDomainMembership(actor, policy);
+    const second = await ensureDomainMembership(actor, policy);
+    expect(second!.id).toBe(first!.id);
+    expect(second!.verifiedAt!.getTime()).toBe(first!.verifiedAt!.getTime());
+    const rows = await withActor(actor.userId, (tx) => tx.select().from(tenantMemberships));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('verifies an existing unverified membership rather than duplicating it', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-5', email: 'late@aaa.edu' });
+    await withActorInTenant(actor.userId, 'aaa', (tx) =>
+      tx
+        .insert(tenantMemberships)
+        .values({ tenantId: 'aaa', userId: actor.userId, role: 'student' }),
+    );
+    const membership = await ensureDomainMembership(actor, policy);
+    expect(membership!.verificationMethod).toBe('domain');
+    expect(membership!.verifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves the audit trail the design asks for', async () => {
+    const actor = await findOrCreateUser({ subject: 'dom-6', email: 'trail@aaa.edu' });
+    await ensureDomainMembership(actor, policy);
+    const rows = await withActorInTenant(actor.userId, 'aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.actorUserId, actor.userId)),
+    );
+    expect(rows.map((r) => r.action)).toContain('membership.joined');
+    // Ids and enum values only, never an address. (The id is a bigint, which
+    // JSON cannot carry, so only the fields that could hold text are checked.)
+    const text = JSON.stringify(
+      rows.map((r) => [r.action, r.targetType, r.targetId, r.tenantId, r.meta]),
+    );
+    expect(text).not.toContain('@');
+  });
+});
+
+describe('user_recents', () => {
+  it('remembers, newest first, one per key, and only for its owner', async () => {
+    const actor = await findOrCreateUser({ subject: 'rec-1', email: 'rec@aaa.edu' });
+    const other = await findOrCreateUser({ subject: 'rec-2', email: 'other@aaa.edu' });
+    await recordRecent(actor.userId, 'aaa', {
+      kind: 'section',
+      key: 's1',
+      label: 'BSCS 1A',
+      href: '/u/aaa/timetable?section=s1',
+    });
+    await recordRecent(actor.userId, 'aaa', {
+      kind: 'teacher',
+      key: 't1',
+      label: 'Someone',
+      href: '/u/aaa/teachers/t1',
+    });
+    await recordRecent(actor.userId, 'aaa', {
+      kind: 'section',
+      key: 's1',
+      label: 'BSCS 1A (renamed)',
+      href: '/u/aaa/timetable?section=s1',
+    });
+    const items = await listRecents(actor.userId, 'aaa');
+    expect(items.map((i) => i.key)).toEqual(['s1', 't1']);
+    expect(items[0]!.label).toBe('BSCS 1A (renamed)');
+    expect(await listRecents(other.userId, 'aaa')).toEqual([]);
+    expect(await withActor(other.userId, (tx) => tx.select().from(userRecents))).toEqual([]);
+  });
+
+  it('can be cleared by its owner', async () => {
+    const actor = await findOrCreateUser({ subject: 'rec-3', email: 'clear@aaa.edu' });
+    await recordRecent(actor.userId, 'aaa', {
+      kind: 'room',
+      key: 'r1',
+      label: 'B-204',
+      href: '/x',
+    });
+    await clearRecents(actor.userId, 'aaa');
+    expect(await listRecents(actor.userId, 'aaa')).toEqual([]);
   });
 });

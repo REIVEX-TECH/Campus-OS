@@ -22,11 +22,13 @@ const SIDEBAR_SCRIPT = `(function(){try{var s=localStorage.getItem('campusos_sid
 
 export async function AppShell({
   tenantName,
+  tenantSlug,
   base,
   locale,
   children,
 }: {
   tenantName: string;
+  tenantSlug: string;
   base: string;
   locale: string;
   children: ReactNode;
@@ -49,6 +51,7 @@ export async function AppShell({
       <SkipLink label={t('a11y.skipToContent')} />
       <Sidebar
         tenantName={tenantName}
+        tenant={tenantSlug}
         homeHref={base || '/'}
         signInHref={`${base}/signin`}
         account={

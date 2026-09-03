@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { canChangeHandle, nextChangeAllowedAt } from '@campusos/module-identity/handle-rules';
+import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { HandleForm } from '@/app/_components/handle-form';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
@@ -48,6 +49,8 @@ export default async function AccountPage({ params }: Params) {
 
   const changeable = canChangeHandle(actor.handleChangedAt);
   const nextAllowed = nextChangeAllowedAt(actor.handleChangedAt);
+  // Private to the person and the university. Never a public badge.
+  const membership = await membershipFor(actor.userId, slug);
 
   return (
     <PageShell>
@@ -63,6 +66,11 @@ export default async function AccountPage({ params }: Params) {
             <p className="text-lg font-semibold">{actor.handle}</p>
             <p className="text-xs text-muted-foreground">
               {t('account.emailNote', { email: actor.email })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {isVerified(membership)
+                ? t('account.verified', { tenant: tenant.displayName })
+                : t('account.notVerified', { tenant: tenant.displayName })}
             </p>
           </div>
           <div className="ml-auto">

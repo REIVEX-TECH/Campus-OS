@@ -12,7 +12,9 @@
     "./sessions": "./src/sessions.ts",
     "./handles": "./src/handles/service.ts",
     "./handle-rules": "./src/handles/handle.ts",
-    "./avatar-seed": "./src/avatar-seed.ts"
+    "./avatar-seed": "./src/avatar-seed.ts",
+    "./membership": "./src/membership.ts",
+    "./recents": "./src/recents.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

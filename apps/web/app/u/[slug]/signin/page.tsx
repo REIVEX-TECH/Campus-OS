@@ -113,6 +113,7 @@ export default async function SignInPage({ params }: Params) {
             <div className="flex flex-col gap-2">
               <SignInButton
                 config={config}
+                tenant={tenant.slug}
                 labels={{
                   signIn: t('signin.withGoogle'),
                   working: t('signin.working'),

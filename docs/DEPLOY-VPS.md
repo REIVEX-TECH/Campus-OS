@@ -438,7 +438,7 @@ DNS: an A record for `campusos.reivex.io` and a wildcard `*.campusos.reivex.io`
 cd /root/codes/campusos && nvm use 22
 git pull
 pnpm install --frozen-lockfile
-pnpm db:migrate:all                   # if a new migration landed
+pnpm db:migrate:all                   # ALWAYS. A no-op when nothing is pending; a skipped one broke sign in once
 pnpm turbo run build --filter=web
 pm2 restart campusos
 ```
