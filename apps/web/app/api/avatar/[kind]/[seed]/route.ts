@@ -1,7 +1,7 @@
 import { createAvatar } from '@dicebear/core';
 import { notionists, shapes } from '@dicebear/collection';
 import { z } from 'zod';
-import { AVATAR_KINDS, avatarBackground, type AvatarKind } from '@/lib/avatar';
+import { AVATAR_KINDS, AVATAR_SEED_PATTERN, avatarBackground, type AvatarKind } from '@/lib/avatar';
 
 /**
  * Renders a deterministic avatar as SVG.
@@ -21,11 +21,7 @@ import { AVATAR_KINDS, avatarBackground, type AvatarKind } from '@/lib/avatar';
 const paramsSchema = z.object({
   kind: z.enum(AVATAR_KINDS),
   // Entity ids and slugs only. Keeps the cache key bounded and the seed inert.
-  seed: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z0-9_.-]+$/),
+  seed: z.string().min(1).max(64).regex(AVATAR_SEED_PATTERN),
 });
 
 export async function GET(

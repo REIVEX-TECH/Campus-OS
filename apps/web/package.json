@@ -16,6 +16,7 @@
   "dependencies": {
     "@campusos/core": "workspace:*",
     "@campusos/db": "workspace:*",
+    "@campusos/module-identity": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
     "@campusos/ui": "workspace:*",

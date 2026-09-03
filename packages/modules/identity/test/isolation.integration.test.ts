@@ -343,6 +343,8 @@ describe('handles', () => {
     const actor = await findOrCreateUser(identity);
     const seed = await rerollAvatar(actor.userId);
     expect(seed).not.toBe(actor.avatarSeed);
+    // The avatar route only draws seeds of this shape (apps/web/lib/avatar.ts).
+    expect(seed).toMatch(/^[A-Za-z0-9_.-]+$/);
     expect((await findOrCreateUser(identity)).handle).toBe(actor.handle);
   });
 
