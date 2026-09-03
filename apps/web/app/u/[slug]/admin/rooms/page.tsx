@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { Button, Card, Field, Input } from '@campusos/ui';
 import { getAdminRooms } from '@/lib/admin-rooms';
+import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { SignOutButton } from '@/app/_components/sign-out-button';
-import { requireTenantAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -19,7 +19,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  await requireTenantAdmin(slug);
+  const { permissions } = await requirePermission(slug, 'manage-rooms');
   const base = await tenantBase(slug);
 
   const admin = getAdminRooms(slug);
@@ -34,18 +34,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
           <p className="max-w-prose text-sm text-muted-foreground">{t('admin.rooms.intro')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`${base}/admin/verification`}
-            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {t('admin.nav.verification')}
-          </Link>
-          <Link
-            href={`${base}/admin/analytics`}
-            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {t('admin.nav.analytics')}
-          </Link>
+          <AdminNav base={base} permissions={permissions} current="rooms" t={t} />
           <SignOutButton
             label={t('admin.rooms.signOut')}
             working={t('signin.signingOut')}

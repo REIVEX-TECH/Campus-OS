@@ -32,13 +32,15 @@ import {
   effectivePermissions,
   grantRole,
   listRoles,
+  createRole,
   revokeRole,
   rolesForMember,
+  setRolePermissions,
 } from '../src/rbac';
+import { listMembers, setMemberStatus } from '../src/members';
 import {
   decideRequest,
   latestRequest,
-  listMembers,
   listPendingRequests,
   requestVerification,
   userIdByHandle,
@@ -903,7 +905,7 @@ describe('verifying by hand', () => {
     if (members.ok) {
       expect(members.value.find((m) => m.userId === user.userId)).toMatchObject({
         handle: user.handle,
-        role: 'student',
+        roles: ['student'],
         verificationMethod: 'admin',
       });
       expect(JSON.stringify(members.value)).not.toContain('@');
@@ -1069,5 +1071,189 @@ describe('roles and permissions', () => {
     expect(
       JSON.stringify(trail.map((r) => [r.action, r.targetType, r.targetId, r.meta])),
     ).not.toContain('@');
+  });
+});
+
+describe('members, and the roles a tenant defines', () => {
+  const domain = { slug: 'aaa', joinMode: 'domain' as const, allowedEmailDomains: ['aaa.edu'] };
+  const details = { fullName: 'Ayesha Khan', rollNumber: 'FA21-BSCS-042' };
+
+  async function member(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@aaa.edu` });
+    await ensureDomainMembership(actor, { ...domain, slug: tenant });
+    return actor;
+  }
+  async function admin(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    return actor;
+  }
+
+  it('lists members with the roles they hold, and only for manage-members', async () => {
+    const a = await admin('mem-admin');
+    const s = await member('mem-student');
+    const list = await listMembers(a, 'aaa');
+    expect(list.ok).toBe(true);
+    if (!list.ok) return;
+    expect(list.value.find((m) => m.userId === s.userId)?.roles).toEqual(['student']);
+    expect(list.value.find((m) => m.userId === a.userId)?.roles).toEqual(['tenant_admin']);
+    expect(JSON.stringify(list.value)).not.toContain('@');
+    expect(await listMembers(s, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
+  });
+
+  it('suspends a member, which removes every permission until they are reinstated', async () => {
+    const a = await admin('sus-admin');
+    const s = await member('sus-student');
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+    expect(await setMemberStatus(a, 'aaa', s.userId, 'suspended')).toEqual({
+      ok: true,
+      value: { changed: true },
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).size).toBe(0);
+    // Idempotent: suspending again changes nothing and says so.
+    expect(await setMemberStatus(a, 'aaa', s.userId, 'suspended')).toEqual({
+      ok: true,
+      value: { changed: false },
+    });
+    expect(await setMemberStatus(a, 'aaa', s.userId, 'active')).toEqual({
+      ok: true,
+      value: { changed: true },
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+  });
+
+  it('refuses to suspend oneself, without the permission, or the last administrator', async () => {
+    const a = await admin('sus-self');
+    const s = await member('sus-self-student');
+    expect(await setMemberStatus(a, 'aaa', a.userId, 'suspended')).toEqual({
+      ok: false,
+      error: 'self',
+    });
+    expect(await setMemberStatus(s, 'aaa', a.userId, 'suspended')).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    // A member manager who is not an administrator cannot remove the last one.
+    const created = await createRole(a, 'aaa', {
+      name: 'Member Manager',
+      permissions: ['manage-members'],
+    });
+    expect(created.ok).toBe(true);
+    await grantRole(a, 'aaa', s.userId, 'member-manager');
+    expect(await setMemberStatus(s, 'aaa', a.userId, 'suspended')).toEqual({
+      ok: false,
+      error: 'last_admin',
+    });
+    expect(
+      await setMemberStatus(s, 'aaa', '00000000-0000-0000-0000-000000000000', 'suspended'),
+    ).toEqual({ ok: false, error: 'not_found' });
+  });
+
+  it("creates a role of the tenant's own and changes what it may do", async () => {
+    const a = await admin('role-admin');
+    const s = await member('role-student');
+    const created = await createRole(a, 'aaa', {
+      name: 'Course Rep',
+      permissions: ['post', 'moderate', 'moderate'],
+    });
+    expect(created).toMatchObject({
+      ok: true,
+      role: {
+        key: 'course-rep',
+        name: 'Course Rep',
+        isSystem: false,
+        permissions: ['post', 'moderate'],
+      },
+    });
+    expect(await createRole(a, 'aaa', { name: 'course rep', permissions: [] })).toEqual({
+      ok: false,
+      reason: 'exists',
+    });
+    expect(await createRole(a, 'aaa', { name: '!!!', permissions: [] })).toEqual({
+      ok: false,
+      reason: 'bad_name',
+    });
+
+    await grantRole(a, 'aaa', s.userId, 'course-rep');
+    expect((await effectivePermissions(s.userId, 'aaa')).hasAll('post', 'moderate')).toBe(true);
+    expect(await setRolePermissions(a, 'aaa', 'course-rep', ['view-analytics'])).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'post',
+      'view-analytics',
+    ]);
+    expect(await setRolePermissions(a, 'aaa', 'course-rep', ['view-analytics'])).toEqual({
+      ok: true,
+      changed: false,
+    });
+    const listed = (await listRoles(a.userId, 'aaa')).find((r) => r.key === 'course-rep');
+    expect(listed?.permissions).toEqual(['view-analytics']);
+  });
+
+  it('never changes a system role, and never lets a student define roles', async () => {
+    const a = await admin('role-sys');
+    const s = await member('role-sys-student');
+    expect(await setRolePermissions(a, 'aaa', 'tenant_admin', ['post'])).toEqual({
+      ok: false,
+      reason: 'system_role',
+    });
+    expect(await setRolePermissions(a, 'aaa', 'nope', ['post'])).toEqual({
+      ok: false,
+      reason: 'no_such_role',
+    });
+    // A name that derives a built in key is refused at the unique index.
+    expect(await createRole(a, 'aaa', { name: 'Student', permissions: [] })).toEqual({
+      ok: false,
+      reason: 'exists',
+    });
+    expect(await createRole(s, 'aaa', { name: 'Sneaky', permissions: ['manage-roles'] })).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect(await setRolePermissions(s, 'aaa', 'student', ['manage-roles'])).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect((await effectivePermissions(a.userId, 'aaa')).has('manage-roles')).toBe(true);
+  });
+
+  it("keeps one tenant's roles out of another", async () => {
+    const a = await admin('role-iso-a', 'aaa');
+    const b = await admin('role-iso-b', 'bbb');
+    await createRole(a, 'aaa', { name: 'Only Here', permissions: ['post'] });
+    expect((await listRoles(b.userId, 'bbb')).map((r) => r.key)).not.toContain('only-here');
+    expect(await setRolePermissions(b, 'bbb', 'only-here', [])).toEqual({
+      ok: false,
+      reason: 'no_such_role',
+    });
+  });
+
+  it("lets a role of the tenant's own approve verifications, and nothing more", async () => {
+    const a = await admin('appr-admin');
+    const approver = await member('appr-approver');
+    const bystander = await member('appr-bystander');
+    const asker = await findOrCreateUser({ subject: 'appr-asker', email: 'appr-asker@gmail.com' });
+    const asked = await requestVerification(asker.userId, 'aaa', details);
+    if (!asked.ok) throw new Error(asked.error);
+
+    // A student holds `post` only: the queue is shut to them.
+    expect(await listPendingRequests(bystander, 'aaa')).toEqual({ ok: false, error: 'not_admin' });
+    expect(await decideRequest(bystander, 'aaa', asked.value.id, 'approve')).toEqual({
+      ok: false,
+      error: 'not_admin',
+    });
+
+    await createRole(a, 'aaa', { name: 'Registrar', permissions: ['approve-verifications'] });
+    await grantRole(a, 'aaa', approver.userId, 'registrar');
+    const pending = await listPendingRequests(approver, 'aaa');
+    expect(pending.ok && pending.value.some((r) => r.id === asked.value.id)).toBe(true);
+    expect(await decideRequest(approver, 'aaa', asked.value.id, 'approve')).toMatchObject({
+      ok: true,
+      value: { outcome: 'decided', decision: 'approve' },
+    });
+    // The permission opens the queue and nothing else.
+    expect(await listMembers(approver, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
   });
 });

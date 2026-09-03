@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { tenantRegistry } from '@campusos/tenants';
 import { CUSTOM_HANDLE_PATTERN } from '@campusos/module-identity/handle-rules';
 import { userIdByHandle, verifyMember } from '@campusos/module-identity/verification';
-import { tenantAdmin } from '@/lib/auth';
+import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
 import { isSameOrigin } from '@/lib/same-origin';
@@ -11,7 +11,7 @@ import { isSameOrigin } from '@/lib/same-origin';
  * Mark a member verified by hand, found by their public handle.
  *
  * Same gate as a decision: cheap checks first on every caller, then 404 unless
- * the caller is a tenant_admin here, the role re-checked inside the
+ * the caller holds `approve-verifications` here, re-checked inside the
  * transaction, and never oneself. A handle may be generated or chosen, so the
  * chosen shape (a superset) is what is accepted.
  */
@@ -32,7 +32,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const tenant = tenantRegistry.resolveBySlug(parsed.data.tenant);
-  const admin = tenant ? await tenantAdmin(tenant.slug) : null;
+  const admin = tenant ? await permitted(tenant.slug, 'approve-verifications') : null;
   if (!tenant || !admin) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const userId = await userIdByHandle(parsed.data.handle);

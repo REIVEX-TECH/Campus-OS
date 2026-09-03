@@ -16,7 +16,8 @@
     "./membership": "./src/membership.ts",
     "./recents": "./src/recents.ts",
     "./verification": "./src/verification.ts",
-    "./rbac": "./src/rbac.ts"
+    "./rbac": "./src/rbac.ts",
+    "./members": "./src/members.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

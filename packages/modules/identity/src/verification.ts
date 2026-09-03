@@ -1,11 +1,12 @@
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
+import { withActor, withActorInTenant } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { err, ok, type Result } from '@campusos/core';
 import { recordAudit } from './audit';
-import { grantVerified, isVerified, membershipFor, type VerificationMethod } from './membership';
-import { tenantMemberships, verificationRequests } from './schema/identity';
+import { grantVerified, isVerified, membershipFor } from './membership';
+import { verificationRequests } from './schema/identity';
+import { canInTransaction } from './rbac';
 
 /**
  * Asking to be verified, and answering.
@@ -19,7 +20,7 @@ import { tenantMemberships, verificationRequests } from './schema/identity';
  *    on insert) and can never change one (RLS: update needs a tenant context,
  *    which their own request never runs in).
  *  - A decision runs in a tenant context, re-checks that the actor holds the
- *    tenant_admin role inside the same transaction, and refuses to decide the
+ *    approve-verifications permission inside the same transaction, and refuses to decide the
  *    actor's own request.
  *  - Deciding is idempotent: the request row is locked, and a request already
  *    decided says so rather than being decided twice.
@@ -163,30 +164,6 @@ export async function latestRequest(
   return row ? toRequest(row) : null;
 }
 
-/**
- * Whether the actor holds the tenant_admin role in this tenant, read inside the
- * transaction that is about to rely on it. The application checks this before
- * rendering anything; this is the check that counts.
- */
-async function isTenantAdmin(
-  tx: TenantTransaction,
-  userId: string,
-  tenantId: string,
-): Promise<boolean> {
-  const [row] = await tx
-    .select({ id: tenantMemberships.id })
-    .from(tenantMemberships)
-    .where(
-      and(
-        eq(tenantMemberships.tenantId, tenantId),
-        eq(tenantMemberships.userId, userId),
-        eq(tenantMemberships.role, 'tenant_admin'),
-        eq(tenantMemberships.status, 'active'),
-      ),
-    );
-  return row !== undefined;
-}
-
 export interface PendingRequest {
   id: string;
   userId: string;
@@ -210,7 +187,8 @@ export async function listPendingRequests(
   tenantId: string,
 ): Promise<Result<PendingRequest[], 'not_admin'>> {
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
-    if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
+    if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
+      return err('not_admin');
     const rows = [
       ...(await tx.execute(sql`
         select r.id, r.user_id, p.handle, coalesce(p.avatar_seed, r.user_id::text) as avatar_seed,
@@ -264,7 +242,8 @@ export async function decideRequest(
   decision: Decision,
 ): Promise<Result<DecisionOutcome, DecisionRefusal>> {
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
-    if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
+    if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
+      return err('not_admin');
 
     const [request] = await tx
       .select()
@@ -328,7 +307,8 @@ export async function verifyMember(
   targetUserId: string,
 ): Promise<Result<{ created: boolean; alreadyVerified: boolean }, DecisionRefusal>> {
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
-    if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
+    if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
+      return err('not_admin');
     if (targetUserId === admin.userId) return err('self');
     // Only an active user can be a member. Checked on the public view first,
     // because a foreign key failure would abort the transaction.
@@ -356,58 +336,4 @@ export async function userIdByHandle(handle: string): Promise<string | null> {
     )),
   ] as { user_id?: string }[];
   return rows[0]?.user_id ?? null;
-}
-
-export interface MemberSummary {
-  userId: string;
-  /** Null when the account is no longer active. */
-  handle: string | null;
-  avatarSeed: string;
-  role: string;
-  status: string;
-  verifiedAt: Date | null;
-  verificationMethod: VerificationMethod | null;
-  createdAt: Date;
-}
-
-/** The members of a tenant, newest first, for an admin. Handles, never emails. */
-export async function listMembers(
-  admin: { userId: string },
-  tenantId: string,
-  limit = 50,
-): Promise<Result<MemberSummary[], 'not_admin'>> {
-  return withActorInTenant(admin.userId, tenantId, async (tx) => {
-    if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
-    const rows = [
-      ...(await tx.execute(sql`
-        select m.user_id, p.handle, coalesce(p.avatar_seed, m.user_id::text) as avatar_seed,
-               m.role, m.status, m.verified_at, m.verification_method, m.created_at
-        from tenant_memberships m
-        left join public_profiles p on p.user_id = m.user_id
-        where m.tenant_id = ${tenantId}
-        order by m.created_at desc
-        limit ${limit}`)),
-    ] as {
-      user_id: string;
-      handle: string | null;
-      avatar_seed: string;
-      role: string;
-      status: string;
-      verified_at: string | Date | null;
-      verification_method: string | null;
-      created_at: string | Date;
-    }[];
-    return ok(
-      rows.map((r) => ({
-        userId: r.user_id,
-        handle: r.handle,
-        avatarSeed: r.avatar_seed,
-        role: r.role,
-        status: r.status,
-        verifiedAt: r.verified_at ? new Date(r.verified_at) : null,
-        verificationMethod: (r.verification_method as VerificationMethod | null) ?? null,
-        createdAt: new Date(r.created_at),
-      })),
-    );
-  });
 }

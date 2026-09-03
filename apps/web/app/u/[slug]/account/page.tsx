@@ -5,6 +5,7 @@ import { tenantRegistry } from '@campusos/tenants';
 import { canChangeHandle, nextChangeAllowedAt } from '@campusos/module-identity/handle-rules';
 import { avatarOptionPage, avatarOptionSeed } from '@campusos/module-identity/avatar-seed';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
+import { effectivePermissions } from '@campusos/module-identity/rbac';
 import { latestRequest } from '@campusos/module-identity/verification';
 import { HandleForm } from '@/app/_components/handle-form';
 import { AccountAvatarButton } from '@/app/_components/account-avatar-button';
@@ -12,6 +13,7 @@ import { PageShell } from '@/app/_components/page-shell';
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { VerificationRequestForm } from '@/app/_components/verification-request-form';
 import { currentActor } from '@/lib/auth';
+import { firstAdminSection } from '@/lib/admin-sections';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { requireTenant } from '@/lib/timetable';
@@ -56,6 +58,8 @@ export default async function AccountPage({ params }: Params) {
   // Private to the person and the university. Never a public badge.
   const membership = await membershipFor(actor.userId, slug);
   const verified = isVerified(membership);
+  // The admin link goes wherever the person's permissions open, if anywhere.
+  const adminHome = firstAdminSection(await effectivePermissions(actor.userId, slug));
   const request = verified ? null : await latestRequest(actor.userId, slug);
   // The first page of avatars, rendered with the page so the picker opens full.
   const avatarOptions = avatarOptionPage(0).map((option) => ({
@@ -172,10 +176,10 @@ export default async function AccountPage({ params }: Params) {
           </section>
         )}
 
-        {membership?.role === 'tenant_admin' && membership.status === 'active' ? (
+        {adminHome ? (
           <p className="px-1 text-sm">
             <Link
-              href={`${base}/admin/verification`}
+              href={`${base}${adminHome.path}`}
               className="font-medium text-primary hover:underline"
             >
               {t('account.admin.open')}

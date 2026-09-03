@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getAdminRooms } from '@/lib/admin-rooms';
-import { tenantAdmin } from '@/lib/auth';
+import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { relativeRedirect } from '@/lib/redirects';
 import { isSameOrigin } from '@/lib/same-origin';
@@ -9,8 +9,8 @@ import { tenantBaseForHost } from '@/lib/tenant-routing';
 /**
  * Rename a building's display name. The code it was inferred from ("NB") is
  * never changed here, so later crawls still resolve to the same building.
- * Same gate as renaming a room: origin, a per client limit, then the role on
- * the mutation itself, which is 404 without it.
+ * Same gate as renaming a room: origin, a per client limit, then the permission
+ * on the mutation itself, which is 404 without it.
  */
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   if (!rateLimit(`admin-rename-building:${clientKey(request.headers)}`, 60, 60_000)) {
     return new Response('Too Many Requests', { status: 429 });
   }
-  if (!(await tenantAdmin(slug))) return new Response('Not Found', { status: 404 });
+  if (!(await permitted(slug, 'manage-rooms'))) return new Response('Not Found', { status: 404 });
 
   const form = await request.formData();
   const parsed = schema.safeParse({ buildingId: form.get('buildingId'), name: form.get('name') });
