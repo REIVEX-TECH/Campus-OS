@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-// Reproduces the production bug: on a real tenant subdomain, links/form actions
-// must be root-relative. The admin login POST at the CLEAN path must resolve
-// (previously it hardcoded /u/lgu/... and 404'd via a double rewrite), and a
+// Reproduces the production bug: on a real tenant subdomain, links, form actions
+// and redirects must be root-relative. A redirect at the CLEAN path must resolve
+// (previously routes hardcoded /u/lgu/... and 404'd via a double rewrite), and a
 // stray /u/lgu/* path must redirect to the canonical clean URL.
 //
 // We simulate the subdomain with a Host header; playwright.config.ts sets
@@ -10,15 +10,12 @@ import { expect, test } from '@playwright/test';
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const SUBDOMAIN = `lgu.localhost:${PORT}`;
 
-test('subdomain: admin login POST resolves and redirects with a RELATIVE Location', async ({
-  request,
-}) => {
-  const res = await request.post('/admin/login/submit', {
+test('subdomain: the admin entry redirects with a RELATIVE Location', async ({ request }) => {
+  const res = await request.get('/admin', {
     headers: { Host: SUBDOMAIN },
-    form: { secret: 'wrong' },
     maxRedirects: 0,
   });
-  // The route resolved: a 3xx redirect back to login (or rooms), never a 404.
+  // The route resolved: a 3xx to sign in, never a 404.
   expect(res.status()).toBeGreaterThanOrEqual(300);
   expect(res.status()).toBeLessThan(400);
   // The Location must be root-relative, so the browser stays on the public
@@ -28,6 +25,7 @@ test('subdomain: admin login POST resolves and redirects with a RELATIVE Locatio
   expect(location.startsWith('/')).toBe(true);
   expect(location).not.toMatch(/^https?:\/\//);
   expect(location).not.toContain('localhost');
+  expect(location).not.toContain('/u/lgu');
 });
 
 test('subdomain: a duplicate /u/lgu path redirects to the canonical clean URL', async ({

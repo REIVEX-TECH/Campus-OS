@@ -32,6 +32,49 @@ const remoteKeys = createRemoteJWKSet(JWKS_URL);
 interface FirebaseClaims {
   email?: unknown;
   email_verified?: unknown;
+  firebase?: { sign_in_provider?: unknown };
+}
+
+/**
+ * The one provider this deployment accepts.
+ *
+ * Firebase issues tokens for every method a project has enabled, all signed by
+ * the same keys and all carrying `email_verified`. Admin is granted by matching
+ * an address against the tenant's `adminEmails`, so any other enabled provider
+ * that could assert a verified address would be a second door into the admin
+ * area. Only Google is offered in the UI, so only Google is accepted here, and
+ * enabling another method in the Firebase console cannot quietly open one.
+ */
+const SIGN_IN_PROVIDER = 'google.com';
+
+/**
+ * Read a verified identity out of already-verified token claims.
+ *
+ * Split from `verify` so the claim rules can be tested directly: the signature
+ * check needs Google's keys, these rules need nothing and carry the weight.
+ */
+export function identityFromClaims(payload: {
+  sub?: unknown;
+  [claim: string]: unknown;
+}): VerifiedIdentity {
+  const subject = payload.sub;
+  if (typeof subject !== 'string' || subject.length === 0) {
+    throw new InvalidIdentityTokenError('no subject');
+  }
+
+  const { email, email_verified: emailVerified, firebase } = payload as FirebaseClaims;
+  if (firebase?.sign_in_provider !== SIGN_IN_PROVIDER) {
+    throw new InvalidIdentityTokenError('unexpected sign in provider');
+  }
+  if (typeof email !== 'string' || email.length === 0) {
+    throw new InvalidIdentityTokenError('no email');
+  }
+  // An unverified address proves nothing about who is signing in, and the
+  // whole membership model keys off the email domain, so it is refused here
+  // rather than anywhere later.
+  if (emailVerified !== true) throw new InvalidIdentityTokenError('email not verified');
+
+  return { subject, email: email.toLowerCase() };
 }
 
 export class GoogleIdentityVerifier implements IdentityTokenVerifier {
@@ -57,19 +100,7 @@ export class GoogleIdentityVerifier implements IdentityTokenVerifier {
       throw new InvalidIdentityTokenError('signature, audience, issuer or expiry');
     }
 
-    const subject = payload.sub;
-    if (!subject) throw new InvalidIdentityTokenError('no subject');
-
-    const { email, email_verified: emailVerified } = payload as FirebaseClaims;
-    if (typeof email !== 'string' || email.length === 0) {
-      throw new InvalidIdentityTokenError('no email');
-    }
-    // An unverified address proves nothing about who is signing in, and the
-    // whole membership model keys off the email domain, so it is refused here
-    // rather than anywhere later.
-    if (emailVerified !== true) throw new InvalidIdentityTokenError('email not verified');
-
-    return { subject, email: email.toLowerCase() };
+    return identityFromClaims(payload);
   }
 }
 

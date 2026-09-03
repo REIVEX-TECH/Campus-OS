@@ -9,8 +9,11 @@
 // the shell; the `env` block below is STATIC keys (not a `...process.env`
 // spread), so it forwards ONLY what is listed here. The host vars are forwarded
 // explicitly so a missing one shows up as an empty value at boot rather than
-// silently defaulting (DATABASE_URL / ADMIN_SECRET are also sourced this way and
-// read directly by the app). If you add a new required env var, add it here too.
+// silently defaulting (DATABASE_URL is also sourced this way and read directly
+// by the app). If you add a new required env var, add it here too.
+//
+// There is no admin secret to forward: admin is a role on an account, so nothing
+// in this block can open the admin area. See .env.example.
 module.exports = {
   apps: [
     {
@@ -28,7 +31,6 @@ module.exports = {
         // Sourced from .env before `pm2 start` (see the ENV MODEL note above).
         PORT: process.env.PORT,
         DATABASE_URL: process.env.DATABASE_URL,
-        ADMIN_SECRET: process.env.ADMIN_SECRET,
         SOURCE_MODE: process.env.SOURCE_MODE,
         TENANT_BASE_DOMAIN: process.env.TENANT_BASE_DOMAIN,
         PLATFORM_HOST: process.env.PLATFORM_HOST,

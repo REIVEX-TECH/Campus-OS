@@ -1,25 +1,52 @@
 import { expect, test } from '@playwright/test';
 
-// The admin gate must be real server-side enforcement, not a hidden URL or a
-// client-only control. An unauthenticated visitor is redirected away from the
-// admin page, and the mutation endpoint itself rejects an unauthenticated POST.
-test('admin area is gated server-side on both the route and the mutation', async ({
-  page,
-  request,
-}) => {
-  // Route: the admin pages redirect an unauthenticated visitor to login.
-  await page.goto('/u/lgu/admin/rooms');
-  await expect(page).toHaveURL(/\/u\/lgu\/admin\/login/);
-  await page.goto('/u/lgu/admin/analytics');
-  await expect(page).toHaveURL(/\/u\/lgu\/admin\/login/);
+/** What a browser always sends with a POST from one of our pages. */
+const fromOurPage = () => ({ origin: String(test.info().project.use.baseURL) });
 
-  // Mutation: the rename endpoint rejects an unauthenticated POST outright.
-  const res = await request.post('/u/lgu/admin/rooms/rename', {
+// Admin is a role on an account, never a secret. Without that role there is no
+// admin area to find: pages and mutations alike are 404, so nothing about who
+// holds the role leaks. This pins both halves, for every admin surface.
+test('the admin area does not exist without the tenant_admin role', async ({ page, request }) => {
+  for (const path of [
+    '/u/lgu/admin/rooms',
+    '/u/lgu/admin/analytics',
+    '/u/lgu/admin/verification',
+  ]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+  }
+
+  // The mutations themselves, not just the pages in front of them.
+  const rename = await request.post('/u/lgu/admin/rooms/rename', {
+    headers: fromOurPage(),
     form: { roomId: '00000000-0000-0000-0000-000000000000', name: 'Room 25 NB' },
   });
-  expect(res.status()).toBe(401);
+  expect(rename.status()).toBe(404);
+  const decide = await request.post('/api/admin/verification', {
+    headers: fromOurPage(),
+    data: {
+      tenant: 'lgu',
+      requestId: '00000000-0000-0000-0000-000000000000',
+      decision: 'approve',
+    },
+  });
+  expect(decide.status()).toBe(404);
+  const verify = await request.post('/api/admin/members/verify', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', handle: 'Quiet_Otter_1234' },
+  });
+  expect(verify.status()).toBe(404);
+});
 
-  // The admin area is not indexable, even the publicly reachable login.
-  const login = await request.get('/u/lgu/admin/login');
-  expect(await login.text()).toContain('noindex');
+test('the shared secret login is gone', async ({ request }) => {
+  // No page to type a secret into, and nothing to post one to.
+  expect((await request.get('/u/lgu/admin/login')).status()).toBe(404);
+  const submit = await request.post('/u/lgu/admin/login/submit', {
+    headers: fromOurPage(),
+    form: { secret: 'anything' },
+  });
+  expect(submit.status()).toBe(404);
+  expect((await request.post('/u/lgu/admin/logout', { headers: fromOurPage() })).status()).toBe(
+    404,
+  );
 });

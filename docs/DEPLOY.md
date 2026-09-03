@@ -70,9 +70,9 @@ pnpm db:seed            # upserts the universities row for each tenant (lgu)
 SOURCE_MODE=live pnpm ingest:lgu   # full autonomous crawl -> hosted DB
 ```
 
-Then map the pending rooms so classes stop showing TBA: set `ADMIN_SECRET`,
-start the app (or use the deployed one once step 3 is done), sign in at
-`/u/lgu/admin/login`, and resolve each room at `/u/lgu/admin/rooms`.
+Then map the pending rooms so classes stop showing TBA: start the app (or use
+the deployed one once step 3 is done), sign in with an address listed in the
+tenant's `adminEmails`, and resolve each room at `/u/lgu/admin/rooms`.
 
 > If the ingest reports many anomalies or fails to mint a session, the portal
 > (`timetable.lgu.edu.pk`) is in one of its flaky windows (see
@@ -87,13 +87,12 @@ start the app (or use the deployed one once step 3 is done), sign in at
    either works.)
 2. Add **Environment Variables** (Production):
 
-   | Variable             | Value                                            |
-   | -------------------- | ------------------------------------------------ |
-   | `DATABASE_URL`       | Neon **pooled** string (see note below)          |
-   | `TENANT_BASE_DOMAIN` | `campusos.reivex.io`                             |
-   | `PLATFORM_HOST`      | `campusos.reivex.io`                             |
-   | `APP_DOMAIN`         | `reivex.io` (legacy; powers the removable 308)   |
-   | `ADMIN_SECRET`       | a strong secret (enables the room-mapping admin) |
+   | Variable             | Value                                          |
+   | -------------------- | ---------------------------------------------- |
+   | `DATABASE_URL`       | Neon **pooled** string (see note below)        |
+   | `TENANT_BASE_DOMAIN` | `campusos.reivex.io`                           |
+   | `PLATFORM_HOST`      | `campusos.reivex.io`                           |
+   | `APP_DOMAIN`         | `reivex.io` (legacy; powers the removable 308) |
 
    > **Pooled vs direct at runtime.** The pooled endpoint (pgbouncer, transaction
    > mode) does not support prepared statements, which the current postgres.js
@@ -140,8 +139,9 @@ Scheduled runs execute only when `HOSTED_DB_ENABLED` is `true`; a manual
 ## Environment variables
 
 See `.env.example` for the full list. Production needs: `DATABASE_URL`,
-`TENANT_BASE_DOMAIN=campusos.reivex.io`, `PLATFORM_HOST=campusos.reivex.io`,
-`ADMIN_SECRET`. `APP_DOMAIN=reivex.io` is optional (only the legacy 308).
+`TENANT_BASE_DOMAIN=campusos.reivex.io`, `PLATFORM_HOST=campusos.reivex.io`.
+`APP_DOMAIN=reivex.io` is optional (only the legacy 308). Admin needs no
+variable: it is a role on an account (see `adminEmails` in the tenant config).
 `LGU_PHPSESSID` and the `LGU_MAX_*` caps are optional.
 
 ## Production readiness checklist
@@ -153,8 +153,7 @@ See `.env.example` for the full list. Production needs: `DATABASE_URL`,
 - [ ] Full ingest completed; `ingestion_runs` has a `success` row.
 - [ ] Rooms mapped via `/u/lgu/admin/rooms`; room=TBA is at or near 0.
 - [ ] Vercel project deployed; `next build` green with no DB at build time.
-- [ ] Env vars set on Vercel: `DATABASE_URL`, `APP_DOMAIN=reivex.io`,
-      `ADMIN_SECRET`.
+- [ ] Env vars set on Vercel: `DATABASE_URL`, `APP_DOMAIN=reivex.io`.
 - [ ] `lgu.reivex.io` resolves, TLS valid, and the timetable renders.
 - [ ] `https://lgu.reivex.io/robots.txt` and `/sitemap.xml` show the real domain.
 - [ ] "Last updated" freshness line shows the latest ingest.

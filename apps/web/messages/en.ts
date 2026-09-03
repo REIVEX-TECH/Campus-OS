@@ -185,6 +185,8 @@ export const en = {
 
   'admin.nav.rooms': 'Rooms',
   'admin.nav.analytics': 'Analytics',
+  'admin.nav.verification': 'Verification',
+  'admin.nav.label': 'Admin sections',
 
   'admin.analytics.heading': 'Analytics',
   'admin.analytics.intro':
@@ -206,14 +208,6 @@ export const en = {
   'admin.analytics.coverageMeta': '{have} of {total}, {pct}%',
   'admin.analytics.pendingTeachers': 'Teachers pending review',
   'admin.analytics.pendingSections': 'Sections pending review',
-
-  'admin.login.heading': 'Admin sign in',
-  'admin.login.intro': 'Enter the admin secret for {tenant}.',
-  'admin.login.passwordLabel': 'Admin secret',
-  'admin.login.submit': 'Sign in',
-  'admin.login.error': 'Incorrect secret.',
-  'admin.login.disabled': 'Admin access is not configured on this deployment.',
-  'admin.login.rateLimited': 'Too many attempts. Please wait a minute and try again.',
 
   'notFound.title': '404',
   'notFound.body': 'This tenant or page could not be found.',

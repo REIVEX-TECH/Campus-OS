@@ -19,12 +19,17 @@ test('landing card links to a subdomain of the live platform host, not the legac
   expect(html).not.toContain('reivex.io'); // never the legacy {slug}.APP_DOMAIN host
 });
 
-test('bare /admin on a tenant host redirects to the login (not a 404)', async ({ request }) => {
+test('bare /admin on a tenant host sends a signed out visitor to sign in (not a 404)', async ({
+  request,
+}) => {
+  // Admin is a role on an account, so the way in is the ordinary sign in. The
+  // redirect reveals nothing: everyone signed out gets it.
   const res = await request.get('/admin', { headers: { Host: TENANT }, maxRedirects: 0 });
   expect(res.status()).toBeGreaterThanOrEqual(300);
   expect(res.status()).toBeLessThan(400);
   const location = res.headers()['location'] ?? '';
-  expect(location).toContain('/admin/login');
+  expect(location).toContain('/signin');
+  expect(location).not.toContain('/admin/login');
 });
 
 test('bare /admin on the platform host serves a placeholder (not a 404)', async ({ request }) => {

@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { Button, Card } from '@campusos/ui';
+import { Card } from '@campusos/ui';
 import type { TimetableAnalytics } from '@campusos/module-timetable/read';
 import { FreshnessLine } from '@/app/_components/freshness';
-import { requireAdmin } from '@/lib/admin-auth';
+import { SignOutButton } from '@/app/_components/sign-out-button';
+import { requireTenantAdmin } from '@/lib/auth';
 import { translator, type MessageKey, type Translate } from '@/lib/i18n';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -65,7 +66,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  await requireAdmin(slug);
+  await requireTenantAdmin(slug);
   const base = await tenantBase(slug);
   const queries = getQueries(slug);
   const [analytics, freshness]: [
@@ -98,16 +99,22 @@ export default async function AdminAnalyticsPage({ params }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href={`${base}/admin/verification`}
+            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('admin.nav.verification')}
+          </Link>
+          <Link
             href={`${base}/admin/rooms`}
             className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             {t('admin.nav.rooms')}
           </Link>
-          <form method="post" action={`${base}/admin/logout`}>
-            <Button type="submit" variant="ghost" size="sm">
-              {t('admin.rooms.signOut')}
-            </Button>
-          </form>
+          <SignOutButton
+            label={t('admin.rooms.signOut')}
+            working={t('signin.signingOut')}
+            redirectTo={base || '/'}
+          />
         </div>
       </header>
 
