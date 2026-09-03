@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LogIn } from 'lucide-react';
 import type { ModuleIconName } from '@/lib/modules';
+import { IdentityAvatar } from './identity-avatar';
 import { LogoMark } from './logo-mark';
 import { ModuleIcon } from './module-icon';
 import { ThemeToggle } from './theme-toggle';
@@ -16,6 +18,9 @@ export type SidebarItem = {
   soon: boolean;
 };
 
+/** Who is signed in, or null. Only the public handle crosses to the client. */
+export type SidebarAccount = { handle: string; userId: string } | null;
+
 export type SidebarLabels = {
   modules: string;
   menu: string;
@@ -24,6 +29,7 @@ export type SidebarLabels = {
   expand: string;
   theme: string;
   comingSoon: string;
+  signIn: string;
 };
 
 /**
@@ -39,11 +45,15 @@ export type SidebarLabels = {
 export function Sidebar({
   tenantName,
   homeHref,
+  signInHref,
+  account,
   items,
   labels,
 }: {
   tenantName: string;
   homeHref: string;
+  signInHref: string;
+  account: SidebarAccount;
   items: SidebarItem[];
   labels: SidebarLabels;
 }) {
@@ -231,6 +241,29 @@ export function Sidebar({
         </nav>
 
         <div className="sidebar-foot">
+          <Link
+            href={signInHref}
+            onClick={closeForNav}
+            aria-label={account ? account.handle : labels.signIn}
+            title={account ? account.handle : labels.signIn}
+            className="sidebar-item ios-pressable"
+          >
+            <span className="sidebar-icon">
+              {account ? (
+                <IdentityAvatar
+                  seed={account.userId}
+                  label={account.handle}
+                  size={20}
+                  className="sidebar-icon-svg"
+                />
+              ) : (
+                <LogIn className="sidebar-icon-svg" strokeWidth={2} aria-hidden="true" />
+              )}
+            </span>
+            <span className="sidebar-label truncate">
+              {account ? account.handle : labels.signIn}
+            </span>
+          </Link>
           <ThemeToggle label={labels.theme} />
         </div>
       </div>

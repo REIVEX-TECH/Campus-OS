@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./manifest": "./src/manifest.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./auth": "./src/auth/google-verifier.ts",
+    "./sessions": "./src/sessions.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -19,6 +21,7 @@
     "@campusos/core": "workspace:*",
     "@campusos/db": "workspace:*",
     "drizzle-orm": "^0.38.3",
+    "jose": "^6.2.10",
     "zod": "^3.24.1"
   },
   "devDependencies": {

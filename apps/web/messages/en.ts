@@ -261,4 +261,16 @@ export const en = {
   'count.courses.other': '{count} courses',
   'count.days.one': '{count} day',
   'count.days.other': '{count} days',
+
+  'signin.heading': 'Sign in',
+  'signin.intro':
+    'Timetables, free rooms and search stay open to everyone. Signing in is for the parts that need to know who you are.',
+  'signin.withGoogle': 'Continue with Google',
+  'signin.working': 'Opening Google',
+  'signin.failed': 'That did not complete. You can try again.',
+  'signin.signedInAs': 'Signed in as {handle}',
+  'signin.handleNote': 'This is a temporary name. You will be able to change it soon.',
+  'signin.signOut': 'Sign out',
+  'signin.signingOut': 'Signing out',
+  'signin.notConfigured': 'Sign in is not set up on this deployment yet.',
 } as const;

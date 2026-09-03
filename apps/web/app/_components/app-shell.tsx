@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { translator, type MessageKey } from '@/lib/i18n';
+import { currentActor } from '@/lib/auth';
 import { MODULES } from '@/lib/modules';
 import { Sidebar, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
@@ -18,7 +19,7 @@ import { SkipLink } from './skip-link';
 // sidebar width. Mirrors the theme script in the root layout.
 const SIDEBAR_SCRIPT = `(function(){try{var s=localStorage.getItem('campusos_sidebar');document.documentElement.dataset.sidebar=s==='collapsed'?'collapsed':'expanded';}catch(e){document.documentElement.dataset.sidebar='expanded';}})();`;
 
-export function AppShell({
+export async function AppShell({
   tenantName,
   base,
   locale,
@@ -30,6 +31,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const t = translator(locale);
+  // Cheap when nobody is signed in: with no session cookie this does not touch
+  // the database at all, so a public timetable pays nothing for it.
+  const actor = await currentActor();
   const items: SidebarItem[] = MODULES.map((m) => ({
     key: m.key,
     label: t(`module.${m.key}.label` as MessageKey),
@@ -45,6 +49,8 @@ export function AppShell({
       <Sidebar
         tenantName={tenantName}
         homeHref={base || '/'}
+        signInHref={`${base}/signin`}
+        account={actor ? { handle: actor.handle, userId: actor.userId } : null}
         items={items}
         labels={{
           modules: t('nav.modules'),
@@ -54,6 +60,7 @@ export function AppShell({
           expand: t('nav.expand'),
           theme: t('theme.toggle'),
           comingSoon: t('modules.comingSoon'),
+          signIn: t('signin.heading'),
         }}
       />
       <main id="main" tabIndex={-1} className="app-content outline-none">
