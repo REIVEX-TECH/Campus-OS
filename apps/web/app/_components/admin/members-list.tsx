@@ -25,6 +25,8 @@ export type MemberItem = {
   verified: boolean;
   /** Already formatted for the locale. */
   since: string;
+  /** Already translated: how recently they were seen. */
+  activity: string;
 };
 
 export type MembersLabels = {
@@ -117,7 +119,9 @@ export function MembersList({
                     </span>
                   ) : null}
                 </p>
-                <p className="text-xs text-muted-foreground">{m.since}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m.since}. {m.activity}
+                </p>
               </div>
               <span
                 className={

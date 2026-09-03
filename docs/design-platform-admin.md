@@ -122,13 +122,22 @@ mistake and nothing to leak.
 
 Added to the model:
 
-- `users.last_login_at` — set when a session is issued.
-- `users.last_active_at` — the existing session `touch`, at most hourly, moved up
-  to the user so "active this week" is one cheap read.
+- `users.last_login_at`, set when a session is issued.
+- `users.last_seen_at`, a column that already existed and was never written: the
+  session `touch`, at most hourly, now moves it too, so "active this week" is
+  one cheap read.
 
-The existing `sessions.ip_hash` predates this decision. It is a salted-less hash
-of an address, it is not shown anywhere, and Phase 3 stops writing it and drops
-the column, because a field that must never be displayed is better absent.
+Both live on `users`, which only its owner may read, so the dashboard reads them
+through two SECURITY DEFINER functions that answer for one tenant and return
+counts only (`auth_tenant_activity_totals`, `auth_tenant_activity_days`), and
+the member list gets a coarse bucket per person from a third
+(`auth_tenant_member_activity`): today, this week, this month, longer ago, or
+never. No function returns a timestamp.
+
+The existing `sessions.ip_hash` predated this decision. It was an unsalted hash
+of an address, never shown anywhere; Phase 3 stopped writing it and dropped the
+column, and `audit_log.ip_hash`, which was never written, with it. A field that
+must never be displayed is better absent.
 
 What the dashboard shows: sign-ins over time, active users over time, members by
 role, verification queue depth and age, plus the existing data counts. Trends

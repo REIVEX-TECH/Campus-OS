@@ -38,6 +38,7 @@ import {
   setRolePermissions,
 } from '../src/rbac';
 import { listMembers, setMemberStatus } from '../src/members';
+import { tenantActivity } from '../src/analytics';
 import {
   decideRequest,
   latestRequest,
@@ -1255,5 +1256,114 @@ describe('members, and the roles a tenant defines', () => {
     });
     // The permission opens the queue and nothing else.
     expect(await listMembers(approver, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
+  });
+});
+
+describe('activity timing', () => {
+  const domain = { slug: 'aaa', joinMode: 'domain' as const, allowedEmailDomains: ['aaa.edu'] };
+  const karachi = { days: 14, timezone: 'Asia/Karachi' };
+
+  async function member(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@aaa.edu` });
+    await ensureDomainMembership(actor, { ...domain, slug: tenant });
+    return actor;
+  }
+  async function admin(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    return actor;
+  }
+  async function marks(userId: string) {
+    const [row] = await withActor(userId, (tx) =>
+      tx.select().from(users).where(eq(users.id, userId)),
+    );
+    return { login: row!.lastLoginAt, seen: row!.lastSeenAt };
+  }
+
+  it('stamps last login and last seen at sign in, and touches last seen at most hourly', async () => {
+    const s = await member('act-student');
+    expect(await marks(s.userId)).toEqual({ login: null, seen: null });
+    const issued = await issueSession(s);
+    const signedIn = await marks(s.userId);
+    expect(signedIn.login).toBeInstanceOf(Date);
+    expect(signedIn.seen).toBeInstanceOf(Date);
+
+    // Two hours later (by fiat): resolving the session brings last seen forward.
+    await runAsMigrationRole(
+      `update users set last_seen_at = now() - interval '2 hours' where id = '${s.userId}'`,
+    );
+    await runAsMigrationRole(
+      `update sessions set last_used_at = now() - interval '2 hours' where user_id = '${s.userId}'`,
+    );
+    await resolveSession(issued.token);
+    const touched = await marks(s.userId);
+    expect(touched.seen!.getTime()).toBeGreaterThan(Date.now() - 60_000);
+    expect(touched.login!.getTime()).toBe(signedIn.login!.getTime());
+
+    // Within the hour, a second resolve writes nothing.
+    await resolveSession(issued.token);
+    expect((await marks(s.userId)).seen!.getTime()).toBe(touched.seen!.getTime());
+  });
+
+  it('aggregates activity for the tenant, for view-analytics only', async () => {
+    const a = await admin('act-admin');
+    const s = await member('act-member');
+    await issueSession(s);
+    const result = await tenantActivity(a, 'aaa', karachi);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.totals).toEqual({
+      members: 2,
+      activeDay: 1,
+      activeWeek: 1,
+      activeMonth: 1,
+    });
+    expect(result.value.days).toHaveLength(14);
+    expect(result.value.days[13]).toMatchObject({ signIns: 1, lastActive: 1 });
+    expect(result.value.days.slice(0, 13).every((d) => d.signIns === 0)).toBe(true);
+    expect(result.value.byRole.find((r) => r.key === 'student')?.members).toBe(1);
+    expect(result.value.byRole.find((r) => r.key === 'tenant_admin')?.members).toBe(1);
+    expect(result.value.queue).toEqual({ pending: 0, oldestPendingAt: null });
+    // Counts only: no handle, no email, no timestamp of anyone in particular.
+    expect(JSON.stringify(result.value)).not.toContain('@');
+    expect(JSON.stringify(result.value)).not.toContain(s.handle);
+    expect(await tenantActivity(s, 'aaa', karachi)).toEqual({ ok: false, error: 'not_allowed' });
+  });
+
+  it("keeps one tenant's activity out of another", async () => {
+    const a = await admin('act-a', 'aaa');
+    const b = await admin('act-b', 'bbb');
+    await issueSession(a);
+    const other = await tenantActivity(b, 'bbb', { days: 7, timezone: 'UTC' });
+    expect(other.ok && other.value.totals).toEqual({
+      members: 1,
+      activeDay: 0,
+      activeWeek: 0,
+      activeMonth: 0,
+    });
+    expect(other.ok && other.value.days.every((d) => d.signIns === 0)).toBe(true);
+    expect(await tenantActivity(a, 'bbb', { days: 7, timezone: 'UTC' })).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+  });
+
+  it('gives the member list a coarse bucket per person and nothing finer', async () => {
+    const a = await admin('act-list');
+    const s = await member('act-list-member');
+    await issueSession(s);
+    const list = await listMembers(a, 'aaa');
+    expect(list.ok && list.value.find((m) => m.userId === s.userId)?.activity).toBe('day');
+    expect(list.ok && list.value.find((m) => m.userId === a.userId)?.activity).toBe('never');
+    expect(JSON.stringify(list.ok ? list.value : [])).not.toMatch(/seen/i);
+  });
+
+  it('has no column for an address anywhere', async () => {
+    const rows = [
+      ...(await getDb().execute(sql`
+        select table_name from information_schema.columns
+        where table_schema = 'public' and column_name = 'ip_hash'`)),
+    ];
+    expect(rows).toEqual([]);
   });
 });
