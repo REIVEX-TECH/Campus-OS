@@ -347,22 +347,84 @@ describe('TimetableQueries.freeRooms', () => {
   it('excludes a room busy in the window and includes it (with building) when free', async () => {
     const q = createTimetableQueries('aaa');
     // R-101 has a Monday (dayOfWeek 1) 09:00 to 10:30 class in the seed.
-    const busy = await q.freeRooms({
-      termId: ids.termId,
-      dayOfWeek: 1,
-      startsAt: '09:00',
-      endsAt: '10:00',
-    });
+    const busy = await q.freeRooms({ dayOfWeek: 1, startsAt: '09:00', endsAt: '10:00' });
     expect(busy.map((r) => r.id)).not.toContain(ids.roomId);
 
-    const free = await q.freeRooms({
-      termId: ids.termId,
-      dayOfWeek: 1,
-      startsAt: '14:00',
-      endsAt: '15:00',
-    });
+    const free = await q.freeRooms({ dayOfWeek: 1, startsAt: '14:00', endsAt: '15:00' });
     const r101 = free.find((r) => r.id === ids.roomId);
     expect(r101).toEqual({ id: ids.roomId, name: 'R-101', building: 'A Block' });
+  });
+
+  it('counts a class from any term, exactly as the room page does', async () => {
+    // The production bug: free-rooms filtered occupancy by one term while the
+    // room page showed classes from another, so a room with a class in it was
+    // listed as free for that slot. A current class in a different term must
+    // make the room busy.
+    const q = createTimetableQueries('aaa');
+    const [course] = await withTenant('aaa', (tx) => tx.select().from(courses).limit(1));
+    await withTenant('aaa', (tx) =>
+      tx.insert(timetableEntries).values({
+        tenantId: 'aaa',
+        termId: ids.emptyTermId,
+        sectionId: ids.sectionId,
+        courseId: course!.id,
+        teacherId: null,
+        roomId: ids.roomId,
+        dayOfWeek: 2,
+        startsAt: '09:30',
+        endsAt: '11:00',
+        kind: 'lecture',
+        contentHash: 'other-term',
+      }),
+    );
+    for (const [startsAt, endsAt] of [
+      ['09:30', '11:00'],
+      ['10:00', '10:30'],
+      ['09:00', '10:00'],
+      ['10:30', '12:00'],
+    ]) {
+      const free = await q.freeRooms({ dayOfWeek: 2, startsAt: startsAt!, endsAt: endsAt! });
+      expect(
+        free.map((r) => r.id),
+        `${startsAt} to ${endsAt}`,
+      ).not.toContain(ids.roomId);
+    }
+    for (const [startsAt, endsAt] of [
+      ['08:00', '09:30'],
+      ['11:00', '12:30'],
+    ]) {
+      const free = await q.freeRooms({ dayOfWeek: 2, startsAt: startsAt!, endsAt: endsAt! });
+      expect(
+        free.map((r) => r.id),
+        `${startsAt} to ${endsAt}`,
+      ).toContain(ids.roomId);
+    }
+    // And the room's own schedule agrees: the same class is on it.
+    const schedule = await q.roomTimetable(ids.roomId);
+    expect(schedule.some((v) => v.dayOfWeek === 2 && v.startsAt.startsWith('09:30'))).toBe(true);
+  });
+
+  it('does not let a closed version keep a room busy', async () => {
+    const q = createTimetableQueries('aaa');
+    const [course] = await withTenant('aaa', (tx) => tx.select().from(courses).limit(1));
+    await withTenant('aaa', (tx) =>
+      tx.insert(timetableEntries).values({
+        tenantId: 'aaa',
+        termId: ids.termId,
+        sectionId: ids.sectionId,
+        courseId: course!.id,
+        teacherId: null,
+        roomId: ids.roomId,
+        dayOfWeek: 4,
+        startsAt: '09:00',
+        endsAt: '10:00',
+        kind: 'lecture',
+        contentHash: 'closed',
+        validTo: new Date('2026-01-01T00:00:00Z'),
+      }),
+    );
+    const free = await q.freeRooms({ dayOfWeek: 4, startsAt: '09:00', endsAt: '10:00' });
+    expect(free.map((r) => r.id)).toContain(ids.roomId);
   });
 });
 

@@ -1,5 +1,10 @@
 import type { TeachingWindow, TimetableView } from '@campusos/module-timetable/read';
-import { minutes } from '@/app/_components/views/time-scale';
+import {
+  busyIntervals,
+  freeGaps,
+  toMinutes,
+  totalMinutes,
+} from '@campusos/module-timetable/domain';
 
 /**
  * Read-only statistics derived from a class list that has already been fetched
@@ -56,18 +61,6 @@ function toHHMM(total: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** Merge overlapping/touching intervals so gap maths is not fooled by overlaps. */
-function merge(intervals: { start: number; end: number }[]): { start: number; end: number }[] {
-  const sorted = [...intervals].sort((a, b) => a.start - b.start || a.end - b.end);
-  const out: { start: number; end: number }[] = [];
-  for (const it of sorted) {
-    const last = out[out.length - 1];
-    if (last && it.start <= last.end) last.end = Math.max(last.end, it.end);
-    else out.push({ ...it });
-  }
-  return out;
-}
-
 /**
  * The unbooked stretches of each teaching day, inside the window. A day the
  * entity never uses is reported as one full-window free slot, which is what a
@@ -75,31 +68,20 @@ function merge(intervals: { start: number; end: number }[]): { start: number; en
  */
 export function freeSlots(views: TimetableView[], window: TeachingWindow): DayFreeSlots[] {
   if (!window.startsAt || !window.endsAt || window.days.length === 0) return [];
-  const open = minutes(window.startsAt);
-  const close = minutes(window.endsAt);
+  const open = toMinutes(window.startsAt);
+  const close = toMinutes(window.endsAt);
   if (close <= open) return [];
+  const frame = { start: open, end: close };
 
+  // The same busy and free arithmetic the free-rooms query uses, so a room's
+  // profile and the free-rooms page can never disagree about a slot.
   return window.days.map((dayOfWeek) => {
-    const busy = merge(
-      views
-        .filter((v) => v.dayOfWeek === dayOfWeek)
-        .map((v) => ({
-          start: Math.max(open, minutes(v.startsAt)),
-          end: Math.min(close, minutes(v.endsAt)),
-        }))
-        .filter((i) => i.end > i.start),
-    );
-
-    const slots: Slot[] = [];
-    let cursor = open;
-    for (const b of busy) {
-      if (b.start > cursor) slots.push({ startsAt: toHHMM(cursor), endsAt: toHHMM(b.start) });
-      cursor = Math.max(cursor, b.end);
-    }
-    if (cursor < close) slots.push({ startsAt: toHHMM(cursor), endsAt: toHHMM(close) });
-
-    const busyMinutes = busy.reduce((n, b) => n + (b.end - b.start), 0);
-    return { dayOfWeek, slots, freeMinutes: close - open - busyMinutes };
+    const busy = busyIntervals(views, dayOfWeek, frame);
+    const slots: Slot[] = freeGaps(busy, frame).map((g) => ({
+      startsAt: toHHMM(g.start),
+      endsAt: toHHMM(g.end),
+    }));
+    return { dayOfWeek, slots, freeMinutes: close - open - totalMinutes(busy) };
   });
 }
 
@@ -111,7 +93,7 @@ export function timetableStats(views: TimetableView[], window: TeachingWindow): 
   let busyMinutes = 0;
 
   for (const v of views) {
-    const span = Math.max(0, minutes(v.endsAt) - minutes(v.startsAt));
+    const span = Math.max(0, toMinutes(v.endsAt) - toMinutes(v.startsAt));
     busyMinutes += span;
     byDayMinutes.set(v.dayOfWeek, (byDayMinutes.get(v.dayOfWeek) ?? 0) + span);
     sectionIds.add(v.section.id);
@@ -136,8 +118,8 @@ export function timetableStats(views: TimetableView[], window: TeachingWindow): 
     }
   }
 
-  const open = window.startsAt ? minutes(window.startsAt) : null;
-  const close = window.endsAt ? minutes(window.endsAt) : null;
+  const open = window.startsAt ? toMinutes(window.startsAt) : null;
+  const close = window.endsAt ? toMinutes(window.endsAt) : null;
   const capacity =
     open !== null && close !== null && close > open ? (close - open) * window.days.length : 0;
 
