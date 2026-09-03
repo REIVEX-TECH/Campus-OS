@@ -2,14 +2,14 @@
 
 Design: `docs/design-platform-admin.md`.
 
-| Phase | What                                                      | State                                |
-| ----- | --------------------------------------------------------- | ------------------------------------ |
-| 0     | Design doc                                                | Written                              |
-| 1     | RBAC schema, RLS, resolver, guard; migrate `tenant_admin` | Merged, `b3d7277`                    |
-| 2     | Tenant-admin UI for members and roles                     | Merged, `9271659`                    |
-| 3     | Analytics with activity timing                            | Merged, `9769360`                    |
-| 4     | Tenant config file to database, super-admin tenant CRUD   | **In review** (this PR)              |
-| 5     | Cross-tenant god-mode                                     | **Gate: plan only, awaiting review** |
+| Phase | What                                                      | State                                                                   |
+| ----- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 0     | Design doc                                                | Written                                                                 |
+| 1     | RBAC schema, RLS, resolver, guard; migrate `tenant_admin` | Merged, `b3d7277`                                                       |
+| 2     | Tenant-admin UI for members and roles                     | Merged, `9271659`                                                       |
+| 3     | Analytics with activity timing                            | Merged, `9769360`                                                       |
+| 4     | Tenant config file to database, super-admin tenant CRUD   | Merged, `548b0ca`                                                       |
+| 5     | Cross-tenant god-mode                                     | **Plan written, awaiting review**: `docs/platform-admin-phase5-plan.md` |
 
 Queued behind these: the Communities module (`docs/design-communities.md`, not
 yet written), whose community roles are to be RBAC roles in the Phase 1 model
