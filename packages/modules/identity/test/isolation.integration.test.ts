@@ -19,6 +19,8 @@ import {
   users,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
+import { changeHandle, rerollAvatar } from '../src/handles/service';
+import { HANDLE_PATTERN } from '../src/handles/handle';
 
 beforeAll(async () => {
   await runBaseMigrations(migrationDatabaseUrl());
@@ -235,9 +237,8 @@ describe('sign in lifecycle', () => {
   it('creates a user on first sign in and finds the same one after', async () => {
     const first = await findOrCreateUser(identity);
     expect(first.email).toBe(identity.email);
-    // The handle is a placeholder until handles are properly generated, but it
-    // must already be unique and obviously not a chosen name.
-    expect(first.handle).toMatch(/^Member_/);
+    // A real generated handle from the first sign in, not a placeholder.
+    expect(first.handle).toMatch(HANDLE_PATTERN);
 
     const second = await findOrCreateUser(identity);
     expect(second.userId).toBe(first.userId);
@@ -282,6 +283,83 @@ describe('sign in lifecycle', () => {
   });
 });
 
+describe('handles', () => {
+  const identity = { subject: 'handle-sub', email: 'handles@aaa.edu' };
+
+  it('gives a new user a generated handle, not a placeholder', async () => {
+    const actor = await findOrCreateUser(identity);
+    expect(actor.handle).toMatch(HANDLE_PATTERN);
+  });
+
+  it('lets a user choose a new handle and remembers when', async () => {
+    const actor = await findOrCreateUser(identity);
+    const result = await changeHandle(actor.userId, 'Quiet_Harbour_7');
+    expect(result).toEqual({ ok: true, handle: 'Quiet_Harbour_7' });
+
+    const again = await findOrCreateUser(identity);
+    expect(again.handle).toBe('Quiet_Harbour_7');
+    expect(again.handleChangedAt).not.toBeNull();
+  });
+
+  it('refuses a second change inside the cooldown', async () => {
+    const actor = await findOrCreateUser(identity);
+    await changeHandle(actor.userId, 'Quiet_Harbour_7');
+    const second = await changeHandle(actor.userId, 'Other_Name_9');
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.reason).toBe('too_soon');
+  });
+
+  it('refuses a handle already held by someone else', async () => {
+    const a = await findOrCreateUser(identity);
+    const b = await findOrCreateUser({ subject: 'other-sub', email: 'other@aaa.edu' });
+    await changeHandle(a.userId, 'Shared_Name_1');
+    const clash = await changeHandle(b.userId, 'Shared_Name_1');
+    expect(clash.ok).toBe(false);
+    if (!clash.ok) expect(clash.reason).toBe('taken');
+  });
+
+  it('reserves a released handle so it cannot be used to impersonate', async () => {
+    const a = await findOrCreateUser(identity);
+    const original = a.handle;
+    await changeHandle(a.userId, 'Moved_Away_2');
+
+    // Someone else cannot pick up the name the first user has just left.
+    const b = await findOrCreateUser({ subject: 'squatter-sub', email: 'squatter@aaa.edu' });
+    const attempt = await changeHandle(b.userId, original);
+    expect(attempt.ok).toBe(false);
+    if (!attempt.ok) expect(attempt.reason).toBe('taken');
+  });
+
+  it('treats asking for the handle you already hold as a no-op', async () => {
+    const actor = await findOrCreateUser(identity);
+    const result = await changeHandle(actor.userId, actor.handle);
+    expect(result).toEqual({ ok: true, handle: actor.handle });
+    // It must not burn the cooldown, or a stray save would lock someone out.
+    const after = await changeHandle(actor.userId, 'Really_New_3');
+    expect(after.ok).toBe(true);
+  });
+
+  it('re rolls an avatar without touching the handle', async () => {
+    const actor = await findOrCreateUser(identity);
+    const seed = await rerollAvatar(actor.userId);
+    expect(seed).not.toBe(actor.avatarSeed);
+    expect((await findOrCreateUser(identity)).handle).toBe(actor.handle);
+  });
+
+  it('shows the public profile without ever exposing an email', async () => {
+    const actor = await findOrCreateUser(identity);
+    const rows = [
+      ...(await getDb().execute(
+        sql`select * from public_profiles where user_id = ${actor.userId}::uuid`,
+      )),
+    ];
+    expect(rows).toHaveLength(1);
+    // The protection is structural: email is not a column of the view, so no
+    // query against it can select one.
+    expect(Object.keys(rows[0]!)).toEqual(['user_id', 'handle', 'avatar_seed']);
+  });
+});
+
 describe('platform_roles', () => {
   it('are visible only to the user who holds them', async () => {
     await withActor(alice, (tx) =>
@@ -319,5 +397,59 @@ describe('audit_log', () => {
     const after = await withTenant('aaa', (tx) => tx.select().from(auditLog));
     expect(after).toHaveLength(1);
     expect(after[0]!.action).toBe('admin.tenant.enter');
+  });
+});
+
+describe('row security invariants', () => {
+  /**
+   * The exact FORCE state of every identity table, pinned deliberately.
+   *
+   * FORCE applies a table's policies to its OWNER as well as everyone else. That
+   * is what a SECURITY DEFINER function runs as, so a table with FORCE is one no
+   * definer function can read: it gets filtered exactly as the caller would be,
+   * returns nothing, and the check it was written to perform silently passes.
+   *
+   * That failure is quiet, which is the problem. It cost three separate fixes
+   * here, once per table, each found only after the feature above it had been
+   * written. So the state is asserted rather than remembered: adding a table, or
+   * a definer function that reads one, fails this test until the choice is made
+   * on purpose.
+   *
+   * RLS itself is on everywhere and stays on. FORCE is dropped ONLY where a
+   * definer function needs to read, and the application role owns nothing, so
+   * dropping it changes nothing the application can see.
+   */
+  const FORCED: Record<string, boolean> = {
+    // Read by a definer function, so FORCE must be off.
+    users: false, // auth_resolve_user_by_subject, public_profiles
+    sessions: false, // auth_resolve_session
+    handle_history: false, // auth_handle_is_reserved
+    // Never read by one. FORCE stays on as a safety net if the application is
+    // ever pointed at the owner credential by mistake.
+    tenant_memberships: true,
+    platform_roles: true,
+    audit_log: true,
+  };
+
+  it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
+    const rows = [
+      ...(await getDb().execute(
+        sql`select relname, relrowsecurity, relforcerowsecurity
+            from pg_class
+            where relname in (${sql.join(
+              Object.keys(FORCED).map((t) => sql`${t}`),
+              sql`, `,
+            )})
+              and relkind = 'r'`,
+      )),
+    ] as { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }[];
+
+    expect(rows).toHaveLength(Object.keys(FORCED).length);
+    for (const row of rows) {
+      expect(row.relrowsecurity, `${row.relname} must have RLS enabled`).toBe(true);
+      expect(row.relforcerowsecurity, `${row.relname} FORCE state changed`).toBe(
+        FORCED[row.relname],
+      );
+    }
   });
 });

@@ -19,7 +19,7 @@ export type SidebarItem = {
 };
 
 /** Who is signed in, or null. Only the public handle crosses to the client. */
-export type SidebarAccount = { handle: string; userId: string } | null;
+export type SidebarAccount = { handle: string; avatarSeed: string; href: string } | null;
 
 export type SidebarLabels = {
   modules: string;
@@ -242,7 +242,7 @@ export function Sidebar({
 
         <div className="sidebar-foot">
           <Link
-            href={signInHref}
+            href={account ? account.href : signInHref}
             onClick={closeForNav}
             aria-label={account ? account.handle : labels.signIn}
             title={account ? account.handle : labels.signIn}
@@ -251,7 +251,7 @@ export function Sidebar({
             <span className="sidebar-icon">
               {account ? (
                 <IdentityAvatar
-                  seed={account.userId}
+                  seed={account.avatarSeed}
                   label={account.handle}
                   size={20}
                   className="sidebar-icon-svg"

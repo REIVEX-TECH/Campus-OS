@@ -3,6 +3,7 @@ import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import type { VerifiedIdentity } from '@campusos/core/auth';
+import { generateHandle } from './handles/handle';
 import { sessions, users } from './schema/identity';
 
 /**
@@ -22,6 +23,10 @@ export interface Actor {
   userId: string;
   handle: string;
   email: string;
+  /** Seeds the generated avatar. Re rollable, and carries no meaning. */
+  avatarSeed: string;
+  /** When the handle last changed, for the cooldown. Null if never. */
+  handleChangedAt: Date | null;
 }
 
 export interface IssuedSession {
@@ -33,17 +38,6 @@ export interface IssuedSession {
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
-}
-
-/**
- * A first handle, so a user row can exist before handles are properly generated.
- *
- * Deliberately unmistakable for a chosen name and unique by construction, so it
- * cannot collide while the real generator (adjective, noun, number) is still to
- * come. Nothing is derived from the person's name or email.
- */
-function placeholderHandle(userId: string): string {
-  return `Member_${userId.replace(/-/g, '').slice(0, 10)}`;
 }
 
 /**
@@ -62,9 +56,23 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
       sql`select * from auth_resolve_user_by_subject(${identity.subject})`,
     )),
   ];
-  const found = existing[0] as { user_id?: string; handle?: string; email?: string } | undefined;
+  const found = existing[0] as
+    | {
+        user_id?: string;
+        handle?: string;
+        email?: string;
+        avatar_seed?: string;
+        handle_changed_at?: Date | null;
+      }
+    | undefined;
   if (found?.user_id) {
-    const actor = { userId: found.user_id, handle: found.handle!, email: found.email! };
+    const actor: Actor = {
+      userId: found.user_id,
+      handle: found.handle!,
+      email: found.email!,
+      avatarSeed: found.avatar_seed ?? found.user_id,
+      handleChangedAt: found.handle_changed_at ?? null,
+    };
     // An email can change upstream; the subject is what identifies the person.
     if (found.email !== identity.email) {
       await withActor(actor.userId, (tx) =>
@@ -76,7 +84,9 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
   }
 
   const userId = randomUUID();
-  const handle = placeholderHandle(userId);
+  // A collision is vanishingly unlikely and the unique index would catch it;
+  // the retry that handles it properly lives in assignGeneratedHandle.
+  const handle = generateHandle();
   await withActor(userId, (tx) =>
     tx.insert(users).values({
       id: userId,
@@ -87,7 +97,13 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
       avatarSeed: userId,
     }),
   );
-  return { userId, handle, email: identity.email };
+  return {
+    userId,
+    handle,
+    email: identity.email,
+    avatarSeed: userId,
+    handleChangedAt: null,
+  };
 }
 
 /** Issue a session for a user. The plaintext token is returned only here. */
@@ -131,7 +147,13 @@ export async function resolveSession(token: string | undefined): Promise<Actor |
   if (!user || user.status !== 'active') return null;
 
   await touch(row.user_id, row.session_id!);
-  return { userId: user.id, handle: user.handle, email: user.email };
+  return {
+    userId: user.id,
+    handle: user.handle,
+    email: user.email,
+    avatarSeed: user.avatarSeed,
+    handleChangedAt: user.handleChangedAt,
+  };
 }
 
 /**
