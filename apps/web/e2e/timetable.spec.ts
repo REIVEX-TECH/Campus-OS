@@ -162,7 +162,10 @@ test('the timetable page remembers what you looked at, even signed out', async (
   await page.goto('/u/lgu/timetable');
   const panel = page.getByRole('region', { name: 'Recently viewed' });
   await expect(panel).toBeVisible();
-  await panel.getByRole('link').first().click();
+  // By href, not by position: the cascade above records several sections and
+  // they can land in the same millisecond, so "newest first" does not settle
+  // their order and the first row is not reliably the one just viewed.
+  await panel.locator(`a[href*="section=${section}"]`).click();
   await page.waitForURL((url) => url.searchParams.get('section') === section);
 
   // And it is the reader's to forget.

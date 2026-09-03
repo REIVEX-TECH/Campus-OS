@@ -71,6 +71,13 @@
       "when": 1756800009000,
       "tag": "0009_verification_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1756800010000,
+      "tag": "0010_rbac",
+      "breakpoints": true
     }
   ]
 }

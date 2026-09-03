@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { membershipFor, type Membership } from '@campusos/module-identity/membership';
+import { effectivePermissions } from '@campusos/module-identity/rbac';
+import type { Permission, PermissionSet } from '@campusos/core';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
 import { clientKey } from './rate-limit';
 
@@ -87,4 +89,48 @@ export async function requireTenantAdmin(slug: string): Promise<TenantAdmin> {
   const admin = await tenantAdmin(slug);
   if (!admin) notFound();
   return admin;
+}
+
+/**
+ * What the signed in person may do in this tenant, or nothing.
+ *
+ * Cheap for a stranger: with no session cookie this never reaches the database.
+ * The answer comes from a definer function scoped to one user and one tenant, so
+ * asking it cannot reveal anyone else's roles.
+ */
+export async function currentPermissions(slug: string): Promise<PermissionSet | null> {
+  const actor = await currentActor();
+  if (!actor) return null;
+  return effectivePermissions(actor.userId, slug);
+}
+
+export interface PermittedActor {
+  actor: Actor;
+  permissions: PermissionSet;
+}
+
+/** The actor if they hold this permission here, else null. */
+export async function permitted(
+  slug: string,
+  permission: Permission,
+): Promise<PermittedActor | null> {
+  const actor = await currentActor();
+  if (!actor) return null;
+  const permissions = await effectivePermissions(actor.userId, slug);
+  return permissions.has(permission) ? { actor, permissions } : null;
+}
+
+/**
+ * As above, for a page: anyone without the permission gets a 404 rather than a
+ * refusal, so an admin surface never confirms its own existence. Every mutation
+ * behind this re-checks inside its own transaction, so this is the first of two
+ * checks and never the only one.
+ */
+export async function requirePermission(
+  slug: string,
+  permission: Permission,
+): Promise<PermittedActor> {
+  const allowed = await permitted(slug, permission);
+  if (!allowed) notFound();
+  return allowed;
 }

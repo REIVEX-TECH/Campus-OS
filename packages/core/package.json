@@ -9,7 +9,8 @@
     "./tenant": "./src/tenant/index.ts",
     "./ingestion": "./src/ingestion/index.ts",
     "./module": "./src/module/index.ts",
-    "./auth": "./src/auth/index.ts"
+    "./auth": "./src/auth/index.ts",
+    "./rbac": "./src/rbac/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { recordAudit } from './audit';
+import { attachRole, ensureSystemRoles } from './rbac';
 import { tenantMemberships, verificationRequests } from './schema/identity';
 
 /**
@@ -110,6 +111,9 @@ export async function grantVerified(
 ): Promise<{ membership: Membership; created: boolean; alreadyVerified: boolean }> {
   const role = input.role ?? 'student';
   const close = input.closePendingRequests ?? true;
+  // A tenant that predates the role model, or one just created, may not have its
+  // system roles yet; without them the link below would find nothing to attach.
+  await ensureSystemRoles(tx, input.tenantId);
   const [inserted] = await tx
     .insert(tenantMemberships)
     .values({
@@ -123,6 +127,12 @@ export async function grantVerified(
     .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
     .returning();
   if (inserted) {
+    await attachRole(tx, {
+      membershipId: inserted.id,
+      tenantId: input.tenantId,
+      userId: input.userId,
+      roleKey: role,
+    });
     await recordAudit(tx, {
       actorUserId: input.actorUserId,
       tenantId: input.tenantId,
@@ -253,6 +263,12 @@ export async function ensureConfiguredAdmin(
       .set({ role: 'tenant_admin' })
       .where(eq(tenantMemberships.id, granted.membership.id))
       .returning();
+    await attachRole(tx, {
+      membershipId: granted.membership.id,
+      tenantId: tenant.slug,
+      userId: actor.userId,
+      roleKey: 'tenant_admin',
+    });
     await recordAudit(tx, {
       actorUserId: actor.userId,
       tenantId: tenant.slug,

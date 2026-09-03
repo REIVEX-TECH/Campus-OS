@@ -13,7 +13,10 @@ import { universities } from '@campusos/db/schema';
 import { migrationsFolder, migrationsTable } from '../src/manifest';
 import {
   auditLog,
+  membershipRoles,
   platformRoles,
+  rolePermissions,
+  roles,
   sessions,
   tenantMemberships,
   userRecents,
@@ -24,6 +27,14 @@ import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '.
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
 import { ensureConfiguredAdmin, ensureDomainMembership, membershipFor } from '../src/membership';
+import {
+  can,
+  effectivePermissions,
+  grantRole,
+  listRoles,
+  revokeRole,
+  rolesForMember,
+} from '../src/rbac';
 import {
   decideRequest,
   latestRequest,
@@ -465,11 +476,16 @@ describe('row security invariants', () => {
     handle_history: false, // auth_handle_is_reserved
     // Never read by one. FORCE stays on as a safety net if the application is
     // ever pointed at the owner credential by mistake.
-    tenant_memberships: true,
+    // Joined by auth_effective_permissions, so FORCE must stay off here too.
+    tenant_memberships: false,
     platform_roles: true,
     audit_log: true,
     user_recents: true,
     verification_requests: true,
+    // Read by auth_effective_permissions, so FORCE must stay off.
+    roles: false,
+    role_permissions: false,
+    membership_roles: false,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
@@ -892,5 +908,166 @@ describe('verifying by hand', () => {
       });
       expect(JSON.stringify(members.value)).not.toContain('@');
     }
+  });
+});
+
+describe('roles and permissions', () => {
+  const domain = { slug: 'aaa', joinMode: 'domain' as const, allowedEmailDomains: ['aaa.edu'] };
+
+  async function member(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@aaa.edu` });
+    await ensureDomainMembership(actor, { ...domain, slug: tenant });
+    return actor;
+  }
+  async function admin(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    return actor;
+  }
+
+  it('gives every tenant the three system roles', async () => {
+    const a = await admin('rbac-seed');
+    const list = await listRoles(a.userId, 'aaa');
+    expect(list.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    expect(list.every((r) => r.isSystem)).toBe(true);
+    expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
+    expect(list.find((r) => r.key === 'student')!.permissions).toEqual(['post']);
+  });
+
+  it('resolves an administrator to every permission and a student to one', async () => {
+    const a = await admin('rbac-admin');
+    const s = await member('rbac-student');
+    expect(
+      (await effectivePermissions(a.userId, 'aaa')).hasAll('manage-roles', 'view-analytics'),
+    ).toBe(true);
+    const studentPermissions = await effectivePermissions(s.userId, 'aaa');
+    expect(studentPermissions.toArray()).toEqual(['post']);
+    expect(studentPermissions.has('manage-roles')).toBe(false);
+  });
+
+  it('gives a stranger nothing at all', async () => {
+    const nobody = await findOrCreateUser({ subject: 'rbac-none', email: 'none@gmail.com' });
+    expect((await effectivePermissions(nobody.userId, 'aaa')).size).toBe(0);
+  });
+
+  it('never leaks a permission across tenants', async () => {
+    // The whole point: power in one university is not power in another.
+    const a = await admin('rbac-cross');
+    expect(await can(a.userId, 'aaa', 'manage-roles')).toBe(true);
+    expect(await can(a.userId, 'bbb', 'manage-roles')).toBe(false);
+    expect((await effectivePermissions(a.userId, 'bbb')).size).toBe(0);
+  });
+
+  it('takes every permission from a suspended member without losing their roles', async () => {
+    const a = await admin('rbac-susp-admin');
+    const s = await member('rbac-susp');
+    await withActorInTenant(a.userId, 'aaa', (tx) =>
+      tx
+        .update(tenantMemberships)
+        .set({ status: 'suspended' })
+        .where(eq(tenantMemberships.userId, s.userId)),
+    );
+    expect((await effectivePermissions(s.userId, 'aaa')).size).toBe(0);
+    // The roles are still there, so lifting the suspension restores them.
+    expect(await rolesForMember(a.userId, 'aaa', s.userId)).toEqual(['student']);
+  });
+
+  it('unions the permissions of every role a person holds', async () => {
+    const a = await admin('rbac-union-admin');
+    const s = await member('rbac-union');
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+
+    expect(await grantRole(a, 'aaa', s.userId, 'tenant_admin')).toEqual({
+      ok: true,
+      changed: true,
+    });
+    const now = await effectivePermissions(s.userId, 'aaa');
+    expect(now.has('post')).toBe(true);
+    expect(now.has('moderate')).toBe(true);
+    expect(await rolesForMember(a.userId, 'aaa', s.userId)).toEqual(['student', 'tenant_admin']);
+
+    // Granting the same role again is a no op rather than an error.
+    expect(await grantRole(a, 'aaa', s.userId, 'tenant_admin')).toEqual({
+      ok: true,
+      changed: false,
+    });
+  });
+
+  it('refuses to grant or revoke without manage-roles', async () => {
+    const a = await admin('rbac-guard-admin');
+    const s = await member('rbac-guard-student');
+    const other = await member('rbac-guard-other');
+    expect(await grantRole(s, 'aaa', other.userId, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect(await revokeRole(s, 'aaa', other.userId, 'student')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect(await rolesForMember(a.userId, 'aaa', other.userId)).toEqual(['student']);
+  });
+
+  it('refuses an unknown role and an unknown member', async () => {
+    const a = await admin('rbac-unknown');
+    const s = await member('rbac-unknown-member');
+    expect(await grantRole(a, 'aaa', s.userId, 'root')).toEqual({
+      ok: false,
+      reason: 'no_such_role',
+    });
+    expect(await grantRole(a, 'aaa', '00000000-0000-0000-0000-000000000000', 'student')).toEqual({
+      ok: false,
+      reason: 'no_such_member',
+    });
+  });
+
+  it('will not let a tenant remove its last administrator', async () => {
+    const a = await admin('rbac-last');
+    expect(await revokeRole(a, 'aaa', a.userId, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'last_admin',
+    });
+    const second = await member('rbac-last-second');
+    await grantRole(a, 'aaa', second.userId, 'tenant_admin');
+    expect(await revokeRole(a, 'aaa', a.userId, 'tenant_admin')).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect(await can(a.userId, 'aaa', 'manage-roles')).toBe(false);
+  });
+
+  it('keeps the role tables unreadable without a tenant context', async () => {
+    const s = await member('rbac-rls');
+    // Resolving your own permissions goes through the definer function; the
+    // tables themselves stay shut, so a permission check cannot become a way to
+    // read every other member's roles.
+    expect(await withActor(s.userId, (tx) => tx.select().from(roles))).toEqual([]);
+    expect(await withActor(s.userId, (tx) => tx.select().from(rolePermissions))).toEqual([]);
+    expect(await withActor(s.userId, (tx) => tx.select().from(membershipRoles))).toEqual([]);
+  });
+
+  it('never shows one tenant the roles of another', async () => {
+    const a = await admin('rbac-tenant-a', 'aaa');
+    await admin('rbac-tenant-b', 'bbb');
+    const seen = await withActorInTenant(a.userId, 'aaa', (tx) =>
+      tx.select().from(membershipRoles),
+    );
+    expect(seen.every((r) => r.tenantId === 'aaa')).toBe(true);
+  });
+
+  it('leaves an audit line for every role change', async () => {
+    const a = await admin('rbac-audit');
+    const s = await member('rbac-audit-member');
+    await grantRole(a, 'aaa', s.userId, 'teacher');
+    await revokeRole(a, 'aaa', s.userId, 'teacher');
+    const trail = await withActorInTenant(a.userId, 'aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.actorUserId, a.userId)),
+    );
+    const actions = trail.map((r) => r.action);
+    expect(actions).toContain('role.granted');
+    expect(actions).toContain('role.revoked');
+    expect(
+      JSON.stringify(trail.map((r) => [r.action, r.targetType, r.targetId, r.meta])),
+    ).not.toContain('@');
   });
 });
