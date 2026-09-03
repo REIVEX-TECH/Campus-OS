@@ -1,21 +1,18 @@
-import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getDb, getSqlClient } from '../src/client';
-import { runBaseMigrations } from '../src/migrate';
+import { migrationDatabaseUrl, runAsMigrationRole, runBaseMigrations } from '../src/migrate';
 import { createTenantRepositories, universitiesRepository } from '../src/repositories/index';
 import { rooms } from '../src/schema/tenant';
 import { withTenant } from '../src/tenant-context';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? '';
-
 beforeAll(async () => {
-  await runBaseMigrations(DATABASE_URL);
+  await runBaseMigrations(migrationDatabaseUrl());
 });
 
 beforeEach(async () => {
   // TRUNCATE is not subject to RLS and campusos_app owns the tables.
-  await getDb().execute(
-    sql`truncate table "rooms", "buildings", "campuses", "universities" restart identity cascade`,
+  await runAsMigrationRole(
+    `truncate table "rooms", "buildings", "campuses", "universities" restart identity cascade`,
   );
   await universitiesRepository.upsert({ slug: 'aaa', name: 'Alpha University', timezone: 'UTC' });
   await universitiesRepository.upsert({ slug: 'bbb', name: 'Beta University', timezone: 'UTC' });

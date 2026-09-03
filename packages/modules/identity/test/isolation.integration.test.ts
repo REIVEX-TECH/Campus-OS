@@ -3,7 +3,12 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withActor, withActorInTenant, withTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
-import { applyMigrations, runBaseMigrations } from '@campusos/db/migrate';
+import {
+  applyMigrations,
+  migrationDatabaseUrl,
+  runAsMigrationRole,
+  runBaseMigrations,
+} from '@campusos/db/migrate';
 import { universities } from '@campusos/db/schema';
 import { migrationsFolder, migrationsTable } from '../src/manifest';
 import {
@@ -14,11 +19,29 @@ import {
   users,
 } from '../src/schema/identity';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? '';
-
 beforeAll(async () => {
-  await runBaseMigrations(DATABASE_URL);
-  await applyMigrations(DATABASE_URL, migrationsFolder, migrationsTable);
+  await runBaseMigrations(migrationDatabaseUrl());
+  await applyMigrations(migrationDatabaseUrl(), migrationsFolder, migrationsTable);
+
+  // Several assertions below only hold once the application role and the schema
+  // owner are different roles (docs/db-role-split.md). While the application
+  // still owns the tables it bypasses RLS wherever FORCE is absent, so a pass
+  // here would prove nothing. Fail loudly, and say what to do about it, rather
+  // than reporting green against a database that cannot honour the guarantee.
+  const [ownership] = [
+    ...(await getDb().execute(sql`
+      select pg_get_userbyid(relowner) = current_user as app_owns_sessions
+      from pg_class
+      where relname = 'sessions'
+    `)),
+  ];
+  if (ownership?.app_owns_sessions) {
+    throw new Error(
+      'This database has not been split: the application role still owns the tables. ' +
+        'Run scripts/db-bootstrap.sql for a fresh database, or docs/db-role-split.md for ' +
+        'an existing one, then point MIGRATION_DATABASE_URL at the owner role.',
+    );
+  }
 });
 
 afterAll(async () => {
@@ -49,9 +72,9 @@ let alice: string;
 let bob: string;
 
 beforeEach(async () => {
-  await getDb().execute(sql`truncate table "users" restart identity cascade`);
-  await getDb().execute(sql`truncate table "audit_log" restart identity cascade`);
-  await getDb().execute(sql`truncate table "universities" restart identity cascade`);
+  await runAsMigrationRole(`truncate table "users" restart identity cascade`);
+  await runAsMigrationRole(`truncate table "audit_log" restart identity cascade`);
+  await runAsMigrationRole(`truncate table "universities" restart identity cascade`);
   await getDb()
     .insert(universities)
     .values([
@@ -107,6 +130,67 @@ describe('sessions', () => {
     );
     expect(await withActor(alice, (tx) => tx.select().from(sessions))).toHaveLength(1);
     expect(await withActor(bob, (tx) => tx.select().from(sessions))).toHaveLength(0);
+  });
+});
+
+describe('auth_resolve_session', () => {
+  // The one privileged read in the system. It exists because resolving a
+  // request's session happens before the user is known: we hold a token, not a
+  // user id, so it cannot satisfy the own-row policy on sessions.
+  it('resolves a live token with no actor context, and only on an exact match', async () => {
+    await withActor(alice, (tx) =>
+      tx.insert(sessions).values({
+        userId: alice,
+        tokenHash: 'live-hash',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    const hit = [...(await getDb().execute(sql`select * from auth_resolve_session('live-hash')`))];
+    expect(hit).toHaveLength(1);
+    expect(hit[0]!.user_id).toBe(alice);
+
+    // Without the exact hash of a live token it returns nothing, so it cannot
+    // be used to enumerate sessions.
+    const miss = [
+      ...(await getDb().execute(sql`select * from auth_resolve_session('not-a-hash')`)),
+    ];
+    expect(miss).toHaveLength(0);
+  });
+
+  it('ignores an expired or revoked session', async () => {
+    await withActor(alice, (tx) =>
+      tx.insert(sessions).values([
+        { userId: alice, tokenHash: 'expired', expiresAt: new Date(Date.now() - 1000) },
+        {
+          userId: alice,
+          tokenHash: 'revoked',
+          expiresAt: new Date(Date.now() + 60_000),
+          revokedAt: new Date(),
+        },
+      ]),
+    );
+    const expired = [
+      ...(await getDb().execute(sql`select * from auth_resolve_session('expired')`)),
+    ];
+    const revoked = [
+      ...(await getDb().execute(sql`select * from auth_resolve_session('revoked')`)),
+    ];
+    expect(expired).toHaveLength(0);
+    expect(revoked).toHaveLength(0);
+  });
+
+  it('still does not let the application read the sessions table directly', async () => {
+    await withActor(alice, (tx) =>
+      tx.insert(sessions).values({
+        userId: alice,
+        tokenHash: 'private',
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    );
+    // Dropping FORCE on sessions let the OWNER read it, for the definer
+    // function. The application owns nothing, so the own-row policy still binds.
+    expect(await withActor(bob, (tx) => tx.select().from(sessions))).toHaveLength(0);
+    expect(await getDb().select().from(sessions)).toEqual([]);
   });
 });
 

@@ -20,6 +20,9 @@ importers:
       '@campusos/db':
         specifier: workspace:*
         version: link:packages/db
+      '@campusos/module-identity':
+        specifier: workspace:*
+        version: link:packages/modules/identity
       '@campusos/module-timetable':
         specifier: workspace:*
         version: link:packages/modules/timetable

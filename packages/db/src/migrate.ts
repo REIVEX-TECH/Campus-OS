@@ -4,6 +4,40 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
+/**
+ * The connection migrations run on.
+ *
+ * Schema changes are made by the OWNER role, not the application role. The two
+ * are deliberately different: the application connects as a role that owns
+ * nothing, so row-level security applies to it without relying on
+ * FORCE, and it holds no DDL and no TRUNCATE (TRUNCATE ignores RLS, so an
+ * application able to run it could empty every tenant at once).
+ *
+ * Falls back to DATABASE_URL so a database that has not been split yet, and a
+ * developer who has not set the second variable, both keep working.
+ */
+export function migrationDatabaseUrl(): string {
+  const url = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error('MIGRATION_DATABASE_URL or DATABASE_URL is required to migrate');
+  return url;
+}
+
+/**
+ * Run maintenance statements as the migration role.
+ *
+ * Test setup only. Resetting tables needs TRUNCATE, which the application role
+ * does not have and must not have, so the suites reach for this instead of
+ * quietly widening the application's grants to suit the tests.
+ */
+export async function runAsMigrationRole(...statements: string[]): Promise<void> {
+  const client = postgres(migrationDatabaseUrl(), { max: 1 });
+  try {
+    for (const statement of statements) await client.unsafe(statement);
+  } finally {
+    await client.end();
+  }
+}
+
 /** Folder holding the base (@campusos/db) migrations. */
 export const baseMigrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle');
 
