@@ -21,7 +21,7 @@ import {
   verificationRequests,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
-import { changeHandle, rerollAvatar } from '../src/handles/service';
+import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
 import { ensureConfiguredAdmin, ensureDomainMembership, membershipFor } from '../src/membership';
 import {
@@ -378,7 +378,7 @@ describe('handles', () => {
 
   it('re rolls an avatar without touching the handle', async () => {
     const actor = await findOrCreateUser(identity);
-    const seed = await rerollAvatar(actor.userId);
+    const seed = await chooseAvatar(actor.userId, 3);
     expect(seed).not.toBe(actor.avatarSeed);
     // The avatar route only draws seeds of this shape (apps/web/lib/avatar.ts).
     expect(seed).toMatch(/^[A-Za-z0-9_.-]+$/);

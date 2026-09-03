@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
-import { nextAvatarSeed } from '../avatar-seed';
+import { avatarOptionSeed } from '../avatar-seed';
 import { handleHistory, users } from '../schema/identity';
 import {
   canChangeHandle,
@@ -126,9 +126,13 @@ export async function changeHandle(userId: string, requested: string): Promise<C
   return { ok: true, handle: requested };
 }
 
-/** Re roll the generated avatar. It carries no meaning, so it is unrestricted. */
-export async function rerollAvatar(userId: string): Promise<string> {
-  const seed = nextAvatarSeed(userId, Date.now());
+/**
+ * Keep one of the offered avatars. It carries no meaning, so there is no
+ * cooldown and no rule beyond the option being one that exists: the caller sends
+ * a number, and the seed is built here from that number and their own id.
+ */
+export async function chooseAvatar(userId: string, option: number): Promise<string> {
+  const seed = avatarOptionSeed(userId, option);
   await withActor(userId, (tx) =>
     tx.update(users).set({ avatarSeed: seed }).where(eq(users.id, userId)),
   );

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
- * Change your handle, or re roll your avatar.
+ * Change your handle.
  *
  * The rules are enforced on the server; this form's job is to explain a refusal
  * in words rather than leaving someone guessing why their choice bounced.
@@ -16,7 +16,6 @@ export type HandleFormLabels = {
   save: string;
   saving: string;
   saved: string;
-  reroll: string;
   lockedUntil: string;
   errorFormat: string;
   errorReserved: string;
@@ -64,11 +63,6 @@ export function HandleForm({
     router.refresh();
   }
 
-  async function reroll(): Promise<void> {
-    await fetch('/api/account/avatar', { method: 'POST' });
-    router.refresh();
-  }
-
   return (
     <form onSubmit={save} className="flex flex-col gap-3">
       <label className="flex flex-col gap-1.5">
@@ -93,13 +87,6 @@ export function HandleForm({
           className="ios-pressable ios-card rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
         >
           {state.kind === 'saving' ? labels.saving : labels.save}
-        </button>
-        <button
-          type="button"
-          onClick={reroll}
-          className="ios-pressable rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-        >
-          {labels.reroll}
         </button>
       </div>
 

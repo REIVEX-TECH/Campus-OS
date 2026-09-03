@@ -3,10 +3,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { canChangeHandle, nextChangeAllowedAt } from '@campusos/module-identity/handle-rules';
+import { avatarOptionPage, avatarOptionSeed } from '@campusos/module-identity/avatar-seed';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { latestRequest } from '@campusos/module-identity/verification';
 import { HandleForm } from '@/app/_components/handle-form';
-import { IdentityAvatar } from '@/app/_components/identity-avatar';
+import { AccountAvatarButton } from '@/app/_components/account-avatar-button';
 import { PageShell } from '@/app/_components/page-shell';
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { VerificationRequestForm } from '@/app/_components/verification-request-form';
@@ -56,6 +57,11 @@ export default async function AccountPage({ params }: Params) {
   const membership = await membershipFor(actor.userId, slug);
   const verified = isVerified(membership);
   const request = verified ? null : await latestRequest(actor.userId, slug);
+  // The first page of avatars, rendered with the page so the picker opens full.
+  const avatarOptions = avatarOptionPage(0).map((option) => ({
+    option,
+    seed: avatarOptionSeed(actor.userId, option),
+  }));
 
   return (
     <PageShell>
@@ -66,7 +72,24 @@ export default async function AccountPage({ params }: Params) {
         </header>
 
         <section className="ios-card flex flex-wrap items-center gap-4 rounded-2xl p-4">
-          <IdentityAvatar seed={actor.avatarSeed} label={actor.handle} size={56} />
+          <AccountAvatarButton
+            seed={actor.avatarSeed}
+            handle={actor.handle}
+            options={avatarOptions}
+            labels={{
+              change: t('account.avatar.change'),
+              title: t('account.avatar.title'),
+              intro: t('account.avatar.intro'),
+              preview: t('account.avatar.preview'),
+              shuffle: t('account.avatar.shuffle'),
+              save: t('account.avatar.save'),
+              saving: t('account.avatar.saving'),
+              cancel: t('account.avatar.cancel'),
+              close: t('account.avatar.close'),
+              failed: t('account.avatar.failed'),
+              option: t('account.avatar.option'),
+            }}
+          />
           <div className="flex min-w-0 flex-col gap-0.5">
             <p className="text-lg font-semibold">{actor.handle}</p>
             <p className="text-xs text-muted-foreground">
@@ -93,7 +116,6 @@ export default async function AccountPage({ params }: Params) {
               save: t('account.save'),
               saving: t('account.saving'),
               saved: t('account.saved'),
-              reroll: t('account.reroll'),
               lockedUntil: t('account.lockedUntil', {
                 date: nextAllowed ? nextAllowed.toLocaleDateString(tenant.locale) : '',
               }),

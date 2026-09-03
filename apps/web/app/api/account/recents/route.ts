@@ -7,6 +7,7 @@ import {
   recordRecent,
 } from '@campusos/module-identity/recents';
 import { currentActor } from '@/lib/auth';
+import { isSameOrigin } from '@/lib/same-origin';
 
 /**
  * A signed in person's recently viewed timetables, per tenant.
@@ -38,6 +39,8 @@ export async function POST(request: Request): Promise<Response> {
   const actor = await currentActor();
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
 
+  if (!isSameOrigin(request.headers)) return Response.json({ error: 'origin' }, { status: 403 });
+
   const parsed = recordSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'bad_request' }, { status: 400 });
   const { tenant: named, ...item } = parsed.data;
@@ -65,6 +68,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function DELETE(request: Request): Promise<Response> {
   const actor = await currentActor();
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
+  if (!isSameOrigin(request.headers)) return Response.json({ error: 'origin' }, { status: 403 });
 
   const named = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
   const tenant = named.success ? tenantRegistry.resolveBySlug(named.data) : null;
