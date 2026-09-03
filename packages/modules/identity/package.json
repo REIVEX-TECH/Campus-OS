@@ -14,7 +14,8 @@
     "./handle-rules": "./src/handles/handle.ts",
     "./avatar-seed": "./src/avatar-seed.ts",
     "./membership": "./src/membership.ts",
-    "./recents": "./src/recents.ts"
+    "./recents": "./src/recents.ts",
+    "./verification": "./src/verification.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

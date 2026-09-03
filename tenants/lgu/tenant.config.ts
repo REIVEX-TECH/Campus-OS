@@ -21,6 +21,9 @@ export const lgu: TenantConfigInput = {
   allowedEmailDomains: ['lgu.edu.pk'],
   // Anyone with a verified lgu.edu.pk address joins as a student.
   joinMode: 'domain',
+  // Tenant admins, by sign in email. Add the LGU address for the second admin
+  // here when it is known; this list is the only way the role is granted today.
+  adminEmails: ['ahadnawaz585@gmail.com'],
   enabledModules: ['timetable'],
   seo: {
     titleTemplate: '%s · LGU Timetable',

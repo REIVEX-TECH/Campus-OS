@@ -64,6 +64,13 @@
       "when": 1756800008000,
       "tag": "0008_membership_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1756800009000,
+      "tag": "0009_verification_requests",
+      "breakpoints": true
     }
   ]
 }

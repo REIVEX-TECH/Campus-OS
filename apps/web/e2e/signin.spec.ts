@@ -83,3 +83,27 @@ test('recording a recent view requires a session', async ({ request }) => {
   });
   expect(response.status()).toBe(401);
 });
+
+test('the admin verification page does not exist for anyone signed out', async ({ page }) => {
+  // 404, not 403: the page's existence must say nothing about who holds the role.
+  const response = await page.goto('/u/lgu/admin/verification');
+  expect(response?.status()).toBe(404);
+});
+
+test('an admin decision is not found without the role', async ({ request }) => {
+  const response = await request.post('/api/admin/verification', {
+    data: {
+      tenant: 'lgu',
+      requestId: '00000000-0000-0000-0000-000000000000',
+      decision: 'approve',
+    },
+  });
+  expect(response.status()).toBe(404);
+});
+
+test('asking to be verified requires a session', async ({ request }) => {
+  const response = await request.post('/api/account/verification', {
+    data: { tenant: 'lgu', fullName: 'Someone', rollNumber: '042' },
+  });
+  expect(response.status()).toBe(401);
+});

@@ -162,6 +162,25 @@ Now finish step 2's migrate + seed (they need this `.env`).
 
 ---
 
+## 3b. Tenant admins 🟩 CAMPUSOS-LOCAL
+
+Who administers a tenant is declared in its config, in code:
+
+```ts
+// tenants/lgu/tenant.config.ts
+adminEmails: ['someone@lgu.edu.pk'],
+```
+
+At sign in, a listed address (matched on the Google verified email) becomes a
+verified `tenant_admin` member of that tenant. It is an upgrade only: removing an
+address from the list does not remove the role, which is a manual step
+(`update tenant_memberships set role = 'student' where ...`). Tenant admins reach
+their queue at `https://{slug}.<tenant base>/admin/verification`, or `/admin`,
+which sends them there when they hold the role. No secret is involved.
+
+This list moves to database backed tenant configuration when platform
+administration lands; until then a change here is a deploy.
+
 ## 4. Build and run under pm2 🟩 CAMPUSOS-LOCAL
 
 Install, build, and start on port 3003 with the **Node 22** interpreter, without

@@ -2,7 +2,10 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { IdentityProviderNotConfiguredError, InvalidIdentityTokenError } from '@campusos/core/auth';
 import { googleVerifierFromEnv } from '@campusos/module-identity/auth';
-import { ensureDomainMembership } from '@campusos/module-identity/membership';
+import {
+  ensureConfiguredAdmin,
+  ensureDomainMembership,
+} from '@campusos/module-identity/membership';
 import { findOrCreateUser, issueSession, revokeSession } from '@campusos/module-identity/sessions';
 import { tenantRegistry } from '@campusos/tenants';
 import { SESSION_COOKIE, requestFingerprint, sessionCookieOptions } from '@/lib/auth';
@@ -45,7 +48,11 @@ export async function POST(request: Request): Promise<Response> {
     // address is not on the tenant's list still gets an account and a session,
     // and simply is not a member. Nothing here reports which happened.
     const tenant = parsed.data.tenant ? tenantRegistry.resolveBySlug(parsed.data.tenant) : null;
-    if (tenant) await ensureDomainMembership(actor, tenant);
+    if (tenant) {
+      await ensureDomainMembership(actor, tenant);
+      // The configured administrators, an upgrade only. See the tenant config.
+      await ensureConfiguredAdmin(actor, tenant);
+    }
     const session = await issueSession(actor, await requestFingerprint());
 
     (await cookies()).set(SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
