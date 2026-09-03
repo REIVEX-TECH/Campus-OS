@@ -76,9 +76,40 @@ test('changing a handle requires a session', async ({ request }) => {
   expect(response.status()).toBe(401);
 });
 
-test('re rolling an avatar requires a session', async ({ request }) => {
-  const response = await request.post('/api/account/avatar');
+test('choosing an avatar requires a session', async ({ request }) => {
+  // Both halves: the options to choose from, and the choice.
+  expect((await request.get('/api/account/avatar?page=0')).status()).toBe(401);
+  const response = await request.post('/api/account/avatar', {
+    headers: { origin: String(test.info().project.use.baseURL) },
+    data: { option: 3 },
+  });
   expect(response.status()).toBe(401);
+});
+
+test('the avatar a browser asks for must be one of its own options', async ({ request }) => {
+  // Only a number crosses the wire, and only a number in range: the seed is
+  // built on the server from the caller's own id, so no browser can name a
+  // picture belonging to anyone else or invent a seed of its own.
+  for (const option of [-1, 1.5, 99999, 'x', null]) {
+    const response = await request.post('/api/account/avatar', {
+      headers: { origin: String(test.info().project.use.baseURL) },
+      data: { option },
+    });
+    // Refused before it is ever looked at: no session here, and the shape is
+    // wrong anyway. Either way it never reaches a write.
+    expect([400, 401]).toContain(response.status());
+  }
+});
+
+test('the account mutations refuse a cross site POST', async ({ request }) => {
+  // SameSite=Lax already stops the cookie riding along; this is the second door.
+  for (const path of ['/api/account/avatar', '/api/account/handle']) {
+    const response = await request.post(path, {
+      headers: { origin: 'https://evil.example' },
+      data: { option: 1, handle: 'Quiet_Otter_9' },
+    });
+    expect([401, 403]).toContain(response.status());
+  }
 });
 
 test('recording a recent view requires a session', async ({ request }) => {

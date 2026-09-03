@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextAvatarSeed } from '@campusos/module-identity/avatar-seed';
+import { avatarOptionSeed } from '@campusos/module-identity/avatar-seed';
 import {
   AVATAR_KINDS,
   AVATAR_SEED_PATTERN,
@@ -46,11 +46,13 @@ describe('avatar seeds from the identity module', () => {
   const userId = '5f7a3c2e-9b1d-4e8f-a6c0-1234567890ab';
 
   it('produces a seed the avatar route will draw', () => {
-    expect(nextAvatarSeed(userId, 1_756_800_000_000)).toMatch(AVATAR_SEED_PATTERN);
+    expect(avatarOptionSeed(userId, 0)).toMatch(AVATAR_SEED_PATTERN);
+    expect(avatarOptionSeed(userId, 599)).toMatch(AVATAR_SEED_PATTERN);
   });
 
-  it('changes when re rolled at a different moment', () => {
-    expect(nextAvatarSeed(userId, 1)).not.toBe(nextAvatarSeed(userId, 2));
+  it('gives a different picture per option, and the same one every time', () => {
+    expect(avatarOptionSeed(userId, 1)).not.toBe(avatarOptionSeed(userId, 2));
+    expect(avatarOptionSeed(userId, 7)).toBe(avatarOptionSeed(userId, 7));
   });
 
   it('documents why the old shape was wrong', () => {
