@@ -1,12 +1,15 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { canChangeHandle, nextChangeAllowedAt } from '@campusos/module-identity/handle-rules';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
+import { latestRequest } from '@campusos/module-identity/verification';
 import { HandleForm } from '@/app/_components/handle-form';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
 import { SignOutButton } from '@/app/_components/sign-out-button';
+import { VerificationRequestForm } from '@/app/_components/verification-request-form';
 import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
@@ -51,6 +54,8 @@ export default async function AccountPage({ params }: Params) {
   const nextAllowed = nextChangeAllowedAt(actor.handleChangedAt);
   // Private to the person and the university. Never a public badge.
   const membership = await membershipFor(actor.userId, slug);
+  const verified = isVerified(membership);
+  const request = verified ? null : await latestRequest(actor.userId, slug);
 
   return (
     <PageShell>
@@ -99,6 +104,62 @@ export default async function AccountPage({ params }: Params) {
             }}
           />
         </section>
+
+        {verified ? null : (
+          <section
+            aria-labelledby="account-verification"
+            className="ios-card flex flex-col gap-3 rounded-2xl p-4"
+          >
+            <div className="flex flex-col gap-0.5">
+              <h2 id="account-verification" className="text-base font-semibold">
+                {t('account.verification.heading')}
+              </h2>
+              <p className="max-w-prose text-sm text-muted-foreground">
+                {t('account.verification.intro')}
+              </p>
+            </div>
+            {request?.status === 'pending' ? (
+              <p className="text-sm" role="status">
+                {t('account.verification.pending')}
+              </p>
+            ) : (
+              <>
+                {request?.status === 'rejected' ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('account.verification.rejected')}
+                  </p>
+                ) : null}
+                <VerificationRequestForm
+                  tenant={slug}
+                  labels={{
+                    fullName: t('account.verification.fullName'),
+                    rollNumber: t('account.verification.rollNumber'),
+                    note: t('account.verification.note'),
+                    submit: t('account.verification.submit'),
+                    submitting: t('account.verification.submitting'),
+                    sent: t('account.verification.sent'),
+                    errorFormat: t('account.verification.errorFormat'),
+                    errorOpen: t('account.verification.errorOpen'),
+                    errorRate: t('account.verification.errorRate'),
+                    errorVerified: t('account.verification.errorVerified'),
+                    errorGeneric: t('account.verification.errorGeneric'),
+                  }}
+                />
+              </>
+            )}
+          </section>
+        )}
+
+        {membership?.role === 'tenant_admin' && membership.status === 'active' ? (
+          <p className="px-1 text-sm">
+            <Link
+              href={`${base}/admin/verification`}
+              className="font-medium text-primary hover:underline"
+            >
+              {t('account.admin.open')}
+            </Link>
+          </p>
+        ) : null}
       </div>
     </PageShell>
   );

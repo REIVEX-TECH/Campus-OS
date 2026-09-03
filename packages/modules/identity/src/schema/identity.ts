@@ -192,3 +192,38 @@ export const userRecents = pgTable(
     index('user_recents_user_viewed_idx').on(t.userId, t.viewedAt),
   ],
 );
+
+/**
+ * Asks to be verified in a tenant, from people off its email domain. The
+ * details are what an admin checks against the university's records and are
+ * PURGED on decision; the row stays, with its status and timestamps, so the
+ * rate limit has a memory. Never deleted.
+ */
+export const verificationRequests = pgTable(
+  'verification_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** pending | approved | rejected */
+    status: text('status').notNull().default('pending'),
+    fullName: text('full_name'),
+    rollNumber: text('roll_number'),
+    note: text('note'),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [
+    index('verification_requests_tenant_status_idx').on(t.tenantId, t.status, t.createdAt),
+    index('verification_requests_user_idx').on(t.userId, t.createdAt),
+    // One open request per person per tenant, enforced where it cannot race.
+    uniqueIndex('verification_requests_one_open_uq')
+      .on(t.tenantId, t.userId)
+      .where(sql`${t.status} = 'pending'`),
+  ],
+);

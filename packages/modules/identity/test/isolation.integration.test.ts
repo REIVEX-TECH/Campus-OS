@@ -18,11 +18,21 @@ import {
   tenantMemberships,
   userRecents,
   users,
+  verificationRequests,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, rerollAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
-import { ensureDomainMembership, membershipFor } from '../src/membership';
+import { ensureConfiguredAdmin, ensureDomainMembership, membershipFor } from '../src/membership';
+import {
+  decideRequest,
+  latestRequest,
+  listMembers,
+  listPendingRequests,
+  requestVerification,
+  userIdByHandle,
+  verifyMember,
+} from '../src/verification';
 import { clearRecents, listRecents, recordRecent } from '../src/recents';
 
 beforeAll(async () => {
@@ -459,6 +469,7 @@ describe('row security invariants', () => {
     platform_roles: true,
     audit_log: true,
     user_recents: true,
+    verification_requests: true,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
@@ -590,5 +601,296 @@ describe('user_recents', () => {
     });
     await clearRecents(actor.userId, 'aaa');
     expect(await listRecents(actor.userId, 'aaa')).toEqual([]);
+  });
+});
+
+const details = { fullName: 'Ayesha Khan', rollNumber: 'FA21-042', note: undefined };
+
+/** A tenant admin, the only way the role is granted: the configured list. */
+async function adminIn(tenant: string, subject: string) {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+  const membership = await ensureConfiguredAdmin(actor, {
+    slug: tenant,
+    adminEmails: [`${subject}@gmail.com`],
+  });
+  expect(membership?.role).toBe('tenant_admin');
+  return actor;
+}
+
+describe('configured admins', () => {
+  it('makes a listed address a verified tenant admin, off the domain', async () => {
+    const admin = await adminIn('aaa', 'adm-1');
+    const membership = await membershipFor(admin.userId, 'aaa');
+    expect(membership).toMatchObject({ role: 'tenant_admin', status: 'active' });
+    expect(membership!.verificationMethod).toBe('config');
+    expect(membership!.verifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('upgrades an existing student rather than duplicating', async () => {
+    const actor = await findOrCreateUser({ subject: 'adm-2', email: 'up@aaa.edu' });
+    await ensureDomainMembership(actor, {
+      slug: 'aaa',
+      joinMode: 'domain',
+      allowedEmailDomains: ['aaa.edu'],
+    });
+    await ensureConfiguredAdmin(actor, { slug: 'aaa', adminEmails: ['UP@AAA.EDU'] });
+    const rows = await withActor(actor.userId, (tx) => tx.select().from(tenantMemberships));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.role).toBe('tenant_admin');
+  });
+
+  it('touches nobody who is not listed, and never downgrades', async () => {
+    const admin = await adminIn('aaa', 'adm-3');
+    expect(await ensureConfiguredAdmin(admin, { slug: 'aaa', adminEmails: [] })).toBeNull();
+    expect((await membershipFor(admin.userId, 'aaa'))!.role).toBe('tenant_admin');
+    const other = await findOrCreateUser({ subject: 'adm-4', email: 'plain@gmail.com' });
+    expect(await ensureConfiguredAdmin(other, { slug: 'aaa', adminEmails: ['x@y.z'] })).toBeNull();
+    expect(await membershipFor(other.userId, 'aaa')).toBeNull();
+  });
+});
+
+describe('verification requests', () => {
+  it('lets a person ask once, see their own, and change nothing', async () => {
+    const user = await findOrCreateUser({ subject: 'req-1', email: 'req1@gmail.com' });
+    const other = await findOrCreateUser({ subject: 'req-2', email: 'req2@gmail.com' });
+
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    expect(asked.ok).toBe(true);
+    expect((await latestRequest(user.userId, 'aaa'))?.status).toBe('pending');
+    expect(await requestVerification(user.userId, 'aaa', details)).toEqual({
+      ok: false,
+      error: 'open_request',
+    });
+
+    // Nobody else can see it as themselves.
+    expect(await withActor(other.userId, (tx) => tx.select().from(verificationRequests))).toEqual(
+      [],
+    );
+    // And the person cannot answer it: the update matches nothing under RLS.
+    await withActor(user.userId, (tx) =>
+      tx.update(verificationRequests).set({ status: 'approved' }),
+    );
+    expect((await latestRequest(user.userId, 'aaa'))?.status).toBe('pending');
+  });
+
+  it('refuses someone already verified', async () => {
+    const actor = await findOrCreateUser({ subject: 'req-3', email: 'v@aaa.edu' });
+    await ensureDomainMembership(actor, {
+      slug: 'aaa',
+      joinMode: 'domain',
+      allowedEmailDomains: ['aaa.edu'],
+    });
+    expect(await requestVerification(actor.userId, 'aaa', details)).toEqual({
+      ok: false,
+      error: 'already_verified',
+    });
+  });
+
+  it('allows three asks in a month and refuses the fourth', async () => {
+    const admin = await adminIn('aaa', 'adm-5');
+    const user = await findOrCreateUser({ subject: 'req-4', email: 'rl@gmail.com' });
+    for (let i = 0; i < 3; i += 1) {
+      const asked = await requestVerification(user.userId, 'aaa', details);
+      expect(asked.ok).toBe(true);
+      if (asked.ok) {
+        expect((await decideRequest(admin, 'aaa', asked.value.id, 'reject')).ok).toBe(true);
+      }
+    }
+    expect(await requestVerification(user.userId, 'aaa', details)).toEqual({
+      ok: false,
+      error: 'rate_limited',
+    });
+  });
+
+  it('shows an admin what is waiting, with handles and never an email', async () => {
+    const admin = await adminIn('aaa', 'adm-6');
+    const user = await findOrCreateUser({ subject: 'req-5', email: 'secret@gmail.com' });
+    await requestVerification(user.userId, 'aaa', details);
+    const pending = await listPendingRequests(admin, 'aaa');
+    expect(pending.ok).toBe(true);
+    if (pending.ok) {
+      const mine = pending.value.find((r) => r.userId === user.userId);
+      expect(mine).toMatchObject({ handle: user.handle, fullName: 'Ayesha Khan' });
+      expect(JSON.stringify(pending.value)).not.toContain('@');
+    }
+    expect(await listPendingRequests(user, 'aaa')).toEqual({ ok: false, error: 'not_admin' });
+  });
+});
+
+describe('deciding requests', () => {
+  async function ask(subject: string) {
+    const user = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    if (!asked.ok) throw new Error(asked.error);
+    return { user, request: asked.value };
+  }
+
+  it('approving someone with no membership creates a verified one', async () => {
+    const admin = await adminIn('aaa', 'adm-7');
+    const { user, request } = await ask('dec-1');
+    expect(await membershipFor(user.userId, 'aaa')).toBeNull();
+
+    const decided = await decideRequest(admin, 'aaa', request.id, 'approve');
+    expect(decided).toEqual({
+      ok: true,
+      value: { outcome: 'decided', decision: 'approve', membershipCreated: true },
+    });
+    const membership = await membershipFor(user.userId, 'aaa');
+    expect(membership).toMatchObject({ role: 'student', status: 'active' });
+    expect(membership!.verificationMethod).toBe('admin');
+    expect(membership!.verifiedAt).toBeInstanceOf(Date);
+
+    // The details have done their one job.
+    const [row] = await withActor(user.userId, (tx) => tx.select().from(verificationRequests));
+    expect(row).toMatchObject({ status: 'approved', fullName: null, rollNumber: null, note: null });
+    expect(row!.decidedBy).toBe(admin.userId);
+  });
+
+  it('approving someone with an unverified membership verifies it in place', async () => {
+    const admin = await adminIn('aaa', 'adm-8');
+    const { user, request } = await ask('dec-2');
+    await withActorInTenant(user.userId, 'aaa', (tx) =>
+      tx
+        .insert(tenantMemberships)
+        .values({ tenantId: 'aaa', userId: user.userId, role: 'student' }),
+    );
+
+    const decided = await decideRequest(admin, 'aaa', request.id, 'approve');
+    expect(decided).toMatchObject({ ok: true, value: { membershipCreated: false } });
+    const rows = await withActor(user.userId, (tx) => tx.select().from(tenantMemberships));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.verifiedAt).toBeInstanceOf(Date);
+    expect(rows[0]!.verificationMethod).toBe('admin');
+  });
+
+  it('is idempotent: a second decision reports the first', async () => {
+    const admin = await adminIn('aaa', 'adm-9');
+    const { user, request } = await ask('dec-3');
+    await decideRequest(admin, 'aaa', request.id, 'approve');
+    expect(await decideRequest(admin, 'aaa', request.id, 'approve')).toEqual({
+      ok: true,
+      value: { outcome: 'already_decided', status: 'approved' },
+    });
+    // And a reject after an approve changes nothing either.
+    expect(await decideRequest(admin, 'aaa', request.id, 'reject')).toEqual({
+      ok: true,
+      value: { outcome: 'already_decided', status: 'approved' },
+    });
+    expect(await withActor(user.userId, (tx) => tx.select().from(tenantMemberships))).toHaveLength(
+      1,
+    );
+    const trail = await withActorInTenant(admin.userId, 'aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.targetId, request.id)),
+    );
+    expect(trail.filter((r) => r.action === 'verification.approved')).toHaveLength(1);
+  });
+
+  it('rejecting purges the details and creates nothing', async () => {
+    const admin = await adminIn('aaa', 'adm-10');
+    const { user, request } = await ask('dec-4');
+    const decided = await decideRequest(admin, 'aaa', request.id, 'reject');
+    expect(decided).toMatchObject({ ok: true, value: { decision: 'reject' } });
+    expect(await membershipFor(user.userId, 'aaa')).toBeNull();
+    expect((await latestRequest(user.userId, 'aaa'))?.status).toBe('rejected');
+    const [row] = await withActor(user.userId, (tx) => tx.select().from(verificationRequests));
+    expect(row!.fullName).toBeNull();
+  });
+
+  it('never lets anyone decide their own request', async () => {
+    const admin = await adminIn('aaa', 'adm-11');
+    const [own] = await withActor(admin.userId, (tx) =>
+      tx
+        .insert(verificationRequests)
+        .values({ tenantId: 'aaa', userId: admin.userId, fullName: 'Me', rollNumber: '1' })
+        .returning(),
+    );
+    expect(await decideRequest(admin, 'aaa', own!.id, 'approve')).toEqual({
+      ok: false,
+      error: 'self',
+    });
+    // And the database says the same, whatever the application does: nobody is
+    // recorded as the decider of their own request.
+    await expect(
+      withActorInTenant(admin.userId, 'aaa', (tx) =>
+        tx
+          .update(verificationRequests)
+          .set({ status: 'approved', decidedBy: admin.userId, decidedAt: new Date() })
+          .where(eq(verificationRequests.id, own!.id)),
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('refuses a member without the role, and an admin of another tenant', async () => {
+    const student = await findOrCreateUser({ subject: 'dec-5', email: 'st@aaa.edu' });
+    await ensureDomainMembership(student, {
+      slug: 'aaa',
+      joinMode: 'domain',
+      allowedEmailDomains: ['aaa.edu'],
+    });
+    const adminB = await adminIn('bbb', 'adm-12');
+    const { request } = await ask('dec-6');
+
+    expect(await decideRequest(student, 'aaa', request.id, 'approve')).toEqual({
+      ok: false,
+      error: 'not_admin',
+    });
+    expect(await decideRequest(adminB, 'aaa', request.id, 'approve')).toEqual({
+      ok: false,
+      error: 'not_admin',
+    });
+    // In their own tenant the row simply does not exist for them.
+    expect(await decideRequest(adminB, 'bbb', request.id, 'approve')).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+    expect((await latestRequest(request.userId, 'aaa'))?.status).toBe('pending');
+  });
+});
+
+describe('verifying by hand', () => {
+  it('creates or verifies a membership for a handle, never for oneself', async () => {
+    const admin = await adminIn('aaa', 'adm-13');
+    const user = await findOrCreateUser({ subject: 'hand-1', email: 'hand@gmail.com' });
+
+    expect(await userIdByHandle(user.handle.toLowerCase())).toBe(user.userId);
+    expect(await userIdByHandle('Nobody_Here_0000')).toBeNull();
+
+    expect(await verifyMember(admin, 'aaa', user.userId)).toEqual({
+      ok: true,
+      value: { created: true, alreadyVerified: false },
+    });
+    expect(await verifyMember(admin, 'aaa', user.userId)).toEqual({
+      ok: true,
+      value: { created: false, alreadyVerified: true },
+    });
+    expect(await verifyMember(admin, 'aaa', admin.userId)).toEqual({ ok: false, error: 'self' });
+
+    // Verified another way while a request waits: the request is superseded
+    // and purged in the same transaction, never left in the queue.
+    const waiting = await findOrCreateUser({ subject: 'hand-2', email: 'wait@gmail.com' });
+    const asked = await requestVerification(waiting.userId, 'aaa', details);
+    expect(asked.ok).toBe(true);
+    expect(await verifyMember(admin, 'aaa', waiting.userId)).toMatchObject({ ok: true });
+    const [closed] = await withActor(waiting.userId, (tx) =>
+      tx.select().from(verificationRequests),
+    );
+    expect(closed).toMatchObject({ status: 'superseded', fullName: null, rollNumber: null });
+    const pending = await listPendingRequests(admin, 'aaa');
+    expect(pending.ok && pending.value.some((r) => r.userId === waiting.userId)).toBe(false);
+    expect(await verifyMember(admin, 'aaa', '00000000-0000-0000-0000-000000000000')).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+
+    const members = await listMembers(admin, 'aaa');
+    expect(members.ok).toBe(true);
+    if (members.ok) {
+      expect(members.value.find((m) => m.userId === user.userId)).toMatchObject({
+        handle: user.handle,
+        role: 'student',
+        verificationMethod: 'admin',
+      });
+      expect(JSON.stringify(members.value)).not.toContain('@');
+    }
   });
 });

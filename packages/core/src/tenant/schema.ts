@@ -65,6 +65,14 @@ export const tenantConfigSchema = z.object({
   branding: brandingSchema,
   allowedEmailDomains: z.array(emailDomain).default([]),
   joinMode: joinModeSchema.default('domain'),
+  /**
+   * Who administers this tenant, by verified sign in email. Listed here, in
+   * code, so that granting the role is a reviewed change with a history. At
+   * sign in a listed address gets `tenant_admin` (an upgrade only; removal is
+   * a manual step). Moves to database backed tenant config when platform
+   * administration lands.
+   */
+  adminEmails: z.array(z.string().email()).default([]),
   enabledModules: z.array(z.string().min(1)).default([]),
   seo: seoSchema,
 });

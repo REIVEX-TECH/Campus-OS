@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
-import { withActor, withActorInTenant } from '@campusos/db';
+import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { recordAudit } from './audit';
-import { tenantMemberships } from './schema/identity';
+import { tenantMemberships, verificationRequests } from './schema/identity';
 
 /**
  * A person's place in a tenant, and how they got it.
@@ -13,13 +13,12 @@ import { tenantMemberships } from './schema/identity';
  * show only the anonymous handle.
  *
  * Writes here run in a TENANT context, because the policy (0008) lets a person
- * read the memberships they hold but never write one. The only things that can
- * create or change a membership are this file's domain check, whose inputs are
- * the verified email from the provider and the tenant's own config, and later a
- * tenant admin acting inside their tenant.
+ * read the memberships they hold but never write one. There is exactly one
+ * writer, `grantVerified`, and three callers: the domain check at sign in, the
+ * configured admin list at sign in, and a tenant admin's decision.
  */
 
-export type VerificationMethod = 'domain' | 'admin';
+export type VerificationMethod = 'domain' | 'admin' | 'config';
 
 export interface Membership {
   id: string;
@@ -39,6 +38,12 @@ export interface JoinPolicy {
   allowedEmailDomains: readonly string[];
 }
 
+/** The part of a tenant's config that names its administrators. */
+export interface AdminPolicy {
+  slug: string;
+  adminEmails: readonly string[];
+}
+
 /** The domain of an address, lower cased, or null for anything malformed. */
 export function emailDomain(email: string): string | null {
   const at = email.lastIndexOf('@');
@@ -50,6 +55,12 @@ export function emailDomain(email: string): string | null {
 export function domainAllowed(email: string, allowed: readonly string[]): boolean {
   const domain = emailDomain(email);
   return domain !== null && allowed.some((d) => d.toLowerCase() === domain);
+}
+
+/** Whole address match, case insensitive. */
+export function isConfiguredAdmin(email: string, adminEmails: readonly string[]): boolean {
+  const wanted = email.trim().toLowerCase();
+  return wanted.length > 0 && adminEmails.some((a) => a.trim().toLowerCase() === wanted);
 }
 
 /** Verified, and in good standing. A suspended membership verifies nothing. */
@@ -71,13 +82,130 @@ function toMembership(row: Row): Membership {
 }
 
 /**
+ * Create a verified membership, or verify the one that exists. The one writer.
+ *
+ * Must run in a tenant context. A membership already verified is left exactly
+ * as it is; status is never touched, because verifying says who someone is,
+ * not whether they are welcome, and a suspension outranks it either way. Two
+ * callers racing on a first sign in resolve to the one row the unique index
+ * allows. Every change is audited in the caller's transaction.
+ */
+export async function grantVerified(
+  tx: TenantTransaction,
+  input: {
+    tenantId: string;
+    userId: string;
+    method: VerificationMethod;
+    /** Who caused it: the person themselves at sign in, or an admin. */
+    actorUserId: string;
+    /** Only for a membership created here. An existing role is never changed. */
+    role?: string;
+    /**
+     * A request still waiting when the person is verified another way is
+     * superseded and purged here, so its details never outlive their purpose.
+     * A decision on that very request turns this off and closes it itself.
+     */
+    closePendingRequests?: boolean;
+  },
+): Promise<{ membership: Membership; created: boolean; alreadyVerified: boolean }> {
+  const role = input.role ?? 'student';
+  const close = input.closePendingRequests ?? true;
+  const [inserted] = await tx
+    .insert(tenantMemberships)
+    .values({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      role,
+      status: 'active',
+      verifiedAt: new Date(),
+      verificationMethod: input.method,
+    })
+    .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
+    .returning();
+  if (inserted) {
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      tenantId: input.tenantId,
+      action: 'membership.joined',
+      targetType: 'membership',
+      targetId: inserted.id,
+      meta: { method: input.method, role, targetUserId: input.userId },
+    });
+    if (close) await supersedePending(tx, input);
+    return { membership: toMembership(inserted), created: true, alreadyVerified: false };
+  }
+
+  const [existing] = await tx
+    .select()
+    .from(tenantMemberships)
+    .where(
+      and(
+        eq(tenantMemberships.tenantId, input.tenantId),
+        eq(tenantMemberships.userId, input.userId),
+      ),
+    );
+  if (!existing) throw new Error('membership vanished between insert and read');
+  if (existing.verifiedAt) {
+    return { membership: toMembership(existing), created: false, alreadyVerified: true };
+  }
+
+  const [updated] = await tx
+    .update(tenantMemberships)
+    .set({ verifiedAt: new Date(), verificationMethod: input.method })
+    .where(eq(tenantMemberships.id, existing.id))
+    .returning();
+  await recordAudit(tx, {
+    actorUserId: input.actorUserId,
+    tenantId: input.tenantId,
+    action: 'membership.verified',
+    targetType: 'membership',
+    targetId: existing.id,
+    meta: { method: input.method, targetUserId: input.userId },
+  });
+  if (close) await supersedePending(tx, input);
+  return { membership: toMembership(updated!), created: false, alreadyVerified: false };
+}
+
+/** Close, and purge, any request of theirs still waiting in this tenant. */
+async function supersedePending(
+  tx: TenantTransaction,
+  input: { tenantId: string; userId: string; actorUserId: string },
+): Promise<void> {
+  const closed = await tx
+    .update(verificationRequests)
+    .set({
+      status: 'superseded',
+      decidedBy: input.actorUserId,
+      decidedAt: new Date(),
+      fullName: null,
+      rollNumber: null,
+      note: null,
+    })
+    .where(
+      and(
+        eq(verificationRequests.tenantId, input.tenantId),
+        eq(verificationRequests.userId, input.userId),
+        eq(verificationRequests.status, 'pending'),
+      ),
+    )
+    .returning({ id: verificationRequests.id });
+  for (const row of closed) {
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      tenantId: input.tenantId,
+      action: 'verification.superseded',
+      targetType: 'verification_request',
+      targetId: row.id,
+      meta: { targetUserId: input.userId },
+    });
+  }
+}
+
+/**
  * Give a person their place in a tenant when its policy lets the email decide.
  *
  * Returns null, and writes nothing, unless the tenant joins by domain and the
- * address is on its list. Otherwise the membership is created as a verified
- * student, or an existing unverified one is marked verified. Safe to call on
- * every sign in: a verified membership is left exactly as it is, and two first
- * sign ins racing each other resolve to the one row the unique index allows.
+ * address is on its list. Safe to call on every sign in.
  */
 export async function ensureDomainMembership(
   actor: { userId: string; email: string },
@@ -85,54 +213,53 @@ export async function ensureDomainMembership(
 ): Promise<Membership | null> {
   if (tenant.joinMode !== 'domain') return null;
   if (!domainAllowed(actor.email, tenant.allowedEmailDomains)) return null;
-
   return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
-    const own = and(
-      eq(tenantMemberships.tenantId, tenant.slug),
-      eq(tenantMemberships.userId, actor.userId),
-    );
-    const [inserted] = await tx
-      .insert(tenantMemberships)
-      .values({
-        tenantId: tenant.slug,
-        userId: actor.userId,
-        role: 'student',
-        status: 'active',
-        verifiedAt: new Date(),
-        verificationMethod: 'domain',
-      })
-      .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
-      .returning();
-    if (inserted) {
-      await recordAudit(tx, {
-        actorUserId: actor.userId,
-        tenantId: tenant.slug,
-        action: 'membership.joined',
-        targetType: 'membership',
-        targetId: inserted.id,
-        meta: { method: 'domain', role: 'student' },
-      });
-      return toMembership(inserted);
-    }
+    const granted = await grantVerified(tx, {
+      tenantId: tenant.slug,
+      userId: actor.userId,
+      method: 'domain',
+      actorUserId: actor.userId,
+    });
+    return granted.membership;
+  });
+}
 
-    const [existing] = await tx.select().from(tenantMemberships).where(own);
-    if (!existing) throw new Error('membership vanished between insert and read');
-    if (existing.verifiedAt) return toMembership(existing);
+/**
+ * Give a configured administrator their role, on sign in.
+ *
+ * The list lives in the tenant's config, in code, so granting the role is a
+ * reviewed change with a history. This only ever upgrades: a listed address
+ * becomes a verified tenant_admin, and an address later removed from the list
+ * keeps the role until someone removes it by hand. Anyone not listed is
+ * untouched and null is returned.
+ */
+export async function ensureConfiguredAdmin(
+  actor: { userId: string; email: string },
+  tenant: AdminPolicy,
+): Promise<Membership | null> {
+  if (!isConfiguredAdmin(actor.email, tenant.adminEmails)) return null;
+  return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
+    const granted = await grantVerified(tx, {
+      tenantId: tenant.slug,
+      userId: actor.userId,
+      method: 'config',
+      actorUserId: actor.userId,
+      role: 'tenant_admin',
+    });
+    if (granted.membership.role === 'tenant_admin') return granted.membership;
 
-    // Status is deliberately left alone: verifying says who someone is, not
-    // whether they are welcome, and a suspension outranks it either way.
     const [updated] = await tx
       .update(tenantMemberships)
-      .set({ verifiedAt: new Date(), verificationMethod: 'domain' })
-      .where(eq(tenantMemberships.id, existing.id))
+      .set({ role: 'tenant_admin' })
+      .where(eq(tenantMemberships.id, granted.membership.id))
       .returning();
     await recordAudit(tx, {
       actorUserId: actor.userId,
       tenantId: tenant.slug,
-      action: 'membership.verified',
+      action: 'membership.role_granted',
       targetType: 'membership',
-      targetId: existing.id,
-      meta: { method: 'domain' },
+      targetId: granted.membership.id,
+      meta: { role: 'tenant_admin', source: 'config' },
     });
     return toMembership(updated!);
   });

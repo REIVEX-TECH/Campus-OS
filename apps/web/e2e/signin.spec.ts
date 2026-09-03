@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+/** What a browser always sends with a POST from one of our pages. */
+const fromOurPage = () => ({ origin: String(test.info().project.use.baseURL) });
+
 // CI runs without Firebase configured, which is the important case to pin: sign
 // in must degrade to a clear message rather than breaking, and nothing about the
 // public site may depend on an identity provider existing.
@@ -46,12 +49,13 @@ test('the public site works with no session at all', async ({ page }) => {
 });
 
 test('signing out is accepted even with no session', async ({ request }) => {
-  const response = await request.delete('/api/auth/session');
+  const response = await request.delete('/api/auth/session', { headers: fromOurPage() });
   expect(response.status()).toBe(200);
 });
 
 test('the session endpoint refuses a token it cannot verify', async ({ request }) => {
   const response = await request.post('/api/auth/session', {
+    headers: fromOurPage(),
     data: { idToken: 'not-a-real-token' },
   });
   // 503 when the provider is unconfigured (CI), 401 when it is configured and
@@ -82,4 +86,46 @@ test('recording a recent view requires a session', async ({ request }) => {
     data: { tenant: 'lgu', kind: 'section', key: 'x', label: 'x', href: '/u/lgu/timetable' },
   });
   expect(response.status()).toBe(401);
+});
+
+test('the admin verification page does not exist for anyone signed out', async ({ page }) => {
+  // 404, not 403: the page's existence must say nothing about who holds the role.
+  const response = await page.goto('/u/lgu/admin/verification');
+  expect(response?.status()).toBe(404);
+});
+
+test('an admin decision is not found without the role', async ({ request }) => {
+  const response = await request.post('/api/admin/verification', {
+    headers: fromOurPage(),
+    data: {
+      tenant: 'lgu',
+      requestId: '00000000-0000-0000-0000-000000000000',
+      decision: 'approve',
+    },
+  });
+  expect(response.status()).toBe(404);
+});
+
+test('asking to be verified requires a session', async ({ request }) => {
+  const response = await request.post('/api/account/verification', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', fullName: 'Someone', rollNumber: '042' },
+  });
+  expect(response.status()).toBe(401);
+});
+
+test('a mutation from another site is refused before anything else', async ({ request }) => {
+  // Login CSRF: a page elsewhere must not be able to plant a session, whatever
+  // the cookie rules do. The Origin is checked before the body is read.
+  const response = await request.post('/api/auth/session', {
+    headers: { origin: 'https://evil.example' },
+    data: { idToken: 'not-a-real-token' },
+  });
+  expect(response.status()).toBe(403);
+  // And a text/plain form cannot smuggle JSON past the content type check.
+  const smuggled = await request.post('/api/account/verification', {
+    headers: { ...fromOurPage(), 'content-type': 'text/plain' },
+    data: '{"tenant":"lgu","fullName":"Someone","rollNumber":"042"}',
+  });
+  expect(smuggled.status()).toBe(400);
 });

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { isAdminAuthed } from '@/lib/admin-auth';
+import { tenantAdmin } from '@/lib/auth';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -15,5 +16,8 @@ export default async function AdminIndex({ params }: { params: Promise<{ slug: s
   const { slug } = await params;
   requireTenant(slug); // unknown tenant -> 404, same as the rest of the tenant tree
   const base = await tenantBase(slug);
-  redirect((await isAdminAuthed(slug)) ? `${base}/admin/rooms` : `${base}/admin/login`);
+  if (await isAdminAuthed(slug)) redirect(`${base}/admin/rooms`);
+  // A tenant admin by membership has no secret and needs none.
+  if (await tenantAdmin(slug)) redirect(`${base}/admin/verification`);
+  redirect(`${base}/admin/login`);
 }

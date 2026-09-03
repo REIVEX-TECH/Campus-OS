@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
+import { notFound } from 'next/navigation';
+import { membershipFor, type Membership } from '@campusos/module-identity/membership';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
+import { clientKey } from './rate-limit';
 
 /**
  * Who is signed in, for server components and route handlers.
@@ -48,9 +51,40 @@ export async function currentActor(): Promise<Actor | null> {
 export async function requestFingerprint(): Promise<{ userAgent?: string; ipHash?: string }> {
   const h = await headers();
   const userAgent = h.get('user-agent') ?? undefined;
-  const forwarded = h.get('x-forwarded-for')?.split(',')[0]?.trim();
+  // The proxy vouched address, the same one the rate limiter keys on.
+  const address = clientKey(h);
   return {
     userAgent,
-    ipHash: forwarded ? createHash('sha256').update(forwarded).digest('hex') : undefined,
+    ipHash: address !== 'unknown' ? createHash('sha256').update(address).digest('hex') : undefined,
   };
+}
+
+export interface TenantAdmin {
+  actor: Actor;
+  membership: Membership;
+}
+
+/**
+ * The signed in tenant administrator for this slug, or null.
+ *
+ * The role is a membership row read on this request, as the person themselves;
+ * never a cookie claim, never client input. Every mutation behind this gate
+ * re-checks the role inside its own transaction, so this is the first of two
+ * checks and never the only one.
+ */
+export async function tenantAdmin(slug: string): Promise<TenantAdmin | null> {
+  const actor = await currentActor();
+  if (!actor) return null;
+  const membership = await membershipFor(actor.userId, slug);
+  if (!membership || membership.role !== 'tenant_admin' || membership.status !== 'active') {
+    return null;
+  }
+  return { actor, membership };
+}
+
+/** As above, but a page: anyone else gets a 404, not a hint. */
+export async function requireTenantAdmin(slug: string): Promise<TenantAdmin> {
+  const admin = await tenantAdmin(slug);
+  if (!admin) notFound();
+  return admin;
 }

@@ -40,12 +40,11 @@ export async function POST(request: Request): Promise<Response> {
 
   const parsed = recordSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'bad_request' }, { status: 400 });
-  const { tenant, ...item } = parsed.data;
-  if (!tenantRegistry.resolveBySlug(tenant)) {
-    return Response.json({ error: 'unknown_tenant' }, { status: 404 });
-  }
+  const { tenant: named, ...item } = parsed.data;
+  const tenant = tenantRegistry.resolveBySlug(named);
+  if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
-  await recordRecent(actor.userId, tenant, item);
+  await recordRecent(actor.userId, tenant.slug, item);
   return Response.json({ ok: true });
 }
 
@@ -53,12 +52,11 @@ export async function GET(request: Request): Promise<Response> {
   const actor = await currentActor();
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
 
-  const tenant = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
-  if (!tenant.success || !tenantRegistry.resolveBySlug(tenant.data)) {
-    return Response.json({ error: 'unknown_tenant' }, { status: 404 });
-  }
+  const named = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
+  const tenant = named.success ? tenantRegistry.resolveBySlug(named.data) : null;
+  if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
-  const items = await listRecents(actor.userId, tenant.data);
+  const items = await listRecents(actor.userId, tenant.slug);
   return Response.json({
     items: items.map((i) => ({ ...i, viewedAt: i.viewedAt.getTime() })),
   });
@@ -68,11 +66,10 @@ export async function DELETE(request: Request): Promise<Response> {
   const actor = await currentActor();
   if (!actor) return Response.json({ error: 'unauthorised' }, { status: 401 });
 
-  const tenant = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
-  if (!tenant.success || !tenantRegistry.resolveBySlug(tenant.data)) {
-    return Response.json({ error: 'unknown_tenant' }, { status: 404 });
-  }
+  const named = slug.safeParse(new URL(request.url).searchParams.get('tenant'));
+  const tenant = named.success ? tenantRegistry.resolveBySlug(named.data) : null;
+  if (!tenant) return Response.json({ error: 'unknown_tenant' }, { status: 404 });
 
-  await clearRecents(actor.userId, tenant.data);
+  await clearRecents(actor.userId, tenant.slug);
   return Response.json({ ok: true });
 }
