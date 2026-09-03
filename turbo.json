@@ -5,6 +5,8 @@
   "globalPassThroughEnv": [
     "DATABASE_URL",
     "TEST_DATABASE_URL",
+    "MIGRATION_DATABASE_URL",
+    "TEST_MIGRATION_DATABASE_URL",
     "SOURCE_MODE",
     "LGU_PHPSESSID",
     "LGU_BASE_URL",
