@@ -14,12 +14,12 @@ middleware never resolved a configuration. It takes the subdomain label (or the
 server component that resolves the slug 404s an unknown one. So there is no
 snapshot to publish and the design doc §4 now says so.
 
-**`tenant_configs`** (base `0004`): `slug` (PK, FK to `universities`),
+**`tenant_configs`** (identity `0012`): `slug` (PK, FK to `universities`),
 `config jsonb` (the same shape `tenantConfigSchema` validates for a file),
 `version`, `updated_at`, `updated_by`. RLS on, readable by anyone (`USING
 (true)`), no FORCE so the schema owner can write it in the sync script.
 
-**Write policies** (identity `0012`): INSERT and UPDATE allowed when a
+**Write policies** (same migration): INSERT and UPDATE allowed when a
 `platform_roles` row for `current_setting('app.user_id')` holds
 `platform_admin`. The subquery runs as the app role under the actor's own
 context, and `platform_roles` (FORCE, own row) shows exactly that row, so the
@@ -69,14 +69,17 @@ database as the schema owner (parameterised, via the new
 
 ## Data & migration impact
 
-- `packages/db/drizzle/0004_tenant_configs.sql`: the table, RLS, read policy.
-  Its journal entry is dated in the same era as the identity journal
-  (`1756800004000`), because the local database's base bookkeeping recorded
-  older numberings of this folder up to `…702000` and drizzle applies only
-  entries dated after the last recorded one; a `…604000` entry was skipped
-  silently. Worth knowing for any hand-written base migration after this.
-- `packages/modules/identity/drizzle/0012_tenant_config_write.sql`: the two
-  write policies.
+- `packages/modules/identity/drizzle/0012_tenant_configs.sql`: the table, RLS,
+  the read policy and the two write policies. **Why identity and not base:**
+  the base folder and the timetable module share drizzle's default
+  `__drizzle_migrations` table, and drizzle applies only entries dated after
+  the last one recorded. A new base migration therefore cannot be dated to
+  apply on both a fresh database (it must precede timetable's entries, which
+  then record later) and an existing one (it must follow them). The first
+  version of this PR tried, and CI's fresh database skipped every timetable
+  migration as a result. The base folder stays frozen; the identity module has
+  its own bookkeeping table and can grow. Giving timetable its own table (a
+  one-time row transfer) is a follow-up.
 - Backwards compatible: an empty table changes nothing; every tenant serves from
   its file until a row exists. Human steps are in
   `docs/runbooks/tenant-config-to-db.md`: migrate, set `SUPERADMIN_EMAILS`,
@@ -125,6 +128,8 @@ and accent with no file and no deploy.
 
 ## Follow-ups
 
+- Give the timetable module its own migration bookkeeping table so the base
+  folder can take migrations again (one-time transfer of its rows).
 - Removing `tenants/lgu/tenant.config.ts` once the row has served for a while
   (a one line change to `tenants/index.ts`).
 - The `universities` table itself has no RLS (status quo); creation is gated in

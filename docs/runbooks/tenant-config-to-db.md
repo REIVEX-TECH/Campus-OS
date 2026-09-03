@@ -16,7 +16,7 @@ the live database. Nothing below runs on its own.
 pnpm db:migrate:all
 ```
 
-Adds `tenant_configs` (base `0004`) and its write policies (identity `0012`).
+Adds `tenant_configs` and its policies (identity `0012`).
 Nothing changes yet: the table is empty and every tenant still serves from its
 file.
 

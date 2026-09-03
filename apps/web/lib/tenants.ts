@@ -5,7 +5,7 @@ import {
   type TenantConfigSource,
   type TenantRegistry,
 } from '@campusos/core/tenant';
-import { listTenantConfigs } from '@campusos/db/repositories';
+import { listTenantConfigs } from '@campusos/module-identity/tenants';
 import { fileTenantConfigs } from '@campusos/tenants';
 
 /**

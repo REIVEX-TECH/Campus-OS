@@ -6,14 +6,6 @@ export { CampusRepository } from './campuses';
 export { BuildingRepository } from './buildings';
 export { RoomRepository } from './rooms';
 export { universitiesRepository } from './universities';
-export {
-  insertUniversity,
-  listTenantConfigs,
-  updateUniversity,
-  writeTenantConfig,
-  type TenantConfigRow,
-  type TenantIdentity,
-} from './tenant-configs';
 export { TenantScopedRepository } from './tenant-scoped';
 
 /** Construct the tenant-bound repositories. Requires a tenant id (RLS context). */

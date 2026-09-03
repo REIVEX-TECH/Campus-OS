@@ -3,6 +3,7 @@ import {
   bigserial,
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -295,3 +296,20 @@ export const membershipRoles = pgTable(
     index('membership_roles_user_tenant_idx').on(t.userId, t.tenantId),
   ],
 );
+
+/**
+ * A tenant's whole configuration, the same validated shape as a file config
+ * (tenantConfigSchema in core), stored as JSON with a version. `universities`
+ * keeps the columns other tables and RLS key on; the code that writes here keeps
+ * them in step. Readable everywhere; written by a platform administrator under
+ * policies that read platform_roles, which is why this module owns it.
+ */
+export const tenantConfigs = pgTable('tenant_configs', {
+  slug: text('slug')
+    .primaryKey()
+    .references(() => universities.slug, { onDelete: 'cascade' }),
+  config: jsonb('config').notNull(),
+  version: integer('version').notNull().default(1),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid('updated_by'),
+});

@@ -1,14 +1,5 @@
 import { sql } from 'drizzle-orm';
-import {
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -108,20 +99,3 @@ export type Room = typeof rooms.$inferSelect;
 
 /** Tables that carry `tenant_id` and must have FORCE ROW LEVEL SECURITY. */
 export const tenantScopedTables = ['campuses', 'buildings', 'rooms'] as const;
-
-/**
- * A tenant's whole configuration, the same validated shape as a file config
- * (tenantConfigSchema in core), stored as JSON with a version. `universities`
- * keeps the columns other tables and RLS key on; the code that writes here
- * keeps them in step. Readable everywhere; written by a platform administrator
- * under policies the identity module adds (it owns platform_roles).
- */
-export const tenantConfigs = pgTable('tenant_configs', {
-  slug: text('slug')
-    .primaryKey()
-    .references(() => universities.slug, { onDelete: 'cascade' }),
-  config: jsonb('config').notNull(),
-  version: integer('version').notNull().default(1),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedBy: uuid('updated_by'),
-});

@@ -9,7 +9,7 @@ import {
   runAsMigrationRole,
   runBaseMigrations,
 } from '@campusos/db/migrate';
-import { tenantConfigs, universities } from '@campusos/db/schema';
+import { universities } from '@campusos/db/schema';
 import { migrationsFolder, migrationsTable } from '../src/manifest';
 import {
   auditLog,
@@ -18,6 +18,7 @@ import {
   rolePermissions,
   roles,
   sessions,
+  tenantConfigs,
   tenantMemberships,
   userRecents,
   users,
@@ -40,8 +41,7 @@ import {
 import { listMembers, setMemberStatus } from '../src/members';
 import { tenantActivity } from '../src/analytics';
 import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
-import { createTenant, updateTenantConfig } from '../src/tenants';
-import { listTenantConfigs } from '@campusos/db/repositories';
+import { createTenant, listTenantConfigs, updateTenantConfig } from '../src/tenants';
 import {
   decideRequest,
   latestRequest,

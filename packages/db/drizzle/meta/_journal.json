@@ -29,13 +29,6 @@
       "when": 1735689603000,
       "tag": "0003_room_dedup_unique",
       "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1756800004000,
-      "tag": "0004_tenant_configs",
-      "breakpoints": true
     }
   ]
 }

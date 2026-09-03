@@ -168,7 +168,8 @@ server component that resolves it, which 404s otherwise. So there is no edge
 snapshot to publish and nothing to revalidate at the edge. The database is the
 source of truth and the app reads it where the app already runs.
 
-- `tenant_configs` (base schema, `0004`) holds the whole validated config as
+- `tenant_configs` (identity `0012`; the base folder stays frozen, see the
+  migration's header) holds the whole validated config as
   JSON, keyed by slug, with a version; `universities` keeps the columns other
   tables and RLS key on and is kept in step by the code that writes.
 - `apps/web/lib/tenants.ts` builds the registry from the database rows merged
