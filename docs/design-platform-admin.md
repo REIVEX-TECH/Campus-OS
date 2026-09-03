@@ -68,9 +68,10 @@ membership_roles   (membership_id, role_id, tenant_id, user_id,
 `tenant_id` is denormalised onto all three so every RLS policy can key on it
 directly rather than joining to find out which tenant a row belongs to.
 
-`tenant_memberships.role` stays for now as the member's **primary** role, which
-is what a member list shows at a glance. It is no longer what any permission
-check reads. Dropping it is a follow-up once nothing displays it.
+`tenant_memberships.role` stays for now as the member's legacy primary role. It
+is no longer what any permission check reads, and since Phase 2 the member list
+shows the roles held in `membership_roles` instead, so nothing displays it any
+more. Dropping the column is a follow-up migration.
 
 ### Effective permissions, and why they are read through a definer function
 
@@ -103,7 +104,8 @@ four, so the rule is recorded rather than remembered:
 
 ### The guard
 
-`requirePermission(slug, permission)` replaces `requireTenantAdmin(slug)`:
+`requirePermission(slug, permission)` replaced `requireTenantAdmin(slug)` in
+Phase 2, which removed the older guard entirely:
 it resolves the actor, asks the definer function for their permissions in that
 tenant, and 404s if the permission is absent. 404 rather than 403, so an admin
 surface never confirms its own existence to someone who cannot use it. Every

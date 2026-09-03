@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { membershipFor, type Membership } from '@campusos/module-identity/membership';
 import { effectivePermissions } from '@campusos/module-identity/rbac';
 import type { Permission, PermissionSet } from '@campusos/core';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
@@ -10,10 +9,10 @@ import { clientKey } from './rate-limit';
 /**
  * Who is signed in, for server components and route handlers.
  *
- * Nothing is gated on this yet: sign in exists so an account can be created and
- * recognised, and the guard that turns an actor into an authorisation decision
- * arrives with per-module access rules. Reading it is always safe on a public
- * page, which is the point: the timetable must keep working signed out.
+ * Admin surfaces gate on a permission held in the tenant, resolved on this
+ * request by `requirePermission`; there is no other guard. Reading the actor
+ * is always safe on a public page, which is the point: the timetable must
+ * keep working signed out.
  */
 
 export const SESSION_COOKIE = 'campusos_session';
@@ -59,36 +58,6 @@ export async function requestFingerprint(): Promise<{ userAgent?: string; ipHash
     userAgent,
     ipHash: address !== 'unknown' ? createHash('sha256').update(address).digest('hex') : undefined,
   };
-}
-
-export interface TenantAdmin {
-  actor: Actor;
-  membership: Membership;
-}
-
-/**
- * The signed in tenant administrator for this slug, or null.
- *
- * The role is a membership row read on this request, as the person themselves;
- * never a cookie claim, never client input. Every mutation behind this gate
- * re-checks the role inside its own transaction, so this is the first of two
- * checks and never the only one.
- */
-export async function tenantAdmin(slug: string): Promise<TenantAdmin | null> {
-  const actor = await currentActor();
-  if (!actor) return null;
-  const membership = await membershipFor(actor.userId, slug);
-  if (!membership || membership.role !== 'tenant_admin' || membership.status !== 'active') {
-    return null;
-  }
-  return { actor, membership };
-}
-
-/** As above, but a page: anyone else gets a 404, not a hint. */
-export async function requireTenantAdmin(slug: string): Promise<TenantAdmin> {
-  const admin = await tenantAdmin(slug);
-  if (!admin) notFound();
-  return admin;
 }
 
 /**

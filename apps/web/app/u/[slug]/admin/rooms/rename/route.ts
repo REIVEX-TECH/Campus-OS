@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getAdminRooms } from '@/lib/admin-rooms';
-import { tenantAdmin } from '@/lib/auth';
+import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { relativeRedirect } from '@/lib/redirects';
 import { isSameOrigin } from '@/lib/same-origin';
@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   }
   // The role on the mutation itself, not just the page in front of it. Without
   // it there is nothing here to find.
-  if (!(await tenantAdmin(slug))) return new Response('Not Found', { status: 404 });
+  if (!(await permitted(slug, 'manage-rooms'))) return new Response('Not Found', { status: 404 });
 
   const form = await request.formData();
   const parsed = schema.safeParse({ roomId: form.get('roomId'), name: form.get('name') });

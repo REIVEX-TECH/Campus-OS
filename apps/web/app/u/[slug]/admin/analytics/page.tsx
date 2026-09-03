@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { Card } from '@campusos/ui';
 import type { TimetableAnalytics } from '@campusos/module-timetable/read';
 import { FreshnessLine } from '@/app/_components/freshness';
+import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { SignOutButton } from '@/app/_components/sign-out-button';
-import { requireTenantAdmin } from '@/lib/auth';
+import { requirePermission } from '@/lib/auth';
 import { translator, type MessageKey, type Translate } from '@/lib/i18n';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -66,7 +66,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  await requireTenantAdmin(slug);
+  const { permissions } = await requirePermission(slug, 'view-analytics');
   const base = await tenantBase(slug);
   const queries = getQueries(slug);
   const [analytics, freshness]: [
@@ -98,18 +98,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
           <FreshnessLine freshness={freshness} locale={tenant.locale} t={t} />
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`${base}/admin/verification`}
-            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {t('admin.nav.verification')}
-          </Link>
-          <Link
-            href={`${base}/admin/rooms`}
-            className="ios-pressable rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {t('admin.nav.rooms')}
-          </Link>
+          <AdminNav base={base} permissions={permissions} current="analytics" t={t} />
           <SignOutButton
             label={t('admin.rooms.signOut')}
             working={t('signin.signingOut')}

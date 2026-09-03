@@ -5,8 +5,8 @@ Design: `docs/design-platform-admin.md`.
 | Phase | What                                                      | State                                |
 | ----- | --------------------------------------------------------- | ------------------------------------ |
 | 0     | Design doc                                                | Written                              |
-| 1     | RBAC schema, RLS, resolver, guard; migrate `tenant_admin` | **In review** (this PR)              |
-| 2     | Tenant-admin UI for members and roles                     | Not started                          |
+| 1     | RBAC schema, RLS, resolver, guard; migrate `tenant_admin` | Merged, `b3d7277`                    |
+| 2     | Tenant-admin UI for members and roles                     | **In review** (this PR)              |
 | 3     | Analytics with activity timing                            | Not started                          |
 | 4     | Tenant config file to database, super-admin tenant CRUD   | Not started                          |
 | 5     | Cross-tenant god-mode                                     | **Gate: plan only, awaiting review** |

@@ -6,11 +6,16 @@ const fromOurPage = () => ({ origin: String(test.info().project.use.baseURL) });
 // Admin is a role on an account, never a secret. Without that role there is no
 // admin area to find: pages and mutations alike are 404, so nothing about who
 // holds the role leaks. This pins both halves, for every admin surface.
-test('the admin area does not exist without the tenant_admin role', async ({ page, request }) => {
+test('the admin area does not exist without a permission that opens it', async ({
+  page,
+  request,
+}) => {
   for (const path of [
     '/u/lgu/admin/rooms',
     '/u/lgu/admin/analytics',
     '/u/lgu/admin/verification',
+    '/u/lgu/admin/members',
+    '/u/lgu/admin/roles',
   ]) {
     const response = await page.goto(path);
     expect(response?.status(), path).toBe(404);
@@ -36,6 +41,26 @@ test('the admin area does not exist without the tenant_admin role', async ({ pag
     data: { tenant: 'lgu', handle: 'Quiet_Otter_1234' },
   });
   expect(verify.status()).toBe(404);
+  const grant = await request.post('/api/admin/roles', {
+    headers: fromOurPage(),
+    data: {
+      tenant: 'lgu',
+      userId: '00000000-0000-0000-0000-000000000000',
+      roleKey: 'tenant_admin',
+      action: 'grant',
+    },
+  });
+  expect(grant.status()).toBe(404);
+  const define = await request.post('/api/admin/roles/define', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', name: 'Moderator', permissions: ['moderate'] },
+  });
+  expect(define.status()).toBe(404);
+  const suspend = await request.post('/api/admin/members/status', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', userId: '00000000-0000-0000-0000-000000000000', status: 'suspended' },
+  });
+  expect(suspend.status()).toBe(404);
 });
 
 test('the shared secret login is gone', async ({ request }) => {
