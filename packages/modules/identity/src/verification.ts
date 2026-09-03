@@ -74,17 +74,6 @@ function toRequest(row: Row): VerificationRequest {
   };
 }
 
-/** Postgres unique violation. */
-const UNIQUE_VIOLATION = '23505';
-/** Postgres foreign key violation. */
-const FK_VIOLATION = '23503';
-
-function pgCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code: unknown }).code)
-    : undefined;
-}
-
 export type RequestRefusal = 'already_verified' | 'open_request' | 'rate_limited';
 
 /**
@@ -112,31 +101,46 @@ export async function requestVerification(
       );
     if ((counted?.recent ?? 0) >= REQUESTS_PER_WINDOW) return err('rate_limited');
 
-    try {
-      const [row] = await tx
-        .insert(verificationRequests)
-        .values({
-          tenantId,
-          userId,
-          status: 'pending',
-          fullName: details.fullName,
-          rollNumber: details.rollNumber,
-          note: details.note ?? null,
-        })
-        .returning();
-      await recordAudit(tx, {
-        actorUserId: userId,
+    // One open request per person per tenant. Checked first, and the partial
+    // unique index absorbs the race with DO NOTHING rather than an error: an
+    // error inside a transaction aborts it, so a refusal must never be one.
+    const [open] = await tx
+      .select({ id: verificationRequests.id })
+      .from(verificationRequests)
+      .where(
+        and(
+          eq(verificationRequests.userId, userId),
+          eq(verificationRequests.tenantId, tenantId),
+          eq(verificationRequests.status, 'pending'),
+        ),
+      );
+    if (open) return err('open_request');
+
+    const [row] = await tx
+      .insert(verificationRequests)
+      .values({
         tenantId,
-        action: 'verification.requested',
-        targetType: 'verification_request',
-        targetId: row!.id,
-      });
-      return ok(toRequest(row!));
-    } catch (error) {
-      // The partial unique index: one open request per person per tenant.
-      if (pgCode(error) === UNIQUE_VIOLATION) return err('open_request');
-      throw error;
-    }
+        userId,
+        status: 'pending',
+        fullName: details.fullName,
+        rollNumber: details.rollNumber,
+        note: details.note ?? null,
+      })
+      .onConflictDoNothing({
+        target: [verificationRequests.tenantId, verificationRequests.userId],
+        where: sql`${verificationRequests.status} = 'pending'`,
+      })
+      .returning();
+    if (!row) return err('open_request');
+
+    await recordAudit(tx, {
+      actorUserId: userId,
+      tenantId,
+      action: 'verification.requested',
+      targetType: 'verification_request',
+      targetId: row.id,
+    });
+    return ok(toRequest(row));
   });
 }
 
@@ -321,18 +325,21 @@ export async function verifyMember(
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
     if (!(await isTenantAdmin(tx, admin.userId, tenantId))) return err('not_admin');
     if (targetUserId === admin.userId) return err('self');
-    try {
-      const granted = await grantVerified(tx, {
-        tenantId,
-        userId: targetUserId,
-        method: 'admin',
-        actorUserId: admin.userId,
-      });
-      return ok({ created: granted.created, alreadyVerified: granted.alreadyVerified });
-    } catch (error) {
-      if (pgCode(error) === FK_VIOLATION) return err('not_found');
-      throw error;
-    }
+    // Only an active user can be a member. Checked on the public view first,
+    // because a foreign key failure would abort the transaction.
+    const exists = [
+      ...(await tx.execute(
+        sql`select 1 from public_profiles where user_id = ${targetUserId}::uuid limit 1`,
+      )),
+    ];
+    if (exists.length === 0) return err('not_found');
+    const granted = await grantVerified(tx, {
+      tenantId,
+      userId: targetUserId,
+      method: 'admin',
+      actorUserId: admin.userId,
+    });
+    return ok({ created: granted.created, alreadyVerified: granted.alreadyVerified });
   });
 }
 
