@@ -40,6 +40,34 @@ confirmed reaches `/admin` without a secret. **The LGU address is still not in
 the list**: I do not have it and will not guess. Add it in the same line before
 or after merging; until then the gmail address is the only key.
 
+## What the bypass sweep found
+
+A sweep hunted for any remaining way into the admin area. Two things it raised
+turned out to be real and are fixed here:
+
+- **pm2 was still forwarding `ADMIN_SECRET`**, and its comment still told the
+  next reader the app read it. Nothing consumed the value, so nothing broke and
+  nothing said so; what it left was a live instruction to keep setting a secret
+  that no longer does anything, and the obvious place to wire one back in. The
+  forward and the comment are gone. The guard test never looked at
+  `ecosystem.config.cjs`, which is why the first pass missed it, so the scan now
+  covers it: reintroducing the line fails the test.
+- **The sign in provider was not pinned.** Firebase issues tokens for every
+  method a project has enabled, all signed by the same keys and all carrying
+  `email_verified`. Admin is granted by matching an address against
+  `adminEmails`, so any other enabled provider able to assert a verified address
+  would have been a second door into the admin area, opened from the Firebase
+  console rather than from this repo. Only Google is offered in the UI, so only
+  `sign_in_provider === 'google.com'` is accepted now.
+
+The claim checks moved into a pure `identityFromClaims` so they can be tested
+without key material; the signature, audience, issuer and expiry checks are
+unchanged and still run first.
+
+`docs/pr/` is deliberately outside the guard's scan: those files record what
+each change did at the time, and several describe the secret while it existed.
+Rewriting them would be falsifying history rather than retiring a secret.
+
 ## Data & migration impact
 
 No schema change. `.env.example`, `docs/DEPLOY.md` and `docs/DEPLOY-VPS.md` no
@@ -48,8 +76,12 @@ path.
 
 ## Tests
 
-- Unit: the static guard above. The old `admin-token` tests are deleted with
-  the code they tested.
+- Unit: the static guard above, now covering the deploy config (verified by
+  reintroducing the forward and watching it fail); `identityFromClaims` accepts
+  Google and refuses `password`, `anonymous`, `github.com`, `custom`,
+  `facebook.com`, a missing provider claim, an unverified address however it is
+  spelled, and a missing subject or address. The old `admin-token` tests are
+  deleted with the code they tested.
 - e2e: `admin-auth` rewritten to pin 404 on all three admin pages and all three
   admin mutations without the role, and 404 on the retired login, submit and
   logout paths; `admin-entry` and `admin-subdomain` rewritten for the sign in
@@ -65,7 +97,8 @@ After deploy (no migration):
    `/admin/rooms` and `/admin/analytics` are 404.
 2. Sign in with `ahadnawaz585@gmail.com`. `/admin` lands on the verification
    queue; rooms and analytics open from its links; rename a room.
-3. Remove the old secret from the VPS env. Nothing changes.
+3. Remove `ADMIN_SECRET` from the VPS `.env`. Nothing changes: no code reads it
+   and pm2 no longer forwards it.
 
 ## Follow-ups
 

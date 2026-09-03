@@ -8,9 +8,18 @@ import { describe, expect, it } from 'vitest';
  *
  * The shared ADMIN_SECRET password and its signed cookie were retired once the
  * account based tenant_admin role could reach everything they gated. This scan
- * keeps them retired: no source file, env template or deploy document may
- * mention the secret, the cookie, or the helpers that read them. A future
- * "quick" bypass would have to delete this test to land.
+ * keeps them retired: no source file, env template, deploy document or process
+ * definition may mention the secret, the cookie, or the helpers that read them.
+ * A future "quick" bypass would have to delete this test to land.
+ *
+ * The deploy config is scanned because it was the one place the secret survived
+ * the first pass: pm2 went on forwarding ADMIN_SECRET, and its comment still
+ * told the next reader the app read it. Nothing consumed it, so nothing broke
+ * and nothing said so.
+ *
+ * docs/pr/ is deliberately NOT scanned. Those files are the record of what each
+ * change did at the time, and several describe the secret while it existed;
+ * rewriting them would be falsifying history rather than retiring a secret.
  */
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -32,6 +41,7 @@ const SCAN = [
   'docs/DEPLOY.md',
   'docs/DEPLOY-VPS.md',
   'README.md',
+  'ecosystem.config.cjs',
 ];
 
 function collect(path: string, acc: string[]): void {
