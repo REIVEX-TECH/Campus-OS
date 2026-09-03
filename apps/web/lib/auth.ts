@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { effectivePermissions } from '@campusos/module-identity/rbac';
 import type { Permission, PermissionSet } from '@campusos/core';
 import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
-import { clientKey } from './rate-limit';
 
 /**
  * Who is signed in, for server components and route handlers.
@@ -44,20 +42,13 @@ export async function currentActor(): Promise<Actor | null> {
 }
 
 /**
- * A coarse, non-identifying fingerprint of the caller, stored with a session so
- * a user can recognise their own devices later. Hashed because CLAUDE.md 8 keeps
- * PII out of storage: this can confirm "same client" without recording who or
- * where they are.
+ * What is kept with a session about the client: the user agent, so a person can
+ * recognise their own devices later, and nothing else. Where a request came
+ * from is never stored, hashed or otherwise (design doc 3).
  */
-export async function requestFingerprint(): Promise<{ userAgent?: string; ipHash?: string }> {
+export async function requestFingerprint(): Promise<{ userAgent?: string }> {
   const h = await headers();
-  const userAgent = h.get('user-agent') ?? undefined;
-  // The proxy vouched address, the same one the rate limiter keys on.
-  const address = clientKey(h);
-  return {
-    userAgent,
-    ipHash: address !== 'unknown' ? createHash('sha256').update(address).digest('hex') : undefined,
-  };
+  return { userAgent: h.get('user-agent') ?? undefined };
 }
 
 /**

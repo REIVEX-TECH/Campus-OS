@@ -8,7 +8,7 @@ import { MembersList } from '@/app/_components/admin/members-list';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { requirePermission } from '@/lib/auth';
-import { translator } from '@/lib/i18n';
+import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { roleDisplayName } from '@/lib/role-names';
 import { requireTenant } from '@/lib/timetable';
@@ -82,6 +82,7 @@ export default async function AdminMembersPage({ params }: Params) {
               suspended: m.status === 'suspended',
               verified: m.verifiedAt !== null && m.status === 'active',
               since: t('admin.members.since', { date: when.format(m.createdAt) }),
+              activity: t(`admin.members.active.${m.activity}` as MessageKey),
             }))}
             labels={{
               noProfile: t('admin.noProfile'),

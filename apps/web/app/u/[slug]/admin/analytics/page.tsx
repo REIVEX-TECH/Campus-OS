@@ -2,6 +2,9 @@ import { Card } from '@campusos/ui';
 import type { TimetableAnalytics } from '@campusos/module-timetable/read';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
+import { tenantActivity } from '@campusos/module-identity/analytics';
+import { ActivityCards } from '@/app/_components/admin/activity-cards';
+import { BarRow, StatCard } from '@/app/_components/admin/analytics-parts';
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { requirePermission } from '@/lib/auth';
 import { translator, type MessageKey, type Translate } from '@/lib/i18n';
@@ -12,28 +15,8 @@ export const dynamic = 'force-dynamic';
 
 type Props = { params: Promise<{ slug: string }> };
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card className="flex flex-col gap-1 p-4">
-      <span className="text-2xl font-bold tabular-nums tracking-tight">{value}</span>
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-    </Card>
-  );
-}
-
-/** A labelled horizontal bar. The count is shown as text, so the bar is decorative. */
-function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
-  const width = max === 0 ? 0 : Math.round((value / max) * 100);
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-24 shrink-0 text-sm text-muted-foreground">{label}</span>
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${width}%` }} />
-      </div>
-      <span className="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{value}</span>
-    </div>
-  );
-}
+/** Days of sign in history on the dashboard. */
+const ACTIVITY_DAYS = 14;
 
 function CoverageRow({
   label,
@@ -66,13 +49,17 @@ export default async function AdminAnalyticsPage({ params }: Props) {
   const { slug } = await params;
   const tenant = requireTenant(slug);
   const t = translator(tenant.locale);
-  const { permissions } = await requirePermission(slug, 'view-analytics');
+  const { actor, permissions } = await requirePermission(slug, 'view-analytics');
   const base = await tenantBase(slug);
   const queries = getQueries(slug);
   const [analytics, freshness]: [
     TimetableAnalytics,
     Awaited<ReturnType<typeof queries.freshness>>,
   ] = await Promise.all([queries.analytics(), queries.freshness()]);
+  const activity = await tenantActivity({ userId: actor.userId }, slug, {
+    days: ACTIVITY_DAYS,
+    timezone: tenant.timezone,
+  });
 
   const stats = [
     { key: 'terms', value: analytics.totals.terms },
@@ -106,6 +93,15 @@ export default async function AdminAnalyticsPage({ params }: Props) {
           />
         </div>
       </header>
+
+      {activity.ok ? (
+        <ActivityCards
+          activity={activity.value}
+          days={ACTIVITY_DAYS}
+          locale={tenant.locale}
+          t={t}
+        />
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <h2 className="px-1 text-sm font-medium uppercase tracking-wide text-muted-foreground">

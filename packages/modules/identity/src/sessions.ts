@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import type { VerifiedIdentity } from '@campusos/core/auth';
@@ -109,19 +109,25 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
 /** Issue a session for a user. The plaintext token is returned only here. */
 export async function issueSession(
   actor: Actor,
-  context: { userAgent?: string; ipHash?: string } = {},
+  context: { userAgent?: string } = {},
 ): Promise<IssuedSession> {
   const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  await withActor(actor.userId, (tx) =>
-    tx.insert(sessions).values({
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  await withActor(actor.userId, async (tx) => {
+    await tx.insert(sessions).values({
       userId: actor.userId,
       tokenHash: hashToken(token),
       expiresAt,
       userAgent: context.userAgent ?? null,
-      ipHash: context.ipHash ?? null,
-    }),
-  );
+    });
+    // A sign in is the one moment both timing marks move together. Timing
+    // only: nothing about where the request came from is kept.
+    await tx
+      .update(users)
+      .set({ lastLoginAt: now, lastSeenAt: now })
+      .where(eq(users.id, actor.userId));
+  });
   return { token, expiresAt, actor };
 }
 
@@ -161,13 +167,19 @@ export async function resolveSession(token: string | undefined): Promise<Actor |
  * request would make each page load a write for no extra information.
  */
 async function touch(userId: string, sessionId: string): Promise<void> {
-  const cutoff = new Date(Date.now() - TOUCH_AFTER_MINUTES * 60 * 1000);
-  await withActor(userId, (tx) =>
-    tx
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - TOUCH_AFTER_MINUTES * 60 * 1000);
+  await withActor(userId, async (tx) => {
+    await tx
       .update(sessions)
-      .set({ lastUsedAt: new Date() })
-      .where(and(eq(sessions.id, sessionId), lt(sessions.lastUsedAt, cutoff))),
-  );
+      .set({ lastUsedAt: now })
+      .where(and(eq(sessions.id, sessionId), lt(sessions.lastUsedAt, cutoff)));
+    // The same hourly mark on the person, so "active this week" is one read.
+    await tx
+      .update(users)
+      .set({ lastSeenAt: now })
+      .where(and(eq(users.id, userId), or(isNull(users.lastSeenAt), lt(users.lastSeenAt, cutoff))));
+  });
 }
 
 /** Sign out: the session stops working immediately, everywhere. */

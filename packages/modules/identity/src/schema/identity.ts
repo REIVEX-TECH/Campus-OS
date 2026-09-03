@@ -45,6 +45,8 @@ export const users = pgTable(
     status: text('status').notNull().default('active'),
     createdAt,
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /** When a session was last issued. Timing only: there is no column for where. */
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_google_sub_uq').on(t.googleSub),
@@ -70,8 +72,6 @@ export const sessions = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     userAgent: text('user_agent'),
-    /** Hashed, never raw: no PII at rest (CLAUDE.md 8). */
-    ipHash: text('ip_hash'),
   },
   (t) => [
     uniqueIndex('sessions_token_hash_uq').on(t.tokenHash),
@@ -157,7 +157,6 @@ export const auditLog = pgTable(
     targetType: text('target_type'),
     targetId: text('target_id'),
     requestId: text('request_id'),
-    ipHash: text('ip_hash'),
     meta: jsonb('meta'),
   },
   (t) => [
