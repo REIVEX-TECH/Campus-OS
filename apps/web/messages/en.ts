@@ -97,6 +97,8 @@ export const en = {
   'nav.modules': 'Modules',
   'nav.menu': 'Open menu',
   'nav.close': 'Close menu',
+  'nav.closeSearch': 'Close search',
+  'nav.accountMenu': 'Your account and settings',
   'nav.collapse': 'Collapse sidebar',
   'nav.expand': 'Expand sidebar',
   'theme.toggle': 'Toggle light and dark',
@@ -104,6 +106,8 @@ export const en = {
   'a11y.loading': 'Loading',
   'a11y.close': 'Close',
   'hub.about': 'About',
+  'hub.aboutModules': '{count} live now, more on the way',
+  'hub.aboutOpen': 'Everything here is open to read without an account.',
 
   'modules.comingSoon': 'Coming soon',
   'modules.soonBody': 'This is on the way. Check back soon.',

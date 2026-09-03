@@ -2,17 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ModuleIconName } from '@/lib/modules';
-import { LogoMark } from './logo-mark';
+import { useChrome } from './chrome-context';
 import { ModuleIcon } from './module-icon';
-import {
-  SidebarAccountRow,
-  type SidebarAccount,
-  type SidebarAccountLabels,
-} from './sidebar-account';
-import type { FirebaseWebConfig } from './use-google-sign-in';
-import { ThemeToggle } from './theme-toggle';
 
 export type SidebarItem = {
   key: string;
@@ -22,109 +15,37 @@ export type SidebarItem = {
   soon: boolean;
 };
 
-export type { SidebarAccount };
-
 export type SidebarLabels = {
   modules: string;
-  menu: string;
   close: string;
   collapse: string;
   expand: string;
-  theme: string;
   comingSoon: string;
-  account: SidebarAccountLabels;
 };
 
 /**
- * The persistent left navigation. Two independent behaviours:
- *  - Desktop collapse (icons-only) is persisted and driven by `data-sidebar` on
- *    <html>, set pre-paint by a script in the shell, so there is no flash. Its
- *    state is mirrored into React only to expose `aria-pressed` / a state label.
- *  - Mobile drawer: a real modal. Opening moves focus in and makes the rest of
- *    the shell `inert` (so focus and the screen-reader cursor stay in the drawer);
- *    Escape, the backdrop, and the close button all close it and return focus to
- *    the hamburger. Always closed on load, so the initial render is deterministic.
+ * The left navigation, and nothing else.
+ *
+ * The brand and the account moved to the top bar, so this is the module list on
+ * its own: what the sidebar is for, and one name on the page rather than two.
+ *
+ * Two independent behaviours remain. Desktop collapse (icons only) is persisted
+ * and driven by `data-sidebar` on <html>, set before paint by a script in the
+ * shell, so there is no flash; React mirrors it only to expose the state to
+ * assistive tech. On a phone it is a drawer, opened by the hamburger in the top
+ * bar and closed by Escape, the backdrop, or a link; the modal behaviour lives
+ * in `ChromeProvider`, which both halves share.
  */
-export function Sidebar({
-  tenantName,
-  homeHref,
-  signInHref,
-  account,
-  firebase,
-  tenant,
-  items,
-  labels,
-}: {
-  tenantName: string;
-  /** The tenant slug. */
-  tenant: string;
-  homeHref: string;
-  signInHref: string;
-  account: SidebarAccount;
-  /** Null when the deployment has no provider, so the row is a plain link. */
-  firebase: FirebaseWebConfig | null;
-  items: SidebarItem[];
-  labels: SidebarLabels;
-}) {
+export function Sidebar({ items, labels }: { items: SidebarItem[]; labels: SidebarLabels }) {
   const pathname = usePathname();
+  const { open, closeAndReturnFocus, closeForNav, drawerRef } = useChrome();
   const live = items.filter((i) => !i.soon);
   const soon = items.filter((i) => i.soon);
 
-  const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const topbarRef = useRef<HTMLDivElement>(null);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
-
-  // Reflect the persisted collapse state (set pre-paint on <html>) into aria.
   useEffect(() => {
     setCollapsed(document.documentElement.dataset.sidebar === 'collapsed');
   }, []);
-
-  const dropInert = useCallback((): void => {
-    document.getElementById('main')?.removeAttribute('inert');
-    topbarRef.current?.removeAttribute('inert');
-  }, []);
-
-  // Close and return focus to the hamburger; used by Escape, the backdrop, and
-  // the X. Inert is dropped synchronously first so the hamburger is focusable.
-  const closeAndReturnFocus = useCallback((): void => {
-    dropInert();
-    setOpen(false);
-    menuBtnRef.current?.focus();
-  }, [dropInert]);
-
-  // Close without moving focus; used by nav links, which navigate the page.
-  const closeForNav = useCallback((): void => {
-    dropInert();
-    setOpen(false);
-  }, [dropInert]);
-
-  // While the drawer is open it is a modal: the rest of the shell is inert, so
-  // Tab and the SR cursor cannot leave it. Escape closes it.
-  useEffect(() => {
-    if (!open) return;
-    const main = document.getElementById('main');
-    const bar = topbarRef.current;
-    main?.setAttribute('inert', '');
-    bar?.setAttribute('inert', '');
-    // Move focus into the drawer on the next frame, after inert has blurred the
-    // hamburger, so it lands reliably (not on <body>). Focus the dialog container
-    // (tabIndex -1) rather than a child, the standard modal-open pattern.
-    const raf = requestAnimationFrame(() => {
-      drawerRef.current?.focus();
-    });
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') closeAndReturnFocus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', onKey);
-      main?.removeAttribute('inert');
-      bar?.removeAttribute('inert');
-    };
-  }, [open, closeAndReturnFocus]);
 
   function toggleCollapse(): void {
     const next =
@@ -143,28 +64,6 @@ export function Sidebar({
 
   return (
     <>
-      <div ref={topbarRef} className="app-topbar" data-print-hide>
-        <button
-          ref={menuBtnRef}
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={labels.menu}
-          aria-expanded={open}
-          className="ios-pressable grid h-9 w-9 place-items-center rounded-lg text-foreground"
-        >
-          <MenuIcon />
-        </button>
-        <Link href={homeHref} aria-label={tenantName} className="flex min-w-0 items-center gap-2">
-          <LogoMark size={22} className="shrink-0" />
-          <span className="min-w-0 truncate text-base font-semibold tracking-tight">
-            {tenantName}
-          </span>
-        </Link>
-        <div className="ml-auto">
-          <ThemeToggle label={labels.theme} />
-        </div>
-      </div>
-
       {open ? (
         <button
           type="button"
@@ -181,19 +80,10 @@ export function Sidebar({
         data-print-hide
         role={open ? 'dialog' : undefined}
         aria-modal={open ? true : undefined}
-        aria-label={open ? tenantName : undefined}
+        aria-label={open ? labels.modules : undefined}
         tabIndex={open ? -1 : undefined}
       >
         <div className="sidebar-head">
-          <Link
-            href={homeHref}
-            onClick={closeForNav}
-            aria-label={tenantName}
-            className="sidebar-brand-link min-w-0"
-          >
-            <LogoMark size={22} className="shrink-0" />
-            <span className="sidebar-brand sidebar-label min-w-0 truncate">{tenantName}</span>
-          </Link>
           <button
             type="button"
             onClick={toggleCollapse}
@@ -248,18 +138,6 @@ export function Sidebar({
             ))}
           </ul>
         </nav>
-
-        <div className="sidebar-foot">
-          <SidebarAccountRow
-            account={account}
-            signInHref={signInHref}
-            firebase={firebase}
-            tenant={tenant}
-            labels={labels.account}
-            onNavigate={closeForNav}
-          />
-          <ThemeToggle label={labels.theme} />
-        </div>
       </div>
     </>
   );
@@ -292,7 +170,7 @@ function CloseIcon() {
       strokeLinecap="round"
       aria-hidden="true"
     >
-      <path d="M6 6l12 12M18 6L6 18" />
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }
