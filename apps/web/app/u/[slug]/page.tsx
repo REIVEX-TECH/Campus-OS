@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { tenantRegistry } from '@campusos/tenants';
 import { JsonLd } from '@/app/_components/json-ld';
+import { LogoMark } from '@/app/_components/logo-mark';
 import { ModuleIcon } from '@/app/_components/module-icon';
 import { PageShell } from '@/app/_components/page-shell';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -33,10 +34,31 @@ export default async function TenantHome({ params }: Params) {
   const host = (await headers()).get('host') ?? '';
   const tenantUrl = `${baseUrlFromHost(host)}${base}`;
 
+  const live = MODULES.filter((m) => !m.soon);
+  // The rail card: who this is, what is here, and what it costs to read. It
+  // carried only a heading and the SEO blurb before, which read as a stub.
   const rail = (
-    <div className="ios-card flex flex-col gap-2 rounded-2xl p-4">
-      <h2 className="text-sm font-semibold">{t('hub.about')}</h2>
+    <div className="ios-card flex flex-col gap-3 rounded-2xl p-4">
+      <div className="flex items-center gap-2.5">
+        <LogoMark size={28} className="shrink-0" />
+        <div className="flex min-w-0 flex-col">
+          <h2 className="truncate text-sm font-semibold text-foreground">{t('hub.about')}</h2>
+          <p className="truncate text-xs text-muted-foreground">{tenant.displayName}</p>
+        </div>
+      </div>
       <p className="text-sm text-muted-foreground">{tenant.seo.description}</p>
+      <ul className="flex flex-wrap gap-1.5">
+        {live.map((m) => (
+          <li
+            key={m.key}
+            className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+          >
+            <ModuleIcon name={m.icon} className="h-3.5 w-3.5" />
+            {t(`module.${m.key}.label` as MessageKey)}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t('hub.aboutOpen')}</p>
     </div>
   );
 

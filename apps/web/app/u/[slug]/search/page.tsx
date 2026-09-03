@@ -3,7 +3,6 @@ import { SearchX } from 'lucide-react';
 import Link from 'next/link';
 import { tenantRegistry } from '@campusos/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
-import { SearchBox } from '@/app/_components/search-box';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getQueries, requireTenant } from '@/lib/timetable';
@@ -49,8 +48,6 @@ export default async function SearchPage({ params, searchParams }: Params) {
         <h1 className="text-2xl font-bold tracking-tight">{t('search.heading')}</h1>
         <p className="max-w-prose text-sm text-muted-foreground">{t('search.intro')}</p>
       </header>
-
-      <SearchBox initial={q} placeholder={t('search.placeholder')} />
 
       {!active ? (
         <p className="px-1 text-sm text-muted-foreground">{t('search.prompt')}</p>

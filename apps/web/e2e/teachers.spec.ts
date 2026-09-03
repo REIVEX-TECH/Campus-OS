@@ -13,12 +13,12 @@ test('the teacher directory lists teachers and filters as you type', async ({ pa
   expect(total).toBeGreaterThan(0);
 
   const name = (await cards.first().getAttribute('data-name'))!;
-  await page.getByRole('searchbox', { name: 'Search teachers' }).fill(name);
+  await page.getByRole('searchbox', { name: 'Search teachers', exact: true }).fill(name);
   await expect(page.locator(`${cardLinks}[data-name="${name}"]`)).toBeVisible();
   expect(await cards.count()).toBeLessThanOrEqual(total);
 
   // A query that matches nothing shows the empty note, not a stale grid.
-  await page.getByRole('searchbox', { name: 'Search teachers' }).fill('zzzzzzzz');
+  await page.getByRole('searchbox', { name: 'Search teachers', exact: true }).fill('zzzzzzzz');
   await expect(page.getByText(/No teachers match/)).toBeVisible();
   expect(await cards.count()).toBe(0);
 });

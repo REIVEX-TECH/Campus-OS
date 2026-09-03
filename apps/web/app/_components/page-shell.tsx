@@ -13,7 +13,7 @@ export function PageShell({ children, rail }: { children: ReactNode; rail?: Reac
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <div className="min-w-0">{children}</div>
       <aside className="hidden xl:block" data-print-hide>
-        <div className="sticky top-4 flex flex-col gap-4">{rail}</div>
+        <div className="rail-sticky flex flex-col gap-4">{rail}</div>
       </aside>
     </div>
   );

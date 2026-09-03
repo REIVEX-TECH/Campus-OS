@@ -43,6 +43,7 @@
   --warning: oklch(0.92 0.045 90); /* Unverified badge: soft amber + dark amber text */
   --warning-foreground: oklch(0.28 0.06 60);
   --border: oklch(0.9 0 0); /* hairline, used sparingly (never as a section divider) */
+  --topbar-h: 3.25rem;
   --input: oklch(0.94 0 0); /* iOS filled field */
   --ring: oklch(0.5 0 0);
 
@@ -322,30 +323,48 @@
  * the sidebar is sticky and short, the content grows and the PAGE scrolls.
  */
 @layer components {
-  .app-shell {
+  .app-frame {
     display: flex;
     flex-direction: column;
     min-height: 100svh;
     width: 100%;
+  }
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
     max-width: 120rem;
     margin-inline: auto;
   }
+  /* The bar spans the viewport; its contents line up with the shell beneath. */
   .app-topbar {
     position: sticky;
     top: 0;
     z-index: 30;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    height: 3.25rem;
+    height: var(--topbar-h);
     padding: 0 0.75rem;
     background: color-mix(in oklch, var(--color-background) 88%, transparent);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
   }
+  .app-topbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 100%;
+    width: 100%;
+    max-width: 120rem;
+    margin-inline: auto;
+  }
+  /* A rail that must clear the sticky bar rather than hide behind it. */
+  .rail-sticky {
+    position: sticky;
+    top: calc(var(--topbar-h) + 1rem);
+  }
   .app-backdrop {
     position: fixed;
-    inset: 0;
+    inset: var(--topbar-h) 0 0 0;
     z-index: 35;
     border: 0;
     background: rgba(0, 0, 0, 0.4);
@@ -439,7 +458,7 @@
   }
   .app-sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: var(--topbar-h) auto 0 0;
     z-index: 40;
     display: flex;
     flex-direction: column;
@@ -478,16 +497,11 @@
     min-height: 2.25rem;
     padding: 0.25rem 0.5rem;
   }
-  .sidebar-brand-link {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .sidebar-brand {
-    font-size: 0.95rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--color-foreground);
+  /* Nothing but the collapse control lives here now, so an empty head on a
+   * phone would only take space away from the nav. */
+  .sidebar-head:empty,
+  .app-sidebar:not(.is-open) .sidebar-head:has(.sidebar-close:only-child) {
+    display: none;
   }
   .sidebar-collapse,
   .sidebar-close {
@@ -562,10 +576,6 @@
     font-size: 0.6875rem;
     font-weight: 500;
   }
-  .sidebar-foot {
-    margin-top: auto;
-    padding: 0.25rem 0.5rem;
-  }
 
   @media (prefers-reduced-motion: reduce) {
     .app-shell,
@@ -593,15 +603,15 @@
        * grid tracks simply snap, which is fine. */
       transition: grid-template-columns 0.2s ease;
     }
-    .app-topbar {
-      display: none;
-    }
     .app-backdrop {
       display: none !important;
     }
+    :root {
+      --topbar-h: 3.5rem;
+    }
     .app-sidebar {
       position: sticky;
-      top: 0;
+      top: var(--topbar-h);
       z-index: 1;
       width: auto;
       max-width: none;
@@ -624,18 +634,10 @@
     :root[data-sidebar='collapsed'] .sidebar-label {
       display: none;
     }
-    /* Collapsed rail header: logo above a hamburger, both centred in the rail
-     * with even spacing, so it reads as a tidy app top bar. */
+    /* Collapsed rail: the collapse control centres in the rail on its own. */
     :root[data-sidebar='collapsed'] .sidebar-head {
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 0.5rem;
-      padding: 0.5rem 0 0.375rem;
-    }
-    :root[data-sidebar='collapsed'] .sidebar-brand-link {
       justify-content: center;
-      width: 100%;
+      padding: 0.25rem 0;
     }
     :root[data-sidebar='collapsed'] .sidebar-collapse {
       margin-left: 0;
@@ -643,10 +645,6 @@
     :root[data-sidebar='collapsed'] .sidebar-item {
       justify-content: center;
       padding-inline: 0;
-    }
-    :root[data-sidebar='collapsed'] .sidebar-foot {
-      display: flex;
-      justify-content: center;
     }
   }
 }

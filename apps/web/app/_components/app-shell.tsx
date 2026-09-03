@@ -3,15 +3,20 @@ import { translator, type MessageKey } from '@/lib/i18n';
 import { currentActor } from '@/lib/auth';
 import { firebaseWebConfig } from '@/lib/firebase-config';
 import { MODULES } from '@/lib/modules';
+import { ChromeProvider } from './chrome-context';
 import { Sidebar, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
+import { TopBar } from './top-bar';
 
 /**
- * Tenant app shell: a persistent left module nav beside the page content, in a
- * Reddit-style frame. The sidebar collapses to icons on desktop (persisted) and
- * becomes a hamburger drawer on mobile; the page never scrolls sideways and no
- * panel has its own scrollbar (the sidebar is sticky and short, the content
- * grows and the page scrolls). Pages compose their center + optional right rail
+ * Tenant app shell: a sticky top bar over a persistent left module nav beside
+ * the page content.
+ *
+ * The bar carries the brand, the search and the account; the sidebar under it is
+ * navigation alone, collapsing to icons on desktop (persisted) and becoming a
+ * drawer on a phone. The page never scrolls sideways and no panel has its own
+ * scrollbar: the bar is sticky, the sidebar is sticky and short, the content
+ * grows and the page scrolls. Pages compose their centre and optional right rail
  * with `PageShell`. The platform landing uses its own simpler header, not this.
  */
 
@@ -46,40 +51,56 @@ export async function AppShell({
   }));
 
   return (
-    <div className="app-shell">
+    <ChromeProvider>
       <script dangerouslySetInnerHTML={{ __html: SIDEBAR_SCRIPT }} />
       <SkipLink label={t('a11y.skipToContent')} />
-      <Sidebar
-        tenantName={tenantName}
-        tenant={tenantSlug}
-        homeHref={base || '/'}
-        signInHref={`${base}/signin`}
-        account={
-          actor
-            ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
-            : null
-        }
-        firebase={firebaseWebConfig()}
-        items={items}
-        labels={{
-          modules: t('nav.modules'),
-          menu: t('nav.menu'),
-          close: t('nav.close'),
-          collapse: t('nav.collapse'),
-          expand: t('nav.expand'),
-          theme: t('theme.toggle'),
-          comingSoon: t('modules.comingSoon'),
-          account: {
-            signIn: t('signin.heading'),
-            working: t('signin.working'),
-            failed: t('signin.failed'),
-            retry: t('signin.retry'),
-          },
-        }}
-      />
-      <main id="main" tabIndex={-1} className="app-content outline-none">
-        {children}
-      </main>
-    </div>
+      <div className="app-frame">
+        <TopBar
+          tenantName={tenantName}
+          tenant={tenantSlug}
+          homeHref={base || '/'}
+          searchHref={`${base}/search`}
+          signInHref={`${base}/signin`}
+          account={
+            actor
+              ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
+              : null
+          }
+          firebase={firebaseWebConfig()}
+          labels={{
+            menu: t('nav.menu'),
+            search: t('nav.search'),
+            searchPlaceholder: t('search.placeholder'),
+            closeSearch: t('nav.closeSearch'),
+            theme: t('theme.toggle'),
+            account: {
+              signIn: t('signin.heading'),
+              working: t('signin.working'),
+              failed: t('signin.failed'),
+              retry: t('signin.retry'),
+              menu: t('nav.accountMenu'),
+              account: t('account.heading'),
+              signOut: t('signin.signOut'),
+              signingOut: t('signin.signingOut'),
+            },
+          }}
+        />
+        <div className="app-shell">
+          <Sidebar
+            items={items}
+            labels={{
+              modules: t('nav.modules'),
+              close: t('nav.close'),
+              collapse: t('nav.collapse'),
+              expand: t('nav.expand'),
+              comingSoon: t('modules.comingSoon'),
+            }}
+          />
+          <main id="main" tabIndex={-1} className="app-content outline-none">
+            {children}
+          </main>
+        </div>
+      </div>
+    </ChromeProvider>
   );
 }
