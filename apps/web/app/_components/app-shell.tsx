@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { currentActor } from '@/lib/auth';
 import { firebaseWebConfig } from '@/lib/firebase-config';
+import { myCommunities } from '@campusos/module-communities/communities';
+import { COMMUNITIES } from '@/lib/communities';
 import { MODULES } from '@/lib/modules';
 import { ChromeProvider } from './chrome-context';
-import { Sidebar, type SidebarItem } from './sidebar';
+import { Sidebar, type SidebarGroup, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
 import { TopBar } from './top-bar';
 
@@ -30,25 +32,45 @@ export async function AppShell({
   tenantSlug,
   base,
   locale,
+  enabledModules,
   children,
 }: {
   tenantName: string;
   tenantSlug: string;
   base: string;
   locale: string;
+  /** The tenant's enabled module ids: a disabled module contributes no link. */
+  enabledModules: readonly string[];
   children: ReactNode;
 }) {
   const t = translator(locale);
   // Cheap when nobody is signed in: with no session cookie this does not touch
   // the database at all, so a public timetable pays nothing for it.
   const actor = await currentActor();
-  const items: SidebarItem[] = MODULES.filter((m) => !m.hideFromNav).map((m) => ({
+  const items: SidebarItem[] = MODULES.filter(
+    (m) => !m.hideFromNav && (!m.moduleId || enabledModules.includes(m.moduleId)),
+  ).map((m) => ({
     key: m.key,
     label: t(`module.${m.key}.label` as MessageKey),
     icon: m.icon,
     href: m.soon ? `${base}/soon/${m.key}` : `${base}${m.path ?? ''}`,
     soon: m.soon,
   }));
+  // The communities a signed in person has joined, as a second section.
+  const groups: SidebarGroup[] = [];
+  if (actor && enabledModules.includes(COMMUNITIES)) {
+    const mine = await myCommunities(actor, tenantSlug);
+    groups.push({
+      key: 'yours',
+      label: t('communities.yours'),
+      items: mine.slice(0, 8).map((c) => ({
+        key: c.id,
+        label: c.name,
+        href: `${base}/c/${c.slug}`,
+        seed: c.iconSeed,
+      })),
+    });
+  }
 
   return (
     <ChromeProvider>
@@ -88,6 +110,7 @@ export async function AppShell({
         <div className="app-shell">
           <Sidebar
             items={items}
+            groups={groups}
             labels={{
               modules: t('nav.modules'),
               close: t('nav.close'),

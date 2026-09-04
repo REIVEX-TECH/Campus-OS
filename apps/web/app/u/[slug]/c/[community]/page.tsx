@@ -1,0 +1,164 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
+import { membershipState } from '@campusos/module-communities/directory';
+import { listModerators } from '@campusos/module-communities/members';
+import { listRules } from '@campusos/module-communities/rules';
+import { CommunityRail } from '@/app/_components/communities/community-rail';
+import { CommunityBanner, CommunityIcon } from '@/app/_components/communities/community-visuals';
+import { JoinButton } from '@/app/_components/communities/join-button';
+import { EmptyState } from '@/app/_components/empty-state';
+import { PageShell } from '@/app/_components/page-shell';
+import { currentActor } from '@/lib/auth';
+import { communitiesSettings, requireCommunities } from '@/lib/communities';
+import { communityErrors } from '@/lib/community-labels';
+import { translator } from '@/lib/i18n';
+import { pageMetadata } from '@/lib/metadata';
+import { getTenantRegistry } from '@/lib/tenants';
+import { requireTenant } from '@/lib/timetable';
+import { tenantBase } from '@/lib/tenant-url';
+
+export const dynamic = 'force-dynamic';
+
+type Params = { params: Promise<{ slug: string; community: string }> };
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { slug, community } = await params;
+  const tenant = (await getTenantRegistry()).resolveBySlug(slug);
+  if (!tenant || !tenant.enabledModules.includes('communities')) return {};
+  const c = await communityBySlug(slug, community);
+  if (!c) return {};
+  return pageMetadata({
+    tenant,
+    title: c.name,
+    description: c.description || undefined,
+    path: `${await tenantBase(slug)}/c/${c.slug}`,
+  });
+}
+
+/**
+ * One community: what it is, who runs it, its rules, and (from A3) its posts.
+ * An unknown slug is 404 whoever asks; reading a known one needs a sign in by
+ * default, a tenant setting.
+ */
+export default async function CommunityPage({ params }: Params) {
+  const { slug, community: communitySlug } = await params;
+  const tenant = await requireTenant(slug);
+  requireCommunities(tenant);
+  const community = await communityBySlug(slug, communitySlug);
+  if (!community) notFound();
+  const t = translator(tenant.locale);
+  const base = await tenantBase(slug);
+  const actor = await currentActor();
+  const settings = communitiesSettings(tenant);
+
+  if (settings.readAccess === 'signedIn' && !actor) {
+    return (
+      <PageShell>
+        <div className="flex flex-col gap-5">
+          <CommunityBanner seed={community.bannerSeed} />
+          <h1 className="px-1 text-2xl font-bold tracking-tight">{community.name}</h1>
+          <EmptyState title={t('communities.signInToRead')}>
+            <Link href={`${base}/signin`} className="font-medium text-primary hover:underline">
+              {t('communities.signIn')}
+            </Link>
+          </EmptyState>
+        </div>
+      </PageShell>
+    );
+  }
+
+  const [rules, moderators, state, perms] = await Promise.all([
+    listRules(slug, community.id),
+    listModerators(slug, community.id),
+    actor ? membershipState(actor, slug, community.id) : Promise.resolve(null),
+    actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
+  ]);
+  const canManage = perms?.hasAny('communities.manage', 'communities.oversee') ?? false;
+  const canJoin = actor !== null && (community.visibility === 'public' || state?.joined);
+
+  return (
+    <PageShell
+      rail={
+        <CommunityRail
+          community={community}
+          rules={rules}
+          moderators={moderators}
+          base={base}
+          locale={tenant.locale}
+          canManage={canManage}
+          t={t}
+        />
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <CommunityBanner seed={community.bannerSeed} />
+        <header className="-mt-10 flex flex-wrap items-end gap-3 px-3 sm:-mt-12">
+          <CommunityIcon
+            seed={community.iconSeed}
+            name={community.name}
+            size={72}
+            className="ring-4 ring-background"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 pb-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight">{community.name}</h1>
+              {community.approvalStatus === 'pending' ? (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {t('communities.pending')}
+                </span>
+              ) : null}
+              {community.visibility === 'restricted' ? (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {t('communities.restricted')}
+                </span>
+              ) : null}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t('communities.members', { count: community.memberCount })}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 pb-1">
+            {canJoin ? (
+              <JoinButton
+                tenant={slug}
+                communityId={community.id}
+                joined={state?.joined ?? false}
+                labels={{
+                  join: t('communities.join'),
+                  leave: t('communities.leave'),
+                  working: t('communities.working'),
+                  errors: communityErrors(t),
+                }}
+              />
+            ) : null}
+          </div>
+        </header>
+        {community.description ? (
+          <p className="max-w-prose px-1 text-sm text-muted-foreground xl:hidden">
+            {community.description}
+          </p>
+        ) : null}
+
+        <section aria-labelledby="community-posts" className="flex flex-col gap-2">
+          <h2
+            id="community-posts"
+            className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            {t('communities.posts')}
+          </h2>
+          <EmptyState title={t('communities.noPostsYet')}>
+            {t('communities.postingSoon')}
+          </EmptyState>
+        </section>
+
+        <p className="px-1 text-sm">
+          <Link href={`${base}/c`} className="font-medium text-primary hover:underline">
+            {t('communities.back')}
+          </Link>
+        </p>
+      </div>
+    </PageShell>
+  );
+}

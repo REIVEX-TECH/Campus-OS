@@ -13,7 +13,12 @@
     "./communities": "./src/communities.ts",
     "./posts": "./src/posts.ts",
     "./comments": "./src/comments.ts",
-    "./votes": "./src/votes.ts"
+    "./votes": "./src/votes.ts",
+    "./moderation": "./src/moderation.ts",
+    "./directory": "./src/directory.ts",
+    "./settings": "./src/settings.ts",
+    "./rules": "./src/rules.ts",
+    "./members": "./src/members.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

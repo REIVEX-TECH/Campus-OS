@@ -5,8 +5,8 @@ Design: `docs/design-communities.md`.
 | Item  | What                                                    | State                   |
 | ----- | ------------------------------------------------------- | ----------------------- |
 | Doc   | Design                                                  | In review               |
-| A1    | Schema, RLS, RBAC wiring, anonymity views, module shell | **In review** (this PR) |
-| A2    | Communities: create, settings, join, rules, rail        | Not started             |
+| A1    | Schema, RLS, RBAC wiring, anonymity views, module shell | Merged, `de2e2a0`       |
+| A2    | Communities: create, settings, join, rules, rail        | **In review** (this PR) |
 | A3    | Posts                                                   | Not started             |
 | A4    | Comments                                                | Not started             |
 | A5    | Voting, ranking, feeds, pagination                      | Not started             |

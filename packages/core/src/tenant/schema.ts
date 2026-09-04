@@ -80,6 +80,12 @@ export const tenantConfigSchema = z.object({
    */
   adminEmails: z.array(z.string().email()).default([]),
   enabledModules: z.array(z.string().min(1)).default([]),
+  /**
+   * Settings per module, keyed by module id and validated by that module's own
+   * `settingsSchema` when read. Unknown modules are kept as they are so a
+   * setting for a module that is disabled today survives a round trip.
+   */
+  moduleSettings: z.record(z.string(), z.unknown()).default({}),
   seo: seoSchema,
 });
 

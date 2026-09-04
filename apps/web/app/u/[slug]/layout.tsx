@@ -34,6 +34,7 @@ export default async function TenantLayout({ children, params }: Params & { chil
         tenantSlug={tenant.slug}
         base={base}
         locale={tenant.locale}
+        enabledModules={tenant.enabledModules}
       >
         {children}
       </AppShell>

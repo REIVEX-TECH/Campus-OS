@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ModuleIconName } from '@/lib/modules';
 import { useChrome } from './chrome-context';
+import { IdentityAvatar } from './identity-avatar';
 import { ModuleIcon } from './module-icon';
 
 export type SidebarItem = {
@@ -13,6 +14,12 @@ export type SidebarItem = {
   icon: ModuleIconName;
   href: string;
   soon: boolean;
+};
+
+export type SidebarGroup = {
+  key: string;
+  label: string;
+  items: { key: string; label: string; href: string; seed: string }[];
 };
 
 export type SidebarLabels = {
@@ -36,7 +43,16 @@ export type SidebarLabels = {
  * bar and closed by Escape, the backdrop, or a link; the modal behaviour lives
  * in `ChromeProvider`, which both halves share.
  */
-export function Sidebar({ items, labels }: { items: SidebarItem[]; labels: SidebarLabels }) {
+export function Sidebar({
+  items,
+  groups = [],
+  labels,
+}: {
+  items: SidebarItem[];
+  /** Extra sections under the modules, such as the communities a person joined. */
+  groups?: SidebarGroup[];
+  labels: SidebarLabels;
+}) {
   const pathname = usePathname();
   const { open, closeAndReturnFocus, closeForNav, drawerRef } = useChrome();
   const live = items.filter((i) => !i.soon);
@@ -124,6 +140,32 @@ export function Sidebar({ items, labels }: { items: SidebarItem[]; labels: Sideb
               </li>
             ))}
           </ul>
+          {groups
+            .filter((g) => g.items.length > 0)
+            .map((g) => (
+              <div key={g.key} className="sidebar-group">
+                <p className="sidebar-group-label sidebar-label">{g.label}</p>
+                <ul>
+                  {g.items.map((n) => (
+                    <li key={n.key}>
+                      <Link
+                        href={n.href}
+                        onClick={closeForNav}
+                        aria-current={isActive(n.href) ? 'page' : undefined}
+                        aria-label={n.label}
+                        title={n.label}
+                        className={`sidebar-item ios-pressable${isActive(n.href) ? ' is-active' : ''}`}
+                      >
+                        <span className="sidebar-icon">
+                          <IdentityAvatar seed={n.seed} label={n.label} kind="place" size={22} />
+                        </span>
+                        <span className="sidebar-label">{n.label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           <ul className="sidebar-soon">
             {soon.map((n) => (
               <li key={n.key}>

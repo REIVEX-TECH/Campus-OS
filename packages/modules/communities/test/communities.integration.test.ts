@@ -25,7 +25,11 @@ import {
   leaveCommunity,
   setCommunityRole,
 } from '../src/communities';
+import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
+import { listMembers, listModerators } from '../src/members';
+import { listRules, setRules } from '../src/rules';
+import { approveCommunity, updateCommunitySettings } from '../src/settings';
 import { banMember, reportItem, unmaskAuthor } from '../src/moderation';
 import {
   createPost,
@@ -517,5 +521,132 @@ describe('the anonymity model', () => {
     expect(trail[0]!.target_id).toBe(postId);
     expect(trail[0]!.meta.reportId).toBe(report.value.id);
     expect(trail[0]!.meta.unmaskedUserId).toBe(author.userId);
+  });
+});
+
+describe('directory, settings, rules and members', () => {
+  it('lists live public communities and hides pending or restricted ones', async () => {
+    const owner = await member('dir-owner');
+    // A second founder: one person may start two a day, and this test needs three.
+    const founder = await member('dir-founder');
+    const tenantAdmin = await admin('dir-admin');
+    await community(owner, 'Open Club');
+    const restricted = await createCommunity(
+      owner,
+      'aaa',
+      { name: 'Closed Club', visibility: 'restricted' },
+      settings,
+    );
+    expect(restricted.ok).toBe(true);
+    const pending = await createCommunity(
+      founder,
+      'aaa',
+      { name: 'Waiting Club' },
+      settingsSchema.parse({ createCommunity: 'approval' }),
+    );
+    if (!pending.ok) throw new Error(pending.error);
+    expect(pending.value.approvalStatus).toBe('pending');
+
+    expect((await listCommunities('aaa')).map((c) => c.name)).toEqual(['Open Club']);
+    expect((await listPendingCommunities('aaa')).map((c) => c.name)).toEqual(['Waiting Club']);
+    expect(await approveCommunity(owner, 'aaa', pending.value.id)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await approveCommunity(tenantAdmin, 'aaa', pending.value.id)).toEqual({
+      ok: true,
+      value: { approved: true },
+    });
+    expect((await listCommunities('aaa')).map((c) => c.name).sort()).toEqual([
+      'Open Club',
+      'Waiting Club',
+    ]);
+  });
+
+  it('changes settings and rules for an owner, logs both, and refuses a member', async () => {
+    const owner = await member('set-owner');
+    const plain = await member('set-plain');
+    const c = await community(owner);
+    await joinCommunity(plain, 'aaa', c.id);
+    const next = {
+      name: 'CS Freshers 2026',
+      description: 'For the new intake.',
+      allowAnonymous: false,
+      visibility: 'public' as const,
+      allowedKinds: ['text' as const],
+      modLogPublic: true,
+    };
+    expect(await updateCommunitySettings(plain, 'aaa', c.id, next)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    const updated = await updateCommunitySettings(owner, 'aaa', c.id, next);
+    expect(updated.ok && updated.value).toMatchObject({
+      slug: c.slug,
+      name: 'CS Freshers 2026',
+      allowAnonymous: false,
+      allowedKinds: ['text'],
+    });
+    // The slug never moves with the name.
+    expect((await communityBySlug('aaa', c.slug))?.name).toBe('CS Freshers 2026');
+
+    expect(await setRules(plain, 'aaa', c.id, [{ title: 'Be kind' }])).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    const rules = await setRules(owner, 'aaa', c.id, [
+      { title: 'Be kind', description: 'Argue the point, not the person.' },
+      { title: 'Stay on topic' },
+    ]);
+    expect(rules.ok && rules.value.map((r) => [r.position, r.title])).toEqual([
+      [1, 'Be kind'],
+      [2, 'Stay on topic'],
+    ]);
+    const replaced = await setRules(owner, 'aaa', c.id, [{ title: 'Only one now' }]);
+    expect(replaced.ok && replaced.value.map((r) => r.title)).toEqual(['Only one now']);
+    expect((await listRules('aaa', c.id)).map((r) => r.title)).toEqual(['Only one now']);
+
+    const log = await withActorInTenant(owner.userId, 'aaa', (tx) =>
+      tx.execute(
+        sql`select action from moderation_actions where community_id = ${c.id}::uuid order by created_at`,
+      ),
+    );
+    expect([...log].map((r) => (r as { action: string }).action)).toEqual([
+      'settings.updated',
+      'rules.updated',
+      'rules.updated',
+    ]);
+  });
+
+  it("lists members with the owner first and each person's standing", async () => {
+    const owner = await member('mem-owner');
+    const mod = await member('mem-mod');
+    const plain = await member('mem-plain');
+    const c = await community(owner);
+    await joinCommunity(plain, 'aaa', c.id);
+    await joinCommunity(mod, 'aaa', c.id);
+    await setCommunityRole(owner, 'aaa', c.id, mod.userId, 'community_moderator', 'grant');
+
+    const members = await listMembers('aaa', c.id);
+    expect(members.map((m) => [m.handle, m.roles])).toEqual([
+      [owner.handle, ['community_owner']],
+      [mod.handle, ['community_moderator']],
+      [plain.handle, []],
+    ]);
+    expect((await listModerators('aaa', c.id)).map((m) => m.handle)).toEqual([
+      owner.handle,
+      mod.handle,
+    ]);
+    expect(await membershipState(plain, 'aaa', c.id)).toEqual({
+      joined: true,
+      roles: ['community_member'],
+    });
+    expect(await membershipState(owner, 'aaa', c.id)).toEqual({
+      joined: true,
+      roles: ['community_owner'],
+    });
+    await leaveCommunity(plain, 'aaa', c.id);
+    expect(await membershipState(plain, 'aaa', c.id)).toEqual({ joined: false, roles: [] });
+    expect(JSON.stringify(members)).not.toContain('@');
   });
 });

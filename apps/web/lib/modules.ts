@@ -38,6 +38,11 @@ export interface ModuleCard {
    * list of where a handle will be used; the map is read only, so it is absent.
    */
   needsIdentity?: boolean;
+  /**
+   * The module registry id this card belongs to. A card with one is shown only
+   * to tenants that enable that module; a disabled module contributes no link.
+   */
+  moduleId?: string;
 }
 
 export const MODULES: ModuleCard[] = [
@@ -47,7 +52,14 @@ export const MODULES: ModuleCard[] = [
   { key: 'teachers', icon: 'users', path: '/teachers', soon: false },
   { key: 'rooms', icon: 'building', path: '/rooms', soon: false },
   { key: 'marketplace', needsIdentity: true, icon: 'shopping-bag', soon: true },
-  { key: 'communities', needsIdentity: true, icon: 'message-circle', soon: true },
+  {
+    key: 'communities',
+    needsIdentity: true,
+    icon: 'message-circle',
+    path: '/c',
+    soon: false,
+    moduleId: 'communities',
+  },
   { key: 'lostFound', needsIdentity: true, icon: 'package-search', soon: true },
   { key: 'rides', needsIdentity: true, icon: 'car', soon: true },
   { key: 'map', icon: 'map', soon: true },

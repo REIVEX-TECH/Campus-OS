@@ -60,3 +60,10 @@ rollback; an empty table is inert.
 
 A later PR removes `tenants/lgu/tenant.config.ts` from the file registry once
 the row has served for a while. Until then the file is the fallback, on purpose.
+
+## Enabling a module later
+
+Once a tenant's row exists, the file no longer decides anything for it. To
+enable a module (communities, say) on LGU: open `/admin`, LGU, add it to
+"Enabled modules" and save; or change the file and run `pnpm tenants:sync`
+again, which writes the file's content at the next version.
