@@ -26,7 +26,7 @@ security review, and two pre-existing holes it exposed were closed first.
 | 5A0  | `platform_roles` written only by an allowlist-checking definer   | Merged, `10110e5` |
 | —    | `universities` gets RLS (was unguarded; deletes cascade)         | Merged, `b8ba354` |
 | 5A   | Tenant grants: audited context switch, resolver, containment     | Merged, `4f04509` |
-| next | Membership/role writes behind a definer (pre-existing hole)      | **Planned**       |
+| —    | Membership/role writes behind a definer (the review's hole)      | Merged, `3c95d11` |
 | 5B   | Platform-admin surfaces run inside granted transactions          | Planned           |
 | 5G   | `SUPERADMIN_EMAILS` + `platform_roles` rotation/recovery runbook | Planned           |
 
@@ -36,13 +36,17 @@ containment keys "under a grant" and "not self" on an unforgeable `platform_gran
 row (one per granted transaction, stamped with its transaction id), never on an
 `app.*` GUC the application can set — the class of flaw two review passes broke.
 
-**The next PR** closes the remaining pre-existing hole 5A's review named:
-`tenant_memberships` and `membership_roles` are authorised at the database only by
-tenant scope, so a bare foreign tenant context (raw SQL as the app credential)
-could self-insert a `tenant_admin` membership. The fix is the 5A0 pattern applied
-to those two tables: revoke the app's direct writes, route them through audited
-definers that check real authority. 5A contains the grant path; this closes the
-bare path.
+The membership-writes hole 5A's review named is now closed (`3c95d11`):
+`tenant_memberships` and `membership_roles` are no longer writable by the
+application role; every write goes through an audited definer that checks the
+actor, the 5A0 pattern applied to both tables. Its own adversarial pass caught a
+repeat of PR #113's `REVOKE FROM PUBLIC` trap (an authority-free helper left
+EXECUTE-able by the app) and the one missing not-self-under-grant guard, both
+fixed before merge — which is why CLAUDE.md §6 now requires the adversarial pass
+over the concrete security SQL, not the design.
+
+**Still owed:** 5B (surfaces under granted transactions) and 5G (the
+`SUPERADMIN_EMAILS` + `platform_roles` rotation/recovery runbook).
 
 **Awaiting your review before 5B:** the definer SQL is in
 `docs/pr/0104-tenant-grants.md` and `packages/modules/identity/drizzle/0018_tenant_grants.sql`.
