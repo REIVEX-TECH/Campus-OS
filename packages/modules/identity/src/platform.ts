@@ -1,6 +1,5 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withActor } from '@campusos/db';
-import { recordAudit } from './audit';
 import { platformRoles } from './schema/identity';
 
 /**
@@ -26,28 +25,36 @@ export function isAllowlisted(email: string, allowlist: readonly string[]): bool
  * Make a listed person a platform admin, once. Upgrade only: an address later
  * removed from the list keeps the row until a human removes it, in the same
  * way a tenant's configured admins work. True when the row was written now.
+ *
+ * The write no longer happens here. `platform_roles` is not writable by the
+ * application role at all (0016): the row policy is SELECT-only, so a direct
+ * insert matches nothing. `auth_grant_platform_admin` is the one writer, a
+ * definer that promotes only the calling actor and only if their own verified
+ * email is on the allowlist it is handed, and writes the audit line in the same
+ * statement. The allowlist is still the environment; the check is now the
+ * database's rather than only this function's, so a signed-in request cannot
+ * write itself a platform-admin row even if a future code path tries to.
  */
 export async function ensurePlatformAdmin(
   actor: { userId: string; email: string },
   allowlist: readonly string[],
 ): Promise<boolean> {
+  // A cheap early exit that keeps the empty/unset list fail-closed and avoids a
+  // round trip for the overwhelmingly common non-admin sign in. The definer
+  // re-checks, so this is a filter, never the guarantee.
   if (!isAllowlisted(actor.email, allowlist)) return false;
+  const list =
+    allowlist.length === 0
+      ? sql`array[]::text[]`
+      : sql`array[${sql.join(
+          allowlist.map((entry) => sql`${entry}`),
+          sql`, `,
+        )}]::text[]`;
   return withActor(actor.userId, async (tx) => {
-    const [inserted] = await tx
-      .insert(platformRoles)
-      .values({ userId: actor.userId, role: PLATFORM_ADMIN })
-      .onConflictDoNothing({ target: platformRoles.userId })
-      .returning();
-    if (!inserted) return false;
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId: null,
-      action: 'platform.admin_granted',
-      targetType: 'user',
-      targetId: actor.userId,
-      meta: { source: 'env' },
-    });
-    return true;
+    const [row] = [
+      ...(await tx.execute(sql`select auth_grant_platform_admin(${list}) as granted`)),
+    ] as { granted: boolean }[];
+    return row?.granted === true;
   });
 }
 
