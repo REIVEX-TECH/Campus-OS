@@ -4,16 +4,43 @@
 // system Node other apps use: set CAMPUSOS_NODE to the Node 22 path from
 // `nvm which 22` before `pm2 start`.
 //
-// ENV MODEL: every var except NODE_ENV comes from the repo-root .env, which you
-// `source` (`set -a; . ./.env; set +a`) BEFORE `pm2 start` so it is present in
-// the shell; the `env` block below is STATIC keys (not a `...process.env`
-// spread), so it forwards ONLY what is listed here. The host vars are forwarded
-// explicitly so a missing one shows up as an empty value at boot rather than
-// silently defaulting (DATABASE_URL is also sourced this way and read directly
-// by the app). If you add a new required env var, add it here too.
+// ENV MODEL: the runtime env vars the app consumes are declared ONCE in
+// apps/web/lib/app-env.vars.json. This file forwards exactly that set — the
+// `env` block below is BUILT from the manifest, not hand-maintained — so adding
+// a runtime var is a one-line edit to the manifest and can never again be added
+// to .env but forgotten here (the bug that silently dropped DATABASE_URL,
+// PLATFORM_HOST, TENANT_BASE_DOMAIN and SUPERADMIN_EMAILS in turn). We also load
+// .env here so `pm2 restart ecosystem.config.cjs --update-env` re-reads .env
+// (restarting by app name does not) and so a value need not be pre-sourced into
+// the shell. The app additionally asserts this wiring at boot
+// (apps/web/instrumentation.ts) and refuses to start if a declared var did not
+// reach the process.
+//
+// Owner-only and build-time vars are deliberately NOT forwarded: the manifest
+// excludes MIGRATION_DATABASE_URL (the owner connection — the running app must
+// never hold it) and NEXT_PUBLIC_FIREBASE_* (inlined by Next at build time).
 //
 // There is no admin secret to forward: admin is a role on an account, so nothing
 // in this block can open the admin area. See .env.example.
+const path = require('path');
+
+// Best-effort: load .env so its values are present when this config evaluates.
+// dotenv does not override vars already set in the shell, so a pre-sourced value
+// still wins. If dotenv is absent (a slim install), fall back to a shell that
+// sourced .env before `pm2 start`; the boot assertion still catches any gap.
+try {
+  require('dotenv').config({ path: path.join(__dirname, '.env') });
+} catch {
+  /* dotenv not installed — see note above */
+}
+
+const { vars } = require('./apps/web/lib/app-env.vars.json');
+
+// NODE_ENV is ours to set, not sourced from .env. Everything else is forwarded
+// from the process environment by name, driven entirely by the manifest.
+const env = { NODE_ENV: 'production' };
+for (const v of vars) env[v.name] = process.env[v.name];
+
 module.exports = {
   apps: [
     {
@@ -26,17 +53,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       exp_backoff_restart_delay: 2000,
-      env: {
-        NODE_ENV: 'production',
-        // Sourced from .env before `pm2 start` (see the ENV MODEL note above).
-        PORT: process.env.PORT,
-        DATABASE_URL: process.env.DATABASE_URL,
-        SOURCE_MODE: process.env.SOURCE_MODE,
-        TENANT_BASE_DOMAIN: process.env.TENANT_BASE_DOMAIN,
-        PLATFORM_HOST: process.env.PLATFORM_HOST,
-        APP_DOMAIN: process.env.APP_DOMAIN,
-        SUPERADMIN_EMAILS: process.env.SUPERADMIN_EMAILS,
-      },
+      env,
     },
   ],
 };
