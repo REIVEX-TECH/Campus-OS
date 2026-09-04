@@ -100,7 +100,7 @@ export function PostActions({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1">
-        <Link href={permalink} className={action}>
+        <Link href={`${permalink}#comments`} className={action}>
           {labels.comments}
         </Link>
         <button type="button" onClick={copyLink} className={action}>

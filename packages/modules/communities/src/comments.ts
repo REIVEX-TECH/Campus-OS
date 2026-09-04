@@ -17,10 +17,12 @@ import {
   commentEdits,
   comments,
   commentsRead,
+  commentVotes,
   communities,
   posts,
   postsRead,
   publicProfiles,
+  savedItems,
 } from './schema/communities';
 
 /**
@@ -44,7 +46,12 @@ export interface CommentView {
   body: string;
   isAnonymous: boolean;
   author: { handle: string; avatarSeed: string } | null;
+  /** The author's id when not anonymous, for an OP or Mod badge; null otherwise. */
+  publicAuthorId: string | null;
   isOwn: boolean;
+  /** The viewer's own vote, 0 when none. */
+  myVote: -1 | 0 | 1;
+  saved: boolean;
   upVotes: number;
   downVotes: number;
   score: number;
@@ -57,7 +64,12 @@ export interface CommentView {
 type ReadRow = typeof commentsRead.$inferSelect;
 const COMMENT = getViewSelectedFields(commentsRead);
 
-function toView(row: ReadRow, handle: string | null, avatarSeed: string | null): CommentView {
+function toView(
+  row: ReadRow,
+  handle: string | null,
+  avatarSeed: string | null,
+  viewer: { myVote?: number | null; saved?: boolean } = {},
+): CommentView {
   return {
     id: row.id,
     postId: row.postId,
@@ -66,7 +78,10 @@ function toView(row: ReadRow, handle: string | null, avatarSeed: string | null):
     body: row.body,
     isAnonymous: row.isAnonymous,
     author: !row.isAnonymous && handle && avatarSeed ? { handle, avatarSeed } : null,
+    publicAuthorId: row.isAnonymous ? null : row.publicAuthorId,
     isOwn: row.isOwn === true,
+    myVote: viewer.myVote === 1 ? 1 : viewer.myVote === -1 ? -1 : 0,
+    saved: viewer.saved === true,
     upVotes: row.upVotes,
     downVotes: row.downVotes,
     score: row.score,
@@ -228,9 +243,17 @@ async function readTree(
       comment: COMMENT,
       handle: publicProfiles.handle,
       avatarSeed: publicProfiles.avatarSeed,
+      myVote: commentVotes.value,
+      saved: savedItems.itemId,
     })
     .from(commentsRead)
     .leftJoin(publicProfiles, eq(publicProfiles.userId, commentsRead.publicAuthorId))
+    // Own-row tables: these joins yield the viewer's rows and nobody else's.
+    .leftJoin(commentVotes, eq(commentVotes.commentId, commentsRead.id))
+    .leftJoin(
+      savedItems,
+      and(eq(savedItems.itemType, 'comment'), eq(savedItems.itemId, commentsRead.id)),
+    )
     .where(eq(commentsRead.postId, postId))
     .orderBy(asc(commentsRead.path));
 
@@ -247,7 +270,12 @@ async function readTree(
     const children = byParent.get(parentId) ?? [];
     children.sort((a, b) => key(a.comment) - key(b.comment));
     for (const child of children) {
-      out.push(toView(child.comment, child.handle, child.avatarSeed));
+      out.push(
+        toView(child.comment, child.handle, child.avatarSeed, {
+          myVote: child.myVote,
+          saved: child.saved !== null,
+        }),
+      );
       walk(child.comment.id);
     }
   };

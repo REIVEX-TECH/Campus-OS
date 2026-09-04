@@ -743,3 +743,70 @@ describe('post lists, saved and hidden, history', () => {
     expect((await postById(null, 'aaa', p.value.id))?.editedAt).toBeInstanceOf(Date);
   });
 });
+
+describe('comment threads for a viewer', () => {
+  it("carries the viewer's vote and saved flag and the public author key, never an anonymous author", async () => {
+    const owner = await member('ct-owner');
+    const replier = await member('ct-replier');
+    const c = await community(owner);
+    await joinCommunity(replier, 'aaa', c.id);
+    const p = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Thread', body: '' },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+    const root = await createComment(replier, 'aaa', p.value.id, null, { body: 'root' }, settings);
+    if (!root.ok) throw new Error(root.error);
+    const reply = await createComment(
+      owner,
+      'aaa',
+      p.value.id,
+      root.value.id,
+      { body: 'anon reply', isAnonymous: true },
+      settings,
+    );
+    if (!reply.ok) throw new Error(reply.error);
+    await voteComment(owner, 'aaa', root.value.id, 1);
+    expect(await saveItem(owner, 'aaa', 'comment', root.value.id, true)).toEqual({
+      ok: true,
+      value: { saved: true },
+    });
+
+    const asOwner = await commentsForPost(owner, 'aaa', p.value.id);
+    expect(asOwner.map((x) => [x.body, x.depth])).toEqual([
+      ['root', 0],
+      ['anon reply', 1],
+    ]);
+    expect(asOwner[0]).toMatchObject({
+      myVote: 1,
+      saved: true,
+      score: 1,
+      publicAuthorId: replier.userId,
+      isOwn: false,
+    });
+    expect(asOwner[1]).toMatchObject({
+      isAnonymous: true,
+      publicAuthorId: null,
+      author: null,
+      isOwn: true,
+    });
+
+    const asReplier = await commentsForPost(replier, 'aaa', p.value.id);
+    expect(asReplier[0]).toMatchObject({ myVote: 0, saved: false, isOwn: true });
+    expect(asReplier[1]).toMatchObject({
+      publicAuthorId: null,
+      isOwn: false,
+      myVote: 0,
+      saved: false,
+    });
+    expect(JSON.stringify(asReplier)).not.toContain(owner.userId);
+
+    const asStranger = await commentsForPost(null, 'aaa', p.value.id);
+    expect(asStranger.every((x) => x.myVote === 0 && !x.saved && !x.isOwn)).toBe(true);
+    // The post's own public author key is what an OP badge compares against.
+    expect((await postById(null, 'aaa', p.value.id))?.publicAuthorId).toBe(owner.userId);
+  });
+});
