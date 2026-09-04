@@ -64,6 +64,13 @@
       "when": 1756800108000,
       "tag": "0008_report_person",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1756800109000,
+      "tag": "0009_standing_lapse",
+      "breakpoints": true
     }
   ]
 }
