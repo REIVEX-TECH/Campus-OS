@@ -1,13 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { commentsForPost, type CommentSort } from '@campusos/module-communities/comments';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { listModerators } from '@campusos/module-communities/members';
 import { postById } from '@campusos/module-communities/posts';
 import { listRules } from '@campusos/module-communities/rules';
+import { CommentThread } from '@/app/_components/communities/comment-thread';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
 import { PostCard } from '@/app/_components/communities/post-card';
 import { EmptyState } from '@/app/_components/empty-state';
+import { postPath } from '@/lib/community-constants';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
@@ -20,6 +23,8 @@ import { tenantBase } from '@/lib/tenant-url';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string; community: string; postId: string }> };
+type PageProps = Params & { searchParams: Promise<{ sort?: string }> };
+const SORTS: CommentSort[] = ['best', 'top', 'new', 'old', 'controversial'];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -42,7 +47,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  * engines; the id is what is looked up, so an old link with a changed title
  * still lands here.
  */
-export default async function PostPage({ params }: Params) {
+export default async function PostPage({ params, searchParams }: PageProps) {
   const { slug, community: communitySlug, postId } = await params;
   const tenant = await requireTenant(slug);
   requireCommunities(tenant);
@@ -68,11 +73,22 @@ export default async function PostPage({ params }: Params) {
 
   const post = await postById(actor, slug, postId);
   if (!post || post.communityId !== community.id || post.deletedAt) notFound();
-  const [rules, moderators, perms] = await Promise.all([
+  const { sort: sortParam } = await searchParams;
+  const sort: CommentSort = SORTS.includes(sortParam as CommentSort)
+    ? (sortParam as CommentSort)
+    : 'best';
+  const [rules, moderators, perms, comments] = await Promise.all([
     listRules(slug, community.id),
     listModerators(slug, community.id),
     actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
+    commentsForPost(actor, slug, post.id, sort),
   ]);
+  const canComment = perms?.has('communities.comment') ?? false;
+  const hint = !actor
+    ? t('comments.signInToComment')
+    : canComment
+      ? null
+      : t('comments.joinToComment');
 
   return (
     <PageShell
@@ -108,15 +124,23 @@ export default async function PostPage({ params }: Params) {
           full
           t={t}
         />
-        <section aria-labelledby="post-comments" className="flex flex-col gap-2">
-          <h2
-            id="post-comments"
-            className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            {t('posts.comments', { count: post.commentCount })}
-          </h2>
-          <EmptyState title={t('posts.commentsSoon')} />
-        </section>
+        <CommentThread
+          tenant={slug}
+          postId={post.id}
+          postAuthorId={post.publicAuthorId}
+          moderatorIds={new Set(moderators.map((m) => m.userId))}
+          comments={comments}
+          sort={sort}
+          sortHref={postPath(base, community.slug, post.id, post.title)}
+          locale={tenant.locale}
+          signedIn={actor !== null}
+          canComment={canComment && !post.lockedAt}
+          canVote={perms?.has('communities.vote') ?? false}
+          anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}
+          depthCap={settings.commentDepth}
+          hint={hint}
+          t={t}
+        />
       </div>
     </PageShell>
   );

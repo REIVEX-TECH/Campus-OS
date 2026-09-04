@@ -55,3 +55,16 @@ test('posting needs a community and a sign in', async ({ page, request }) => {
   });
   expect(act.status()).toBe(401);
 });
+
+test('the comment routes refuse a stranger', async ({ request }) => {
+  const create = await request.post(
+    '/api/communities/posts/00000000-0000-0000-0000-000000000000/comments',
+    { headers: fromOurPage(), data: { tenant: 'lgu', parentId: null, body: 'hi' } },
+  );
+  expect(create.status()).toBe(401);
+  const act = await request.post('/api/communities/comments/00000000-0000-0000-0000-000000000000', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', action: 'vote', value: 1 },
+  });
+  expect(act.status()).toBe(401);
+});

@@ -68,6 +68,8 @@ export interface PostView {
   spoiler: boolean;
   /** Null when anonymous, or when the author's account is gone. */
   author: PostAuthor | null;
+  /** The author's id when not anonymous, for an OP badge on their comments; null otherwise. */
+  publicAuthorId: string | null;
   isOwn: boolean;
   upVotes: number;
   downVotes: number;
@@ -109,6 +111,7 @@ export function toPostView(
     isAnonymous: row.isAnonymous,
     spoiler: row.spoiler,
     author: !row.isAnonymous && handle && avatarSeed ? { handle, avatarSeed } : null,
+    publicAuthorId: row.isAnonymous ? null : row.publicAuthorId,
     isOwn: row.isOwn === true,
     upVotes: row.upVotes,
     downVotes: row.downVotes,
