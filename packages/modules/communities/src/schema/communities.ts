@@ -405,9 +405,9 @@ export const reports = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: text('tenant_id').notNull(),
-    communityId: uuid('community_id')
-      .notNull()
-      .references(() => communities.id, { onDelete: 'cascade' }),
+    /** Null when the report is about a person: they belong to no community. (0008) */
+    communityId: uuid('community_id').references(() => communities.id, { onDelete: 'cascade' }),
+    /** post | comment | user */
     itemType: text('item_type').notNull(),
     itemId: uuid('item_id').notNull(),
     reporterId: uuid('reporter_id').notNull(),

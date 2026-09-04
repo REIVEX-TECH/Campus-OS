@@ -15,6 +15,7 @@ import {
   ensureDomainMembership,
 } from '@campusos/module-identity/membership';
 import { grantRole } from '@campusos/module-identity/rbac';
+import { standingFor } from '@campusos/module-identity/standing';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
 import { createRoleTemplate } from '@campusos/module-identity/role-templates';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
@@ -30,7 +31,12 @@ import {
 import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
 import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
 import { listHeld, listModLog, listQueue } from '../src/queue';
-import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
+import {
+  dissolveCommunity,
+  listCommunitiesForOversight,
+  listReportedPeople,
+  resolveUserReports,
+} from '../src/oversight';
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { listFlairs, setFlairs } from '../src/flairs';
 import { crosspost } from '../src/crosspost';
@@ -2472,5 +2478,126 @@ describe('participation gates', () => {
       need: 3,
       have: 0,
     });
+  });
+});
+
+describe('reporting a person', () => {
+  it('files against the tenant, not a community, and never hides anybody', async () => {
+    const owner = await member('rp-owner');
+    const target = await member('rp-target');
+    const one = await member('rp-one');
+    const two = await member('rp-two');
+    const three = await member('rp-three');
+    const admin1 = await admin('rp-admin');
+    const c = await community(owner, 'Reports');
+    await joinCommunity(target, 'aaa', c.id, settings);
+    const post = await createPost(
+      target,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Still here', body: '' },
+      settings,
+    );
+    if (!post.ok) throw new Error(post.error);
+
+    // Their own account is not reportable, and neither is one nobody here has.
+    expect(
+      await reportItem(target, 'aaa', {
+        itemType: 'user',
+        itemId: target.userId,
+        reason: 'harassment',
+      }),
+    ).toEqual({ ok: false, error: 'self' });
+    expect(
+      await reportItem(one, 'aaa', {
+        itemType: 'user',
+        itemId: '00000000-0000-0000-0000-000000000000',
+        reason: 'harassment',
+      }),
+    ).toEqual({ ok: false, error: 'not_found' });
+
+    // One report each, and never twice from the same person.
+    const first = await reportItem(one, 'aaa', {
+      itemType: 'user',
+      itemId: target.userId,
+      reason: 'harassment',
+      note: 'Followed me across three threads.',
+    });
+    expect(first).toMatchObject({ ok: true, value: { hidden: false } });
+    expect(
+      await reportItem(one, 'aaa', {
+        itemType: 'user',
+        itemId: target.userId,
+        reason: 'spam',
+      }),
+    ).toEqual({ ok: false, error: 'exists' });
+
+    // Reports about a person never hide anything: hiding is what happens to a
+    // post, and what happens to a person is a decision somebody signs.
+    for (const who of [two, three]) {
+      expect(
+        (
+          await reportItem(who, 'aaa', {
+            itemType: 'user',
+            itemId: target.userId,
+            reason: 'threats',
+          })
+        ).ok,
+      ).toBe(true);
+    }
+    expect((await postById(null, 'aaa', post.value.id))!.removedAt).toBeNull();
+    expect(await standingFor(target.userId, 'aaa')).toMatchObject({ status: 'active' });
+
+    // The queue is the university's, and it is behind restrict-members.
+    expect(await listReportedPeople(one, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
+    const queue = await listReportedPeople(admin1, 'aaa', 3);
+    expect(queue.ok && queue.value).toHaveLength(1);
+    expect(queue.ok && queue.value[0]).toMatchObject({
+      userId: target.userId,
+      openReports: 3,
+      flagged: true,
+    });
+    expect(queue.ok && queue.value[0]!.reasons.sort()).toEqual(['harassment', 'threats']);
+    // Below the threshold it is listed and not flagged: repeated reports raise
+    // the flag and nothing else does.
+    const lenient = await listReportedPeople(admin1, 'aaa', 10);
+    expect(lenient.ok && lenient.value[0]).toMatchObject({ openReports: 3, flagged: false });
+
+    // Closing them empties the queue and leaves the person exactly as they were.
+    expect(await resolveUserReports(one, 'aaa', target.userId, 'dismissed')).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await resolveUserReports(admin1, 'aaa', target.userId, 'dismissed')).toEqual({
+      ok: true,
+      value: { closed: 3 },
+    });
+    expect(await resolveUserReports(admin1, 'aaa', target.userId, 'dismissed')).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+    const after = await listReportedPeople(admin1, 'aaa');
+    expect(after.ok && after.value).toEqual([]);
+    expect(await standingFor(target.userId, 'aaa')).toMatchObject({ status: 'active' });
+
+    // And it is written down: closing a queue is an act, so it is audited.
+    const log = await withTenant('aaa', (tx) =>
+      tx.execute(
+        sql`select action, target_id from audit_log
+            where tenant_id = 'aaa' and action = 'reports.person_resolved'`,
+      ),
+    );
+    expect([...log]).toHaveLength(1);
+
+    // A report about a post still behaves as it always did.
+    const onPost = await reportItem(
+      one,
+      'aaa',
+      { itemType: 'post', itemId: post.value.id, reason: 'spam' },
+      settings,
+    );
+    expect(onPost).toMatchObject({ ok: true, value: { hidden: false } });
+    const stillPeople = await listReportedPeople(admin1, 'aaa');
+    expect(stillPeople.ok && stillPeople.value).toEqual([]);
   });
 });

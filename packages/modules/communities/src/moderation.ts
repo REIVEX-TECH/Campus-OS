@@ -12,6 +12,7 @@ import {
   moderationActions,
   posts,
   postsRead,
+  publicProfiles,
   reports,
 } from './schema/communities';
 
@@ -35,7 +36,11 @@ export const REPORT_REASONS = [
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
 export const reportInputSchema = z.object({
-  itemType: z.enum(['post', 'comment']),
+  /**
+   * `user` reports the person rather than one thing they wrote, for somebody
+   * who is a problem across a university rather than in one thread (§13).
+   */
+  itemType: z.enum(['post', 'comment', 'user']),
   itemId: z.string().uuid(),
   reason: z.enum(REPORT_REASONS),
   note: z.string().trim().max(500).optional(),
@@ -44,9 +49,14 @@ export const reportInputSchema = z.object({
 export type ReportInput = z.input<typeof reportInputSchema>;
 
 /**
- * Report a post or comment. Verified members, one report per person per item,
- * ten an hour. At the tenant's threshold of open reports the item hides itself
- * (stored removed with a reason code) until a moderator approves or removes it.
+ * Report a post, a comment, or a person. Verified members, one report per
+ * person per target, ten an hour.
+ *
+ * An item at the tenant's threshold of open reports hides itself (stored
+ * removed with a reason code) until a moderator approves or removes it. A
+ * person never does: hiding is what happens to a post, and the answers to a
+ * person are restriction and suspension, which a human takes and signs. What
+ * repeated reports about somebody do is raise a flag on the tenant's queue.
  */
 export async function reportItem(
   actor: { userId: string },
@@ -70,6 +80,33 @@ export async function reportItem(
         ),
       );
     if ((recent?.n ?? 0) >= LIMITS.reportsPerHour) return err('rate_limited');
+
+    // A person belongs to no community, so the report belongs to the tenant.
+    // Their own account is not reportable, and neither is an account that is
+    // not here: a report nobody in this university can act on is noise.
+    if (r.itemType === 'user') {
+      if (r.itemId === actor.userId) return err('self');
+      const [target] = await tx
+        .select({ userId: publicProfiles.userId })
+        .from(publicProfiles)
+        .where(eq(publicProfiles.userId, r.itemId));
+      if (!target) return err('not_found');
+      const [made] = await tx
+        .insert(reports)
+        .values({
+          tenantId,
+          communityId: null,
+          itemType: 'user',
+          itemId: r.itemId,
+          reporterId: actor.userId,
+          reason: r.reason,
+          note: r.note ?? null,
+        })
+        .onConflictDoNothing({ target: [reports.itemType, reports.itemId, reports.reporterId] })
+        .returning({ id: reports.id });
+      if (!made) return err('exists');
+      return ok({ id: made.id, hidden: false });
+    }
 
     let communityId: string | null = null;
     let postId: string | null = null;

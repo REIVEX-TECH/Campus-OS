@@ -1,5 +1,6 @@
 import type { CommunityFormLabels } from '@/app/_components/communities/community-form';
-import type { Translate } from './i18n';
+import { REPORT_REASONS, type ReportReason } from './community-constants';
+import type { MessageKey, Translate } from './i18n';
 
 /** The refusal messages a communities control can show, once. */
 export function communityErrors(t: Translate): Record<string, string> {
@@ -21,6 +22,17 @@ export function communityErrors(t: Translate): Record<string, string> {
     archived: t('posts.error.archived'),
     failed: t('communities.error.failed'),
   };
+}
+
+/**
+ * The report reasons, translated. One list, because the same nine reasons are
+ * offered for a post, a comment and a person, and three copies of it is three
+ * places to forget when a tenth is added.
+ */
+export function reportReasonLabels(t: Translate): Record<ReportReason, string> {
+  return Object.fromEntries(
+    REPORT_REASONS.map((r) => [r, t(`posts.report.reason.${r}` as MessageKey)]),
+  ) as Record<ReportReason, string>;
 }
 
 export function communityFormLabels(t: Translate, mode: 'create' | 'edit'): CommunityFormLabels {

@@ -6,10 +6,14 @@ import { listStandings } from '@campusos/module-identity/standing';
 import { isCommunityRole } from '@campusos/core';
 import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
+import { listReportedPeople } from '@campusos/module-communities/oversight';
 import { MembersList } from '@/app/_components/admin/members-list';
+import { ReportedPeople } from '@/app/_components/admin/reported-people';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { requirePermission } from '@/lib/auth';
+import { communitiesEnabled, communitiesSettings } from '@/lib/communities';
+import { reportReasonLabels } from '@/lib/community-labels';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { roleDisplayName } from '@/lib/role-names';
@@ -59,11 +63,17 @@ export default async function AdminMembersPage({ params }: Params) {
   const canManageRoles = permissions.has('manage-roles');
   const canRestrict = permissions.has('restrict-members');
 
-  const [members, roles, standings] = await Promise.all([
+  const settings = communitiesEnabled(tenant) ? communitiesSettings(tenant) : null;
+  const [members, roles, standings, reported] = await Promise.all([
     listMembers({ userId: actor.userId }, slug),
     listRoles(actor.userId, slug),
     canRestrict
       ? listStandings({ userId: actor.userId }, slug)
+      : Promise.resolve({ ok: true as const, value: [] }),
+    // Reports about people are a communities feature, so the section is absent
+    // for a tenant that has the module switched off.
+    canRestrict && settings
+      ? listReportedPeople({ userId: actor.userId }, slug, settings.reportThreshold)
       : Promise.resolve({ ok: true as const, value: [] }),
   ]);
   const standingOf = new Map(
@@ -76,6 +86,7 @@ export default async function AdminMembersPage({ params }: Params) {
     .map((r) => ({ key: r.key, name: roleDisplayName(r, t) }));
   const nameOf = new Map(named.map((r) => [r.key, r.name]));
   const when = new Intl.DateTimeFormat(tenant.locale, { dateStyle: 'medium' });
+  const reasonNames: Record<string, string> = reportReasonLabels(t);
 
   return (
     <PageShell>
@@ -87,6 +98,33 @@ export default async function AdminMembersPage({ params }: Params) {
         </header>
 
         <AdminNav base={base} permissions={permissions} current="members" t={t} />
+
+        {canRestrict && settings ? (
+          <ReportedPeople
+            tenant={slug}
+            people={(reported.ok ? reported.value : []).map((p) => ({
+              userId: p.userId,
+              handle: p.handle,
+              avatarSeed: p.avatarSeed,
+              openReports: p.openReports,
+              flagged: p.flagged,
+              reasons: p.reasons.map((r) => reasonNames[r] ?? r),
+              when: when.format(p.lastReportedAt),
+            }))}
+            labels={{
+              heading: t('admin.people.heading'),
+              blurb: t('admin.people.blurb'),
+              none: t('admin.people.none'),
+              count: t('admin.people.count'),
+              flagged: t('admin.people.flagged'),
+              dismiss: t('admin.people.dismiss'),
+              acted: t('admin.people.acted'),
+              done: t('admin.people.done'),
+              working: t('admin.members.working'),
+              failed: t('communities.error.failed'),
+            }}
+          />
+        ) : null}
 
         {rows.length === 0 ? (
           <EmptyState title={t('admin.members.empty')} />

@@ -14,6 +14,7 @@ import {
   profileByHandle,
 } from '@campusos/module-communities/profiles';
 import { BlockButton } from '@/app/_components/communities/block-button';
+import { ReportPerson } from '@/app/_components/communities/report-person';
 import { PostCard } from '@/app/_components/communities/post-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
@@ -21,7 +22,7 @@ import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
 import { postPath } from '@/lib/community-constants';
-import { communityErrors } from '@/lib/community-labels';
+import { communityErrors, reportReasonLabels } from '@/lib/community-labels';
 import { relativeTime } from '@/lib/format';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
@@ -124,6 +125,23 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
                 block: t('posts.block', { handle: profile.handle }),
                 unblock: t('blocked.unblock'),
                 done: t('posts.blocked'),
+                errors: communityErrors(t),
+              }}
+              className="ios-pressable inline-flex h-9 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            />
+          ) : null}
+          {actor && !self ? (
+            <ReportPerson
+              tenant={slug}
+              userId={profile.userId}
+              labels={{
+                report: t('people.report'),
+                heading: t('people.reportHeading'),
+                reasons: reportReasonLabels(t),
+                note: t('people.reportNote'),
+                send: t('people.reportSend'),
+                cancel: t('comments.cancel'),
+                sent: t('people.reportSent'),
                 errors: communityErrors(t),
               }}
               className="ios-pressable inline-flex h-9 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"

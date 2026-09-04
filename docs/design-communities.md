@@ -448,11 +448,22 @@ belongs here is what they mean to this module.
 **Reporting a person, not only a post.** `reports` gains `item_type = 'user'`
 alongside `post` and `comment`, with `community_id` nullable, because a person
 does not belong to a community the way a post does. Those reports land in the
-tenant-wide queue that already exists at `/admin/communities` rather than in a
-community's queue, since only a tenant administrator can act on them; the
-per-item dedup (`reports_item_reporter_uq`) already means one report per person
-per target, and repeated reports from **different** people on the same person
-raise a flag on the queue the way the threshold already raises one on an item.
+tenant-wide queue rather than in a community's, since only a tenant
+administrator can act on them; the per-item dedup (`reports_item_reporter_uq`)
+already means one report per person per target, and repeated reports from
+**different** people on the same person raise a flag on the queue the way the
+threshold already raises one on an item.
+
+The queue lives on `/admin/members`, not on `/admin/communities` as first
+sketched. It is gated on `restrict-members` rather than `communities.oversee`,
+and restricting or suspending is what an administrator does about a reported
+person, so the queue sits directly above the controls that carry it out instead
+of on a page that would only send them somewhere else.
+
+And nothing about a person is ever applied automatically. An item at the
+threshold hides itself, because hiding a post is reversible and cheap; a person
+at the threshold is only flagged, because the answers to a person are
+restriction and suspension and both are decisions a human takes and signs.
 
 **Never quietly.** Nothing here is shadow-applied. The person sees their own
 status, its reason and its expiry, on their account page, and has one appeal

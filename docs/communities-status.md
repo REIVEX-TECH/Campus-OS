@@ -63,4 +63,16 @@ which is new: "this community asks for 50 karma, you have 12" rather than a
 bare code. Whoever moderates a community passes its own gates. Every gate
 defaults to asking for nothing, so nothing changes until a moderator sets one.
 
-Still to come in Phase C: reporting a person (C3).
+Reporting a person (C3) files against the university rather than a community,
+because a report about somebody belongs to the people who can act on it. Nothing
+is hidden or applied automatically: repeated reports raise a flag on the tenant
+administrator's queue, which sits above the member list so the decision and the
+controls that carry it out are on one page. Restricting or suspending stays a
+separate, signed act.
+
+## Phase C: complete
+
+Karma (C1), participation gates (C2) and reporting a person (C3) are merged or
+in review. Left for later, by choice: karma decay, showing a community's gates
+before somebody tries, and a tenant-admin surface for the module settings that
+hold the floor.
