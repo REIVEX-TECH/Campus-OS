@@ -92,8 +92,20 @@ export const tenantMemberships = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** student | teacher | tenant_admin */
     role: text('role').notNull(),
-    /** active | invited | suspended */
+    /**
+     * `active`, `restricted` (reads, writes nothing) or `suspended` (nothing
+     * at all here). Never set without the three columns below it: a decision
+     * against a person is one they are owed a reason and an end for.
+     */
     status: text('status').notNull().default('active'),
+    standingReason: text('standing_reason'),
+    /** Null means until an administrator lifts it. */
+    standingUntil: timestamp('standing_until', { withTimezone: true }),
+    standingBy: uuid('standing_by').references(() => users.id, { onDelete: 'set null' }),
+    standingAt: timestamp('standing_at', { withTimezone: true }),
+    /** The one note the person may leave about it. Cleared when it changes. */
+    appealNote: text('appeal_note'),
+    appealAt: timestamp('appeal_at', { withTimezone: true }),
     /**
      * When the university came to trust who this person is, and how: `domain`
      * (their verified email is on the tenant's list) or `admin`. Private. A

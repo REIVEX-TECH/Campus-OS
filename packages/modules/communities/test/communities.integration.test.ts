@@ -110,6 +110,11 @@ beforeEach(async () => {
     'truncate table "users" restart identity cascade',
     'truncate table "audit_log" restart identity cascade',
     'truncate table "universities" restart identity cascade',
+    // Definitions have no tenant, so the truncate above does not reach them:
+    // a definition another run added would still be here and would make the
+    // create that follows report `exists`. The six system ones are seeded by
+    // the migration and stay.
+    'delete from "role_templates" where "is_system" = false',
   );
   await getDb()
     .insert(universities)

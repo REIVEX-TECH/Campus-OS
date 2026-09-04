@@ -21,7 +21,8 @@
     "./analytics": "./src/analytics.ts",
     "./platform": "./src/platform.ts",
     "./tenants": "./src/tenants.ts",
-    "./role-templates": "./src/role-templates.ts"
+    "./role-templates": "./src/role-templates.ts",
+    "./standing": "./src/standing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

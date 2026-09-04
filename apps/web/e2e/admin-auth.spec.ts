@@ -75,3 +75,22 @@ test('the shared secret login is gone', async ({ request }) => {
     404,
   );
 });
+
+test('the standing routes refuse a stranger', async ({ request }) => {
+  const origin = String(test.info().project.use.baseURL);
+  const standing = await request.post('/api/admin/members/status', {
+    headers: { origin },
+    data: {
+      tenant: 'lgu',
+      userId: '00000000-0000-0000-0000-000000000000',
+      status: 'restricted',
+      reason: 'because',
+    },
+  });
+  expect(standing.status()).toBe(404);
+  const appeal = await request.post('/api/standing/appeal', {
+    headers: { origin },
+    data: { tenant: 'lgu', note: 'let me back in' },
+  });
+  expect(appeal.status()).toBe(401);
+});

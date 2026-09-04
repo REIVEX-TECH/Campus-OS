@@ -212,26 +212,78 @@ async function supersedePending(
 }
 
 /**
- * Give a person their place in a tenant when its policy lets the email decide.
+ * Give a person their place in a tenant when they sign in on it.
  *
- * Returns null, and writes nothing, unless the tenant joins by domain and the
- * address is on its list. Safe to call on every sign in.
+ * Everyone gets a membership and the `student` role, which carries reading
+ * and the right to ask for more. Whether the address is on the tenant's domain
+ * list decides only whether the membership is verified there and then;
+ * posting, commenting, voting and starting a community all wait on
+ * verification, not on membership.
+ *
+ * Before this, an address off the list got nothing at all, which left the
+ * person unable to reach the page that would have let them ask to be verified.
+ * Safe to call on every sign in.
  */
 export async function ensureDomainMembership(
   actor: { userId: string; email: string },
   tenant: JoinPolicy,
 ): Promise<Membership | null> {
-  if (tenant.joinMode !== 'domain') return null;
-  if (!domainAllowed(actor.email, tenant.allowedEmailDomains)) return null;
+  const verifies =
+    tenant.joinMode === 'domain' && domainAllowed(actor.email, tenant.allowedEmailDomains);
   return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
-    const granted = await grantVerified(tx, {
-      tenantId: tenant.slug,
-      userId: actor.userId,
-      method: 'domain',
-      actorUserId: actor.userId,
-    });
-    return granted.membership;
+    if (verifies) {
+      const granted = await grantVerified(tx, {
+        tenantId: tenant.slug,
+        userId: actor.userId,
+        method: 'domain',
+        actorUserId: actor.userId,
+      });
+      return granted.membership;
+    }
+    return joinUnverified(tx, tenant.slug, actor.userId);
   });
+}
+
+/**
+ * A membership with the `student` role and no verification.
+ *
+ * The floor everyone stands on: they can read what the tenant makes readable
+ * and ask to be verified. An existing membership is left exactly as it is,
+ * verification and standing included.
+ */
+async function joinUnverified(
+  tx: TenantTransaction,
+  tenantId: string,
+  userId: string,
+): Promise<Membership | null> {
+  await ensureSystemRoles(tx, tenantId);
+  const [inserted] = await tx
+    .insert(tenantMemberships)
+    .values({ tenantId, userId, role: 'student', status: 'active' })
+    .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
+    .returning();
+  if (inserted) {
+    await attachRole(tx, {
+      membershipId: inserted.id,
+      tenantId,
+      userId,
+      roleKey: 'student',
+    });
+    await recordAudit(tx, {
+      actorUserId: userId,
+      tenantId,
+      action: 'membership.joined',
+      targetType: 'membership',
+      targetId: inserted.id,
+      meta: { role: 'student', verified: false },
+    });
+    return toMembership(inserted);
+  }
+  const [existing] = await tx
+    .select()
+    .from(tenantMemberships)
+    .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, userId)));
+  return existing ? toMembership(existing) : null;
 }
 
 /**
