@@ -71,6 +71,13 @@
       "when": 1756800109000,
       "tag": "0009_standing_lapse",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1756800110000,
+      "tag": "0010_karma_recompute_grant",
+      "breakpoints": true
     }
   ]
 }

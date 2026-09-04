@@ -211,6 +211,18 @@ describe('row security invariants', () => {
       expect(row.relforcerowsecurity, `${row.relname} FORCE state`).toBe(FORCED[row.relname]);
     }
   });
+
+  it.skipIf(!split)('keeps the karma rebuild beyond the application’s reach', async () => {
+    // The owner's default privileges GRANT EXECUTE ON FUNCTIONS to the
+    // application, so a definer meant for the owner alone has to be revoked
+    // from it BY NAME; the repository's usual REVOKE ... FROM PUBLIC leaves
+    // campusos_app=X standing. 0010 does that, and this holds it done: the
+    // rebuild deletes a tenant's karma and reads every author, anonymous
+    // included, so nothing a request runs may call it.
+    await expect(getDb().execute(sql`select communities_karma_recompute('aaa')`)).rejects.toThrow(
+      /permission denied/i,
+    );
+  });
 });
 
 describe('communities and roles', () => {
