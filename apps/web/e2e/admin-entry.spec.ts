@@ -45,3 +45,14 @@ test('bare /admin on the platform host serves a placeholder (not a 404)', async 
   expect(res.status()).toBe(200);
   expect(await res.text()).toContain('Platform administration');
 });
+
+test('the platform login is reachable at /login and /signin on the platform host', async ({
+  request,
+}) => {
+  // Both names serve the same platform sign in (the door to platform admin).
+  for (const path of ['/login', '/signin']) {
+    const res = await request.get(path, { headers: { Host: PLATFORM } });
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain('Sign in to CampusOS');
+  }
+});
