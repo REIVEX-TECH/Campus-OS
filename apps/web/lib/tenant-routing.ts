@@ -62,30 +62,24 @@ function isLocalHost(host: string): boolean {
  * tenant host passed in), the slug is not prepended again - this single guard
  * makes doubling unrepresentable for every emitter that goes through here.
  *
- * FAIL SAFE + LOUD: returns null when there is no usable PUBLIC base domain
- * (local dev, or an absent/misconfigured TENANT_BASE_DOMAIN that fell back to
- * localhost) so callers emit the path form `/u/{slug}` rather than a wrong
- * absolute host; in production it also logs, because reaching here with no public
- * base is a deployment misconfiguration, not a normal state.
+ * NEVER a wrong host:
+ *  - ABSENT base (empty/whitespace) THROWS. A missing base must never silently
+ *    produce a hostname; that is exactly what shipped a broken link to users.
+ *    This is unreachable in a booted production process (assertAppEnv requires
+ *    TENANT_BASE_DOMAIN in production), so reaching it is a real misconfiguration.
+ *  - LOCAL base (localhost/127/::1) returns null, so callers emit the `/u/{slug}`
+ *    path form; that is the correct dev behaviour, not a wrong host.
  */
-let warnedNoPublicBase = false;
-
 export function tenantOrigin(slug: string, base: string = tenantBaseDomain()): string | null {
   const s = slug.toLowerCase();
   const bare = bareHost(base);
-  if (!bare || isLocalHost(base)) {
-    // Loud, but once per process, not once per render: a local base is expected
-    // in dev and in a local production build, so per-request logging is noise.
-    if ((process.env.NODE_ENV ?? '') === 'production' && !warnedNoPublicBase) {
-      warnedNoPublicBase = true;
-      console.error(
-        `tenantOrigin: no public TENANT_BASE_DOMAIN configured (base="${base}"); ` +
-          `emitting the /u/{slug} path form for tenant links. Set TENANT_BASE_DOMAIN ` +
-          `if this is a real deployment.`,
-      );
-    }
-    return null;
+  if (!bare.trim()) {
+    throw new Error(
+      `tenantOrigin("${slug}"): the tenant base domain is absent; refusing to ` +
+        `construct a tenant URL. Set TENANT_BASE_DOMAIN.`,
+    );
   }
+  if (isLocalHost(base)) return null; // dev: tenants are reached by /u/{slug}
   if (bare === s) return `https://${base}`;
   // Idempotent: if the base already leads with the slug (a tenant host passed in,
   // or a base that is itself already doubled), strip every leading `{slug}.` group

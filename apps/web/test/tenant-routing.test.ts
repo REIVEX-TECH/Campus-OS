@@ -144,10 +144,15 @@ describe('tenantOrigin (canonical tenant link)', () => {
     }
   });
 
-  it('is null for a local/absent base (tenants are path-based in dev), never a wrong host', () => {
+  it('is null for a LOCAL base (tenants are path-based in dev), never a wrong host', () => {
     expect(tenantOrigin('lgu', 'localhost:3000')).toBeNull();
     expect(tenantOrigin('lgu', '127.0.0.1:3000')).toBeNull();
     expect(tenantOrigin('lgu', 'lgu.localhost:3000')).toBeNull();
-    expect(tenantOrigin('lgu', '')).toBeNull();
+  });
+
+  it('THROWS on an absent base rather than constructing a wrong host', () => {
+    expect(() => tenantOrigin('lgu', '')).toThrow(/absent/);
+    expect(() => tenantOrigin('lgu', '   ')).toThrow(/absent/);
+    expect(() => tenantOrigin('lgu', ':3000')).toThrow(/absent/);
   });
 });

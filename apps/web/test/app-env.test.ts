@@ -10,9 +10,16 @@ import manifest from '@/lib/app-env.vars.json';
 
 const require = createRequire(import.meta.url);
 
-/** A process env with the required vars satisfied, plus any overrides. */
+/** A production process env with every required var satisfied, plus overrides. */
 function baseEnv(over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
-  return { NODE_ENV: 'production', DATABASE_URL: 'postgres://x', ...over };
+  return {
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgres://x',
+    TENANT_BASE_DOMAIN: 'campusos.reivex.io',
+    PLATFORM_HOST: 'campusos.reivex.io',
+    APP_DOMAIN: 'campusos.reivex.io',
+    ...over,
+  };
 }
 
 /** Write a throwaway .env and return its path; caller cleans the dir. */
@@ -38,6 +45,24 @@ describe('assertAppEnv', () => {
     expect(() => assertAppEnv({ env: baseEnv({ DATABASE_URL: '   ' }), dotenvPath: null })).toThrow(
       /DATABASE_URL is REQUIRED/,
     );
+  });
+
+  it('requires the base/host vars in production (a missing one crashes the boot)', () => {
+    for (const name of ['TENANT_BASE_DOMAIN', 'PLATFORM_HOST', 'APP_DOMAIN']) {
+      expect(() => assertAppEnv({ env: baseEnv({ [name]: undefined }), dotenvPath: null })).toThrow(
+        new RegExp(`${name} is REQUIRED in production`),
+      );
+    }
+  });
+
+  it('does NOT require the host vars in development', () => {
+    // Dev leaves PLATFORM_HOST empty and the host vars fall back to localhost.
+    expect(() =>
+      assertAppEnv({
+        env: { NODE_ENV: 'development', DATABASE_URL: 'postgres://x' },
+        dotenvPath: null,
+      }),
+    ).not.toThrow();
   });
 
   it('flags a var set in .env that did not reach the process (the recurring bug)', () => {
@@ -106,10 +131,17 @@ describe('assertAppEnv', () => {
 });
 
 describe('app-env manifest', () => {
-  it('marks DATABASE_URL required and excludes owner/build-time vars', () => {
-    const names = manifest.vars.map((v) => v.name);
-    const required = manifest.vars.filter((v) => v.required).map((v) => v.name);
-    expect(required).toEqual(['DATABASE_URL']);
+  it('requires DATABASE_URL always and the base/host vars in production; excludes owner/build vars', () => {
+    const vars = manifest.vars as Array<{
+      name: string;
+      required?: boolean;
+      requiredInProduction?: boolean;
+    }>;
+    const names = vars.map((v) => v.name);
+    const always = vars.filter((v) => v.required).map((v) => v.name);
+    const inProd = vars.filter((v) => v.requiredInProduction).map((v) => v.name);
+    expect(always).toEqual(['DATABASE_URL']);
+    expect(inProd.sort()).toEqual(['APP_DOMAIN', 'PLATFORM_HOST', 'TENANT_BASE_DOMAIN']);
     expect(names).not.toContain('MIGRATION_DATABASE_URL');
     expect(names).not.toContain('NEXT_PUBLIC_FIREBASE_API_KEY');
   });
