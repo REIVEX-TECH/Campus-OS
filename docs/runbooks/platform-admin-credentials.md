@@ -36,13 +36,20 @@ Exact order. Do not skip the restart or the verification.
    no dot, a stray `@`) is **silently dropped** by `parseEmailList`, so a typo
    means that person simply will not be promoted, with no error anywhere.
 
-2. Reload the environment and restart so the new value reaches the process:
+2. Restart so the new value reaches the process. Restart by the **config file**,
+   not the app name: `ecosystem.config.cjs` loads `.env` when it is evaluated, so
+   `--update-env` on the file re-reads `.env`; `pm2 restart campusos` (by name)
+   reuses the stored config and would not pick up your edit.
 
    ```bash
    cd /path/to/app
-   set -a; . ./.env; set +a
-   pm2 restart campusos --update-env && pm2 save
+   pm2 restart ecosystem.config.cjs --update-env && pm2 save
    ```
+
+   If a variable declared required in `apps/web/lib/app-env.vars.json` is missing,
+   or one is set in `.env` but did not reach the process, the app now **refuses to
+   boot** with a message naming the variable (`pm2 logs campusos --err`), rather
+   than starting up degraded. A clean start is itself confirmation the wiring took.
 
 3. The newly listed person signs in at `https://campusos.reivex.io/signin`
    (the platform host). The sign-in promotes them; nothing on screen says so.
