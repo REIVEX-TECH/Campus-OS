@@ -26,7 +26,7 @@ import {
   setCommunityRole,
 } from '../src/communities';
 import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
-import { listCommunityPosts } from '../src/feed';
+import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
 import { listRules, setRules } from '../src/rules';
@@ -808,5 +808,105 @@ describe('comment threads for a viewer', () => {
     expect(asStranger.every((x) => x.myVote === 0 && !x.saved && !x.isOwn)).toBe(true);
     // The post's own public author key is what an OP badge compares against.
     expect((await postById(null, 'aaa', p.value.id))?.publicAuthorId).toBe(owner.userId);
+  });
+});
+
+describe('sorts and feeds', () => {
+  it('orders a community five ways and continues each sort from its cursor', async () => {
+    const owner = await member('sf-owner');
+    const voters = await Promise.all(['sf-v1', 'sf-v2', 'sf-v3'].map((n) => member(n)));
+    const down = await member('sf-down');
+    const c = await community(owner, 'Sorted');
+    for (const v of [...voters, down]) await joinCommunity(v, 'aaa', c.id);
+    const make = async (title: string) => {
+      const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
+      if (!r.ok) throw new Error(r.error);
+      return r.value.id;
+    };
+    const a = await make('A');
+    const b = await make('B');
+    await make('C');
+    // A: three up, one down (score 2, split). B: three up (score 3). C: nothing.
+    for (const v of voters) await votePost(v, 'aaa', a, 1);
+    await votePost(down, 'aaa', a, -1);
+    for (const v of voters) await votePost(v, 'aaa', b, 1);
+
+    const titles = async (sort: Parameters<typeof listCommunityPosts>[3]) =>
+      (await listCommunityPosts(null, 'aaa', c.id, sort)).items.map((p) => p.title);
+    expect(await titles({ sort: 'new' })).toEqual(['C', 'B', 'A']);
+    expect(await titles({ sort: 'top', window: 'all' })).toEqual(['B', 'A', 'C']);
+    expect(await titles({ sort: 'top', window: 'hour' })).toEqual(['B', 'A', 'C']);
+    expect(await titles({ sort: 'hot' })).toEqual(['B', 'A', 'C']);
+    expect((await titles({ sort: 'controversial' }))[0]).toBe('A');
+    expect(await titles({ sort: 'rising' })).toEqual(['B', 'A', 'C']);
+
+    // The cursor carries the sort key, so the second page continues the order.
+    const first = await listCommunityPosts(null, 'aaa', c.id, {
+      sort: 'top',
+      window: 'all',
+      limit: 2,
+    });
+    expect(first.items.map((p) => p.title)).toEqual(['B', 'A']);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await listCommunityPosts(null, 'aaa', c.id, {
+      sort: 'top',
+      window: 'all',
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items.map((p) => p.title)).toEqual(['C']);
+    expect(second.nextCursor).toBeNull();
+    // A cursor from another sort is ignored, not trusted.
+    expect(
+      (await listCommunityPosts(null, 'aaa', c.id, { sort: 'hot', cursor: first.nextCursor! }))
+        .items,
+    ).toHaveLength(3);
+    // Rising is a single page.
+    expect(
+      (await listCommunityPosts(null, 'aaa', c.id, { sort: 'rising', limit: 1 })).nextCursor,
+    ).toBeNull();
+  });
+
+  it('home is what a person joined; all is the public, approved communities', async () => {
+    const o1 = await member('ff-o1');
+    const o2 = await member('ff-o2');
+    const reader = await member('ff-reader');
+    const open = await community(o1, 'Open Hall');
+    const made = await createCommunity(
+      o2,
+      'aaa',
+      { name: 'Closed Room', visibility: 'restricted' },
+      settings,
+    );
+    if (!made.ok) throw new Error(made.error);
+    const closed = made.value;
+    const post = async (who: { userId: string }, id: string, title: string) => {
+      const r = await createPost(who, 'aaa', id, { kind: 'text', title, body: '' }, settings);
+      if (!r.ok) throw new Error(r.error);
+    };
+    await post(o1, open.id, 'Open post');
+    await post(o2, closed.id, 'Closed post');
+
+    const titles = async (viewer: { userId: string } | null, kind: 'home' | 'all') =>
+      (await listPosts(viewer, 'aaa', { kind }, { sort: 'new' })).items.map((p) => p.title);
+    // Nobody joined: Home is empty, All has the public post and not the restricted one.
+    expect(await titles(reader, 'home')).toEqual([]);
+    expect(await titles(reader, 'all')).toContain('Open post');
+    expect(await titles(reader, 'all')).not.toContain('Closed post');
+    expect(await titles(null, 'all')).not.toContain('Closed post');
+    expect(await titles(null, 'home')).toEqual([]);
+    // Joining fills Home; a restricted community's member sees it at Home.
+    await joinCommunity(reader, 'aaa', open.id);
+    expect(await titles(reader, 'home')).toEqual(['Open post']);
+    expect(await titles(o2, 'home')).toEqual(['Closed post']);
+    // The feed names the community on every card, and the rail's rising list is tenant wide.
+    const home = await listPosts(reader, 'aaa', { kind: 'home' });
+    expect(home.items[0]?.community).toEqual({ slug: open.slug, name: 'Open Hall' });
+    expect((await trendingPosts(null, 'aaa')).map((p) => p.title)).toContain('Open post');
+    // Another tenant's feed is another tenant's.
+    const other = await member('ff-other', 'bbb');
+    expect(
+      (await listPosts(other, 'bbb', { kind: 'all' }, { sort: 'new' })).items.map((p) => p.title),
+    ).not.toContain('Open post');
   });
 });

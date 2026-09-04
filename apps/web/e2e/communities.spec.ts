@@ -68,3 +68,12 @@ test('the comment routes refuse a stranger', async ({ request }) => {
   });
   expect(act.status()).toBe(401);
 });
+
+test('the feeds and the directory are pages, and ask for a sign in to read', async ({ page }) => {
+  const sorted = await page.goto('/u/lgu/c?feed=all&sort=top&t=week');
+  expect(sorted?.status()).toBe(200);
+  await expect(page.getByText('Sign in to read and join communities.')).toBeVisible();
+  const browse = await page.goto('/u/lgu/c/browse');
+  expect(browse?.status()).toBe(200);
+  await expect(page.getByText('Sign in to read and join communities.')).toBeVisible();
+});

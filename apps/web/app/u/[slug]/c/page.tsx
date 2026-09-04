@@ -2,13 +2,23 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { buttonVariants } from '@campusos/ui';
 import { myCommunities } from '@campusos/module-communities/communities';
-import { listCommunities } from '@campusos/module-communities/directory';
-import { CommunityCard } from '@/app/_components/communities/community-card';
+import {
+  isFeedSort,
+  isTopWindow,
+  listPosts,
+  trendingPosts,
+  type FeedSort,
+  type TopWindow,
+} from '@campusos/module-communities/feed';
 import { PlatformRules } from '@/app/_components/communities/community-rail';
+import { CommunityIcon } from '@/app/_components/communities/community-visuals';
+import { FeedTabs } from '@/app/_components/communities/feed-tabs';
+import { PostCard } from '@/app/_components/communities/post-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
+import { postPath } from '@/lib/community-constants';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -18,6 +28,9 @@ import { tenantBase } from '@/lib/tenant-url';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string }> };
+type PageProps = Params & {
+  searchParams: Promise<{ feed?: string; sort?: string; t?: string; after?: string }>;
+};
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
@@ -31,11 +44,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 /**
- * The communities of a university: the ones a person joined, and all of them.
- * Reading needs a sign in by default (a tenant setting); creating needs a
- * verified member, which the server decides.
+ * The feeds: Home (the communities a person joined) and All (everything
+ * public in the university), in five sorts, a page at a time. The rail keeps a
+ * person's communities, what is rising, and the rules every community shares.
  */
-export default async function CommunitiesPage({ params }: Params) {
+export default async function CommunitiesPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const tenant = await requireTenant(slug);
   requireCommunities(tenant);
@@ -43,6 +56,7 @@ export default async function CommunitiesPage({ params }: Params) {
   const base = await tenantBase(slug);
   const actor = await currentActor();
   const settings = communitiesSettings(tenant);
+  const query = await searchParams;
 
   const header = (
     <header className="flex flex-wrap items-end justify-between gap-3 px-1">
@@ -53,11 +67,19 @@ export default async function CommunitiesPage({ params }: Params) {
           {t('communities.intro', { name: tenant.displayName })}
         </p>
       </div>
-      {actor ? (
-        <Link href={`${base}/c/new`} className={buttonVariants({ size: 'sm' })}>
-          {t('communities.new')}
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={`${base}/c/browse`}
+          className={buttonVariants({ size: 'sm', variant: 'outline' })}
+        >
+          {t('feeds.browse')}
         </Link>
-      ) : null}
+        {actor ? (
+          <Link href={`${base}/c/new`} className={buttonVariants({ size: 'sm' })}>
+            {t('communities.new')}
+          </Link>
+        ) : null}
+      </div>
     </header>
   );
 
@@ -76,53 +98,125 @@ export default async function CommunitiesPage({ params }: Params) {
     );
   }
 
-  const [all, mine] = await Promise.all([
-    listCommunities(slug),
+  const feed: 'home' | 'all' = query.feed === 'all' || !actor ? 'all' : 'home';
+  const sort: FeedSort = isFeedSort(query.sort) ? query.sort : 'hot';
+  const window: TopWindow = isTopWindow(query.t) ? query.t : 'day';
+  const [page, mine, trending] = await Promise.all([
+    listPosts(actor, slug, feed === 'home' ? { kind: 'home' } : { kind: 'all' }, {
+      sort,
+      window,
+      cursor: query.after,
+    }),
     actor ? myCommunities(actor, slug) : Promise.resolve([]),
+    trendingPosts(actor, slug, 5),
   ]);
+  const href = (patch: Partial<{ feed: string; sort: string; t: string; after: string }>) => {
+    const p = new URLSearchParams();
+    const next = { feed, sort, t: window, ...patch };
+    if (next.feed !== (actor ? 'home' : 'all')) p.set('feed', next.feed);
+    if (next.sort !== 'hot') p.set('sort', next.sort);
+    if (next.sort === 'top' && next.t !== 'day') p.set('t', next.t);
+    if (next.after) p.set('after', next.after);
+    const s = p.toString();
+    return `${base}/c${s ? `?${s}` : ''}`;
+  };
 
-  return (
-    <PageShell rail={<PlatformRules t={t} />}>
-      <div className="flex flex-col gap-5">
-        {header}
-
-        {actor ? (
-          <section aria-labelledby="communities-yours" className="flex flex-col gap-2">
-            <h2
-              id="communities-yours"
-              className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-            >
-              {t('communities.yours')}
-            </h2>
-            {mine.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">{t('communities.yoursEmpty')}</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {mine.map((c) => (
-                  <CommunityCard key={c.id} community={c} href={`${base}/c/${c.slug}`} t={t} />
-                ))}
-              </ul>
-            )}
-          </section>
-        ) : null}
-
-        <section aria-labelledby="communities-all" className="flex flex-col gap-2">
-          <h2
-            id="communities-all"
-            className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            {t('communities.all')}
-          </h2>
-          {all.length === 0 ? (
-            <EmptyState title={t('communities.empty')} />
+  const rail = (
+    <>
+      {actor ? (
+        <div className="ios-card flex flex-col gap-2 rounded-2xl p-4">
+          <h2 className="text-sm font-semibold">{t('communities.yours')}</h2>
+          {mine.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('communities.yoursEmpty')}</p>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {all.map((c) => (
-                <CommunityCard key={c.id} community={c} href={`${base}/c/${c.slug}`} t={t} />
+            <ul className="flex flex-col gap-1.5">
+              {mine.slice(0, 8).map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`${base}/c/${c.slug}`}
+                    className="flex items-center gap-2 text-sm font-medium hover:underline"
+                  >
+                    <CommunityIcon seed={c.iconSeed} name={c.name} size={22} />
+                    <span className="truncate">{c.name}</span>
+                  </Link>
+                </li>
               ))}
             </ul>
           )}
-        </section>
+        </div>
+      ) : null}
+      {trending.length > 0 ? (
+        <div className="ios-card flex flex-col gap-2 rounded-2xl p-4">
+          <h2 className="text-sm font-semibold">{t('feeds.trending')}</h2>
+          <ol className="flex flex-col gap-2">
+            {trending.map((p) => (
+              <li key={p.id} className="flex flex-col">
+                <Link
+                  href={postPath(base, p.community.slug, p.id, p.title)}
+                  className="line-clamp-2 text-sm font-medium hover:underline"
+                >
+                  {p.title}
+                </Link>
+                <span className="text-xs text-muted-foreground">
+                  {p.community.name} · {t('posts.score', { count: p.score })}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+      <PlatformRules t={t} />
+    </>
+  );
+
+  return (
+    <PageShell rail={rail}>
+      <div className="flex flex-col gap-4">
+        {header}
+        <FeedTabs
+          feeds={actor ? ['home', 'all'] : ['all']}
+          feed={feed}
+          sort={sort}
+          window={window}
+          hrefFor={(patch) => href(patch)}
+          t={t}
+        />
+        {page.items.length === 0 ? (
+          <EmptyState title={feed === 'home' ? t('feeds.empty.home') : t('feeds.empty.all')}>
+            {feed === 'home' ? (
+              <Link href={`${base}/c/browse`} className="font-medium text-primary hover:underline">
+                {t('feeds.browse')}
+              </Link>
+            ) : null}
+          </EmptyState>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {page.items.map((post) => (
+              <li key={post.id}>
+                <PostCard
+                  post={post}
+                  community={post.community}
+                  base={base}
+                  tenant={slug}
+                  locale={tenant.locale}
+                  signedIn={actor !== null}
+                  canVote={actor !== null}
+                  t={t}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        {page.nextCursor ? (
+          <div className="px-1">
+            <Link
+              href={href({ after: page.nextCursor })}
+              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            >
+              {t('posts.more')}
+            </Link>
+          </div>
+        ) : null}
       </div>
     </PageShell>
   );

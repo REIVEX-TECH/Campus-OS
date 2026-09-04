@@ -3,11 +3,18 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { membershipState } from '@campusos/module-communities/directory';
-import { listCommunityPosts } from '@campusos/module-communities/feed';
+import {
+  isFeedSort,
+  isTopWindow,
+  listCommunityPosts,
+  type FeedSort,
+  type TopWindow,
+} from '@campusos/module-communities/feed';
 import { listModerators } from '@campusos/module-communities/members';
 import { listRules } from '@campusos/module-communities/rules';
 import { buttonVariants } from '@campusos/ui';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
+import { FeedTabs } from '@/app/_components/communities/feed-tabs';
 import { PostCard } from '@/app/_components/communities/post-card';
 import { CommunityBanner, CommunityIcon } from '@/app/_components/communities/community-visuals';
 import { JoinButton } from '@/app/_components/communities/join-button';
@@ -25,7 +32,9 @@ import { tenantBase } from '@/lib/tenant-url';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string; community: string }> };
-type PageProps = Params & { searchParams: Promise<{ after?: string }> };
+type PageProps = Params & {
+  searchParams: Promise<{ after?: string; sort?: string; t?: string }>;
+};
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, community } = await params;
@@ -42,7 +51,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 /**
- * One community: what it is, who runs it, its rules, and (from A3) its posts.
+ * One community: what it is, who runs it, its rules, and its posts in any sort.
  * An unknown slug is 404 whoever asks; reading a known one needs a sign in by
  * default, a tenant setting.
  */
@@ -80,8 +89,23 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
     actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
   ]);
   const canManage = perms?.hasAny('communities.manage', 'communities.oversee') ?? false;
-  const { after } = await searchParams;
-  const feed = await listCommunityPosts(actor, slug, community.id, { cursor: after });
+  const query = await searchParams;
+  const sort: FeedSort = isFeedSort(query.sort) ? query.sort : 'hot';
+  const window: TopWindow = isTopWindow(query.t) ? query.t : 'day';
+  const feed = await listCommunityPosts(actor, slug, community.id, {
+    sort,
+    window,
+    cursor: query.after,
+  });
+  const href = (patch: Partial<{ sort: string; t: string; after: string }>) => {
+    const p = new URLSearchParams();
+    const next = { sort, t: window, ...patch };
+    if (next.sort !== 'hot') p.set('sort', next.sort);
+    if (next.sort === 'top' && next.t !== 'day') p.set('t', next.t);
+    if (next.after) p.set('after', next.after);
+    const qs = p.toString();
+    return `${base}/c/${community.slug}${qs ? `?${qs}` : ''}`;
+  };
   const canPost = perms?.has('communities.post') ?? false;
   const canJoin = actor !== null && (community.visibility === 'public' || state?.joined);
 
@@ -165,6 +189,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
               </Link>
             ) : null}
           </div>
+          <FeedTabs feeds={[]} sort={sort} window={window} hrefFor={href} t={t} />
           {feed.items.length === 0 ? (
             <EmptyState title={t('posts.none')}>{canPost ? t('posts.beFirst') : null}</EmptyState>
           ) : (
@@ -188,7 +213,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
           {feed.nextCursor ? (
             <div className="px-1">
               <Link
-                href={`${base}/c/${community.slug}?after=${encodeURIComponent(feed.nextCursor)}`}
+                href={href({ after: feed.nextCursor })}
                 className={buttonVariants({ size: 'sm', variant: 'outline' })}
               >
                 {t('posts.more')}
