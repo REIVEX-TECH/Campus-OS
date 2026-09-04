@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTenantRegistry } from '@/lib/tenants';
 import { listMembers } from '@campusos/module-identity/members';
+import { isCommunityRole } from '@campusos/core';
 import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { MembersList } from '@/app/_components/admin/members-list';
@@ -51,7 +52,10 @@ export default async function AdminMembersPage({ params }: Params) {
     listRoles(actor.userId, slug),
   ]);
   const rows = members.ok ? members.value : [];
-  const named = roles.map((r) => ({ key: r.key, name: roleDisplayName(r, t) }));
+  // Community roles attach per community, in the module that owns them.
+  const named = roles
+    .filter((r) => !isCommunityRole(r.key))
+    .map((r) => ({ key: r.key, name: roleDisplayName(r, t) }));
   const nameOf = new Map(named.map((r) => [r.key, r.name]));
   const when = new Intl.DateTimeFormat(tenant.locale, { dateStyle: 'medium' });
 

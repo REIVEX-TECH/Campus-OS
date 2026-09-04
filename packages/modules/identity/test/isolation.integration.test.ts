@@ -941,7 +941,10 @@ describe('roles and permissions', () => {
     expect(list.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
     expect(list.every((r) => r.isSystem)).toBe(true);
     expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
-    expect(list.find((r) => r.key === 'student')!.permissions).toEqual(['post']);
+    expect(list.find((r) => r.key === 'student')!.permissions.sort()).toEqual([
+      'communities.create',
+      'post',
+    ]);
   });
 
   it('resolves an administrator to every permission and a student to one', async () => {
@@ -951,7 +954,7 @@ describe('roles and permissions', () => {
       (await effectivePermissions(a.userId, 'aaa')).hasAll('manage-roles', 'view-analytics'),
     ).toBe(true);
     const studentPermissions = await effectivePermissions(s.userId, 'aaa');
-    expect(studentPermissions.toArray()).toEqual(['post']);
+    expect(studentPermissions.toArray().sort()).toEqual(['communities.create', 'post']);
     expect(studentPermissions.has('manage-roles')).toBe(false);
   });
 
@@ -985,7 +988,10 @@ describe('roles and permissions', () => {
   it('unions the permissions of every role a person holds', async () => {
     const a = await admin('rbac-union-admin');
     const s = await member('rbac-union');
-    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'communities.create',
+      'post',
+    ]);
 
     expect(await grantRole(a, 'aaa', s.userId, 'tenant_admin')).toEqual({
       ok: true,
@@ -1112,7 +1118,10 @@ describe('members, and the roles a tenant defines', () => {
   it('suspends a member, which removes every permission until they are reinstated', async () => {
     const a = await admin('sus-admin');
     const s = await member('sus-student');
-    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'communities.create',
+      'post',
+    ]);
     expect(await setMemberStatus(a, 'aaa', s.userId, 'suspended')).toEqual({
       ok: true,
       value: { changed: true },
@@ -1127,7 +1136,10 @@ describe('members, and the roles a tenant defines', () => {
       ok: true,
       value: { changed: true },
     });
-    expect((await effectivePermissions(s.userId, 'aaa')).toArray()).toEqual(['post']);
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'communities.create',
+      'post',
+    ]);
   });
 
   it('refuses to suspend oneself, without the permission, or the last administrator', async () => {
@@ -1189,6 +1201,7 @@ describe('members, and the roles a tenant defines', () => {
       changed: true,
     });
     expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'communities.create',
       'post',
       'view-analytics',
     ]);

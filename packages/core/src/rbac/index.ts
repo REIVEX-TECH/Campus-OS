@@ -16,6 +16,19 @@ export const PERMISSIONS = [
   'view-analytics',
   'post',
   'moderate',
+  // Communities. Tenant level: who may create one and who oversees them all.
+  'communities.create',
+  'communities.oversee',
+  // Explicit and audited; held by nobody until a tenant grants it on purpose.
+  'communities.unmask',
+  // Community level, carried by the community roles, never by tenant roles.
+  'communities.post',
+  'communities.comment',
+  'communities.vote',
+  'communities.moderate',
+  'communities.flairs',
+  'communities.manage',
+  'communities.transfer',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -32,9 +45,14 @@ export function isPermission(value: string): value is Permission {
  * grants administration cannot be removed by the people relying on it.
  */
 export const SYSTEM_ROLES = {
-  student: { name: 'Student', permissions: ['post'] },
-  teacher: { name: 'Teacher', permissions: ['post'] },
-  tenant_admin: { name: 'Administrator', permissions: [...PERMISSIONS] },
+  student: { name: 'Student', permissions: ['post', 'communities.create'] },
+  teacher: { name: 'Teacher', permissions: ['post', 'communities.create'] },
+  // Everything except unmasking an anonymous author, which is never a default:
+  // a tenant grants it explicitly, and that grant is itself audited.
+  tenant_admin: {
+    name: 'Administrator',
+    permissions: PERMISSIONS.filter((p) => p !== 'communities.unmask'),
+  },
 } as const satisfies Record<string, { name: string; permissions: readonly Permission[] }>;
 
 export type SystemRoleKey = keyof typeof SYSTEM_ROLES;
@@ -77,3 +95,46 @@ export class PermissionSet {
 }
 
 export const NO_PERMISSIONS = new PermissionSet([]);
+
+/**
+ * The roles a community attaches to its members. They live in the same `roles`
+ * table as every other role, marked system, but are attached per community
+ * (community_member_roles), never to a tenant membership: granting one at
+ * tenant scope is refused. The communities module seeds them.
+ */
+export const COMMUNITY_ROLES = {
+  community_member: {
+    name: 'Member',
+    permissions: ['communities.post', 'communities.comment', 'communities.vote'],
+  },
+  community_moderator: {
+    name: 'Moderator',
+    permissions: [
+      'communities.post',
+      'communities.comment',
+      'communities.vote',
+      'communities.moderate',
+      'communities.flairs',
+    ],
+  },
+  community_owner: {
+    name: 'Owner',
+    permissions: [
+      'communities.post',
+      'communities.comment',
+      'communities.vote',
+      'communities.moderate',
+      'communities.flairs',
+      'communities.manage',
+      'communities.transfer',
+    ],
+  },
+} as const satisfies Record<string, { name: string; permissions: readonly Permission[] }>;
+
+export type CommunityRoleKey = keyof typeof COMMUNITY_ROLES;
+export const COMMUNITY_ROLE_KEYS = Object.keys(COMMUNITY_ROLES) as CommunityRoleKey[];
+
+/** Whether a role key names a community scoped role. */
+export function isCommunityRole(key: string): key is CommunityRoleKey {
+  return key in COMMUNITY_ROLES;
+}

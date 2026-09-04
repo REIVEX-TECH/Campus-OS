@@ -25,13 +25,17 @@ describe('system roles', () => {
   it('gives an administrator every permission there is', () => {
     // If a permission is added to the catalogue and not to this role, the
     // tenant's own administrator silently cannot use the feature it guards.
-    expect([...SYSTEM_ROLES.tenant_admin.permissions].sort()).toEqual([...PERMISSIONS].sort());
+    expect([...SYSTEM_ROLES.tenant_admin.permissions].sort()).toEqual(
+      PERMISSIONS.filter((p) => p !== 'communities.unmask').sort(),
+    );
+    // Unmasking an anonymous author is never a default.
+    expect(SYSTEM_ROLES.tenant_admin.permissions).not.toContain('communities.unmask');
   });
 
   it('gives an ordinary member nothing administrative', () => {
     for (const key of ['student', 'teacher'] as const) {
       const held = SYSTEM_ROLES[key].permissions;
-      expect(held).toEqual(['post']);
+      expect(held).toEqual(['post', 'communities.create']);
       expect(held).not.toContain('manage-roles');
       expect(held).not.toContain('approve-verifications');
     }

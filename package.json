@@ -28,6 +28,7 @@
     "@campusos/config": "workspace:*",
     "@campusos/core": "workspace:*",
     "@campusos/db": "workspace:*",
+    "@campusos/module-communities": "workspace:*",
     "@campusos/module-identity": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",

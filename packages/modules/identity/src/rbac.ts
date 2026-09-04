@@ -5,6 +5,7 @@ import {
   PermissionSet,
   SYSTEM_ROLES,
   SYSTEM_ROLE_KEYS,
+  isCommunityRole,
   isPermission,
   type Permission,
 } from '@campusos/core';
@@ -178,6 +179,8 @@ export async function grantRole(
     if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
       return { ok: false as const, reason: 'not_allowed' as const };
     }
+    // Community roles attach per community, never to a tenant membership.
+    if (isCommunityRole(roleKey)) return { ok: false as const, reason: 'no_such_role' as const };
     const [role] = await tx
       .select()
       .from(roles)
@@ -229,6 +232,8 @@ export async function revokeRole(
     if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
       return { ok: false as const, reason: 'not_allowed' as const };
     }
+    // Community roles attach per community, never to a tenant membership.
+    if (isCommunityRole(roleKey)) return { ok: false as const, reason: 'no_such_role' as const };
     const [role] = await tx
       .select()
       .from(roles)

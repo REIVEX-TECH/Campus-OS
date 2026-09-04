@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import { applyMigrations, migrationDatabaseUrl, runBaseMigrations } from '@campusos/db/migrate';
+import { manifest as communitiesManifest } from '@campusos/module-communities/manifest';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import { manifest as timetableManifest } from '@campusos/module-timetable/manifest';
 
 // Base (@campusos/db) migrations run first, then each module's migrations in
 // manifest order. Register a module by adding its manifest here.
-const modules = [timetableManifest, identityManifest];
+const modules = [timetableManifest, identityManifest, communitiesManifest];
 
 // Migrations are DDL, so they run as the schema owner rather than the runtime
 // role. See docs/db-role-split.md.
