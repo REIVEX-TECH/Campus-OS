@@ -16,8 +16,8 @@ Design: `docs/design-communities.md`.
 | B1   | Polls                                                    | Done (#99)              |
 | B2   | Notifications, unread count in the top bar               | Done                    |
 | B3   | Search and the community directory                       | Done                    |
-| B4   | Flairs, pinned ordering, crosspost, share                | **In review** (this PR) |
-| B5   | Profiles, karma toggle, saved and hidden, blocked list   | Not started             |
+| B4   | Flairs, pinned ordering, crosspost, share                | Done                    |
+| B5   | Profiles, karma toggle, saved and hidden, blocked list   | **In review** (this PR) |
 | B6   | Polish: counts, rules acceptance, archive after N months | Not started             |
 
 Deferred on purpose (design §11): media uploads, direct messages, awards, wiki,

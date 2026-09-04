@@ -246,6 +246,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           signedIn={actor !== null}
           communityId={community.id}
           canModerate={canModerate}
+          base={base}
           canComment={canComment && !post.lockedAt && !post.removedAt}
           canVote={perms?.has('communities.vote') ?? false}
           anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}

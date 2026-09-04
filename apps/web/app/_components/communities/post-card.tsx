@@ -94,7 +94,9 @@ export function PostCard({
                   label={post.author.handle}
                   size={18}
                 />
-                <span>{post.author.handle}</span>
+                <Link href={`${base}/people/${post.author.handle}`} className="hover:underline">
+                  {post.author.handle}
+                </Link>
               </>
             ) : (
               <span>{t('posts.anonymous')}</span>

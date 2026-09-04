@@ -30,7 +30,8 @@
     "./notifications": "./src/notifications.ts",
     "./search": "./src/search.ts",
     "./flairs": "./src/flairs.ts",
-    "./crosspost": "./src/crosspost.ts"
+    "./crosspost": "./src/crosspost.ts",
+    "./profiles": "./src/profiles.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

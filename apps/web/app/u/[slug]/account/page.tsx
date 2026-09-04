@@ -10,6 +10,7 @@ import { latestRequest } from '@campusos/module-identity/verification';
 import { HandleForm } from '@/app/_components/handle-form';
 import { AccountAvatarButton } from '@/app/_components/account-avatar-button';
 import { PageShell } from '@/app/_components/page-shell';
+import { communitiesEnabled } from '@/lib/communities';
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { VerificationRequestForm } from '@/app/_components/verification-request-form';
 import { currentActor } from '@/lib/auth';
@@ -130,6 +131,29 @@ export default async function AccountPage({ params }: Params) {
             }}
           />
         </section>
+
+        {communitiesEnabled(tenant) ? (
+          <section className="ios-card flex flex-col gap-2 rounded-2xl p-4">
+            <h2 className="text-sm font-semibold">{t('account.communities.heading')}</h2>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {(
+                [
+                  ['profile', `${base}/people/${actor.handle}`],
+                  ['saved', `${base}/saved`],
+                  ['hidden', `${base}/hidden`],
+                  ['blocked', `${base}/blocked`],
+                  ['notifications', `${base}/notifications`],
+                ] as const
+              ).map(([key, href]) => (
+                <li key={key}>
+                  <Link href={href} className="font-medium text-primary hover:underline">
+                    {t(`account.communities.${key}`)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {verified ? null : (
           <section

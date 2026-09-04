@@ -138,3 +138,98 @@ export async function listSavedPosts(
     );
   });
 }
+
+export interface SavedComment {
+  id: string;
+  /** Empty when the comment was removed or deleted. */
+  body: string;
+  score: number;
+  createdAt: Date;
+  savedAt: Date;
+  postId: string;
+  postTitle: string;
+  communitySlug: string;
+  communityName: string;
+}
+
+/** The comments a person kept, newest kept first. Their own rows. */
+export async function listSavedComments(
+  actor: { userId: string },
+  tenantId: string,
+  limit = 50,
+): Promise<SavedComment[]> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = await tx
+      .select({
+        id: commentsRead.id,
+        body: commentsRead.body,
+        score: commentsRead.score,
+        createdAt: commentsRead.createdAt,
+        removedAt: commentsRead.removedAt,
+        deletedAt: commentsRead.deletedAt,
+        savedAt: savedItems.createdAt,
+        postId: postsRead.id,
+        postTitle: postsRead.title,
+        communitySlug: communities.slug,
+        communityName: communities.name,
+      })
+      .from(savedItems)
+      .innerJoin(commentsRead, eq(commentsRead.id, savedItems.itemId))
+      .innerJoin(postsRead, eq(postsRead.id, commentsRead.postId))
+      .innerJoin(communities, eq(communities.id, postsRead.communityId))
+      .where(and(eq(savedItems.userId, actor.userId), eq(savedItems.itemType, 'comment')))
+      .orderBy(desc(savedItems.createdAt))
+      .limit(limit);
+    return rows.map((r) => ({
+      id: r.id,
+      body: r.removedAt || r.deletedAt ? '' : r.body,
+      score: r.score,
+      createdAt: r.createdAt,
+      savedAt: r.savedAt,
+      postId: r.postId,
+      postTitle: r.postTitle,
+      communitySlug: r.communitySlug,
+      communityName: r.communityName,
+    }));
+  });
+}
+
+/** The posts a person hid, newest hidden first, so any can come back. Their own rows. */
+export async function listHiddenPosts(
+  actor: { userId: string },
+  tenantId: string,
+  limit = 50,
+): Promise<PostView[]> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = await tx
+      .select({
+        post: POST,
+        handle: publicProfiles.handle,
+        avatarSeed: publicProfiles.avatarSeed,
+        communitySlug: communities.slug,
+        communityName: communities.name,
+      })
+      .from(hiddenItems)
+      .innerJoin(postsRead, eq(postsRead.id, hiddenItems.itemId))
+      .leftJoin(communities, eq(communities.id, postsRead.communityId))
+      .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
+      .where(
+        and(
+          eq(hiddenItems.userId, actor.userId),
+          eq(hiddenItems.itemType, 'post'),
+          isNull(postsRead.deletedAt),
+        ),
+      )
+      .orderBy(desc(hiddenItems.createdAt))
+      .limit(limit);
+    return rows.map((r) =>
+      toPostView(
+        r.post,
+        r.handle,
+        r.avatarSeed,
+        {},
+        { slug: r.communitySlug, name: r.communityName },
+      ),
+    );
+  });
+}
