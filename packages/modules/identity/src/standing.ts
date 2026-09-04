@@ -246,10 +246,15 @@ export async function appeal(
       );
     if (!membership) return err('not_found');
     if (effective(membership).status === 'active') return err('not_restricted');
-    await tx
-      .update(tenantMemberships)
-      .set({ appealNote: text, appealAt: new Date() })
-      .where(eq(tenantMemberships.id, membership.id));
+    // Writing the row directly would need a tenant context, and giving a
+    // restricted person one would put `status` and `verified_at` within reach:
+    // Postgres has no column-scoped policy. `auth_appeal_standing` takes no
+    // user id at all, reading the caller from the session, so it can only ever
+    // write the caller's own two appeal columns. (0015)
+    const [row] = [
+      ...(await tx.execute(sql`select auth_appeal_standing(${tenantId}, ${text}) as noted`)),
+    ] as { noted: boolean }[];
+    if (!row?.noted) return err('not_restricted');
     return ok({ noted: true as const });
   });
 }

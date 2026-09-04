@@ -34,6 +34,17 @@ be silenced with nothing to appeal and nobody to appeal to.
   every tenant's copy is re-synced in the same migration that creates the thing
   it guards.
 
+### The one write a restricted person may make, `0015_appeal_write.sql`
+
+`memberships_update` requires a tenant context, which is what makes "verified"
+unforgeable rather than merely hidden, and the appeal wrote without one: under
+RLS it matched no rows and reported success. Giving a restricted person a tenant
+context instead would put `status` and `verified_at` within reach of any path
+that takes a user id, and Postgres has no column-scoped policy to stop that. So
+`auth_appeal_standing` does the write as the owner, taking no user id at all: it
+reads the caller from the session setting, so a person can only ever appeal for
+themselves, and it touches exactly two columns.
+
 ### Module
 
 - `src/standing.ts`: `standingFor`, `standingInTransaction`, `setStanding`
@@ -87,7 +98,9 @@ verification.
 - Integration, standing (three cases, two rewritten and one new): a restriction removes
   every permission, is visible to the person with its reason, is listed to an
   administrator, takes one appeal note that a lift clears, and lifting is
-  idempotent; a suspension with a duration reports its end, and a duration
+  idempotent, and writes the note and nothing else, so the one row a person may
+  write cannot lift their own standing or verify them; a suspension with a
+  duration reports its end, and a duration
   moved into the past restores the permissions with nothing run and drops the
   person off the current list; a standing on oneself is `self`, without the
   permission `not_allowed`, with a two character reason `invalid`, on the last
@@ -99,7 +112,11 @@ verification.
 - e2e (one new case): the standing route is 404 to a stranger and the appeal
   route is 401. `pnpm --filter web test:e2e`: 86 passed against a
   production build.
-- Browser (local dev server): as the tenant administrator the members page
+- Browser (local dev server, so an unsplit database): every RLS behaviour below
+  is therefore proven by CI and not by the browser. This is how the appeal write
+  reached review broken: it worked here, where the application role owns the
+  tables and row security does not bind it, and matched no rows in CI.
+  As the tenant administrator the members page
   offers Restrict and Suspend; restricting a member with a reason returns the
   standing, and as that member the community page carries "You cannot post
   here at the moment", the reason, "Until an administrator lifts it" and the
@@ -118,9 +135,10 @@ Reinstate and confirm everything returns.
 
 ## Migration notes
 
-`packages/modules/identity/drizzle/0014_standing.sql`, applied by
-`pnpm db:migrate:all`. Additive apart from one data change, `suspended` to
-`restricted`, which preserves the behaviour those rows already had. Rollback:
+`packages/modules/identity/drizzle/0014_standing.sql` and
+`0015_appeal_write.sql`, applied by `pnpm db:migrate:all`. Additive apart from
+one data change, `suspended` to `restricted`, which preserves the behaviour
+those rows already had. Rollback: drop `auth_appeal_standing`, then
 set `restricted` back to `suspended`, restore the previous
 `auth_effective_permissions` body from `0010_rbac.sql`, drop the six columns
 and the index, and delete the `restrict-members` row from

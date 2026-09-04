@@ -1208,6 +1208,10 @@ describe('members, and the roles a tenant defines', () => {
     expect(withAppeal.ok && withAppeal.value.find((e) => e.userId === s.userId)?.appealNote).toBe(
       'It was a misunderstanding.',
     );
+    // Appealing writes the note and nothing else: the person cannot lift their
+    // own standing, nor verify themselves, by way of the one row they may write.
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({ status: 'restricted' });
+    expect(await membershipFor(s.userId, 'aaa')).toMatchObject({ status: 'restricted' });
 
     expect(await liftStanding(a, 'aaa', s.userId)).toEqual({ ok: true, value: { changed: true } });
     expect(await liftStanding(a, 'aaa', s.userId)).toEqual({ ok: true, value: { changed: false } });
