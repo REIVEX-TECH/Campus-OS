@@ -111,7 +111,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
     const qs = p.toString();
     return `${base}/c/${community.slug}${qs ? `?${qs}` : ''}`;
   };
-  const canPost = perms?.has('communities.post') ?? false;
+  const canPost = (perms?.has('communities.post') ?? false) && !community.archivedAt;
   const canJoin = actor !== null && (community.visibility === 'public' || state?.joined);
 
   return (
@@ -146,6 +146,11 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
                   {t('communities.pending')}
                 </span>
               ) : null}
+              {community.archivedAt ? (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {t('communities.archived')}
+                </span>
+              ) : null}
               {community.visibility === 'restricted' ? (
                 <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   {t('communities.restricted')}
@@ -172,6 +177,9 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
             ) : null}
           </div>
         </header>
+        {community.archivedAt ? (
+          <p className="px-1 text-sm text-muted-foreground">{t('communities.archivedNote')}</p>
+        ) : null}
         {community.description ? (
           <p className="max-w-prose px-1 text-sm text-muted-foreground xl:hidden">
             {community.description}

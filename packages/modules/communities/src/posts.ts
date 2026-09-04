@@ -14,6 +14,7 @@ import {
 import { pollInputSchema, writePollOptions } from './polls';
 import { applyVerdict, screen } from './automod';
 import { flairBelongs } from './flairs';
+import { rulesPending } from './rules';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
 import {
@@ -196,6 +197,7 @@ export async function createPostIn(
     return err('not_allowed');
   }
   if (p.flairId && !(await flairBelongs(tx, communityId, p.flairId))) return err('invalid');
+  if (await rulesPending(tx, actor.userId, tenantId, communityId)) return err('rules_not_accepted');
   if ((await ownPostsLastHour(tx, tenantId)) >= LIMITS.postsPerHour) return err('rate_limited');
   if (
     p.isAnonymous &&

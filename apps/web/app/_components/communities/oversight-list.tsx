@@ -11,6 +11,7 @@ export type OversightEntry = {
   name: string;
   pending: boolean;
   restricted: boolean;
+  archived: boolean;
   /** Already translated. */
   members: string;
   openReports: string | null;
@@ -24,6 +25,10 @@ export type OversightLabels = {
   dissolve: string;
   dissolveReason: string;
   dissolved: string;
+  archive: string;
+  reopen: string;
+  archivedBadge: string;
+  toggled: string;
   confirm: string;
   cancel: string;
   errors: Record<string, string>;
@@ -99,6 +104,11 @@ function Row({
             {labels.pending}
           </span>
         ) : null}
+        {item.archived ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {labels.archivedBadge}
+          </span>
+        ) : null}
         {item.restricted ? (
           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {labels.restricted}
@@ -120,6 +130,14 @@ function Row({
             {labels.approve}
           </button>
         ) : null}
+        <button
+          type="button"
+          disabled={busy}
+          className={action}
+          onClick={() => send({ action: 'archive', on: !item.archived }, labels.toggled)}
+        >
+          {item.archived ? labels.reopen : labels.archive}
+        </button>
         <button
           type="button"
           disabled={busy}

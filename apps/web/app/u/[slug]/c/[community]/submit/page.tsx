@@ -4,6 +4,8 @@ import { notFound, redirect } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { JoinButton } from '@/app/_components/communities/join-button';
 import { listFlairs } from '@campusos/module-communities/flairs';
+import { listRules, needsRulesAcceptance } from '@campusos/module-communities/rules';
+import { RulesGate } from '@/app/_components/communities/rules-gate';
 import { PostForm } from '@/app/_components/communities/post-form';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
@@ -50,6 +52,8 @@ export default async function SubmitPage({ params }: Params) {
   const perms = await permissionsIn(actor, slug, community.id);
   const canPost = perms.has('communities.post');
   const flairs = canPost ? await listFlairs(slug, community.id) : [];
+  const mustAccept = canPost && (await needsRulesAcceptance(actor, slug, community.id));
+  const rules = mustAccept ? await listRules(slug, community.id) : [];
 
   return (
     <PageShell>
@@ -61,7 +65,23 @@ export default async function SubmitPage({ params }: Params) {
           </h1>
           <p className="max-w-prose text-sm text-muted-foreground">{t('posts.compose.intro')}</p>
         </header>
-        {canPost ? (
+        {canPost && community.archivedAt ? (
+          <EmptyState title={t('posts.error.archived')} />
+        ) : canPost && mustAccept ? (
+          <RulesGate
+            tenant={slug}
+            communityId={community.id}
+            rules={rules.map((r) => ({ title: r.title, description: r.description }))}
+            labels={{
+              heading: t('rules.gate.heading'),
+              intro: t('rules.gate.intro'),
+              confirm: t('rules.gate.confirm'),
+              accept: t('rules.gate.accept'),
+              working: t('communities.working'),
+              errors: communityErrors(t),
+            }}
+          />
+        ) : canPost ? (
           <div className="ios-card rounded-2xl p-4">
             <PostForm
               tenant={slug}

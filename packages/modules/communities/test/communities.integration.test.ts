@@ -33,6 +33,7 @@ import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { listFlairs, setFlairs } from '../src/flairs';
 import { crosspost } from '../src/crosspost';
 import { commentsByAuthor, isBlocked, karmaOf, profileByHandle } from '../src/profiles';
+import { archiveIdle, setArchived } from '../src/archive';
 import { pollFor, votePoll } from '../src/polls';
 import { searchCommunities, searchPosts } from '../src/search';
 import {
@@ -49,7 +50,7 @@ import { listAutomodRules, setAutomodRules } from '../src/automod';
 import { blockUser, listBlocked, unblockUser } from '../src/blocks';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
-import { listRules, setRules } from '../src/rules';
+import { acceptRules, listRules, needsRulesAcceptance, setRules } from '../src/rules';
 import { approveCommunity, updateCommunitySettings } from '../src/settings';
 import { banMember, reportItem, unmaskAuthor } from '../src/moderation';
 import {
@@ -1954,5 +1955,120 @@ describe('profiles and private lists', () => {
     expect((await listCommunityPosts(owner, 'aaa', c.id)).items.map((p) => p.id)).toContain(
       signed.value.id,
     );
+  });
+});
+
+describe('polish: rules acceptance, archive, held across the tenant', () => {
+  it('asks a member to accept the rules before a first post, once, and never a manager', async () => {
+    const owner = await member('ra-owner');
+    const m = await member('ra-member');
+    const c = await community(owner, 'Rules Hall');
+    await joinCommunity(m, 'aaa', c.id);
+    // No rules: nothing to accept.
+    expect(await needsRulesAcceptance(m, 'aaa', c.id)).toBe(false);
+    expect(
+      (
+        await createPost(
+          m,
+          'aaa',
+          c.id,
+          { kind: 'text', title: 'Before rules', body: '' },
+          settings,
+        )
+      ).ok,
+    ).toBe(true);
+    const set = await setRules(owner, 'aaa', c.id, [{ title: 'Be kind', description: '' }]);
+    expect(set.ok).toBe(true);
+    expect(await needsRulesAcceptance(m, 'aaa', c.id)).toBe(true);
+    expect(await needsRulesAcceptance(owner, 'aaa', c.id)).toBe(false);
+    expect(
+      await createPost(m, 'aaa', c.id, { kind: 'text', title: 'Too soon', body: '' }, settings),
+    ).toEqual({ ok: false, error: 'rules_not_accepted' });
+    expect(
+      (
+        await createPost(
+          owner,
+          'aaa',
+          c.id,
+          { kind: 'text', title: 'Owner posts', body: '' },
+          settings,
+        )
+      ).ok,
+    ).toBe(true);
+    // A stranger has no membership to mark.
+    const outsider = await member('ra-outsider');
+    expect(await acceptRules(outsider, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
+    expect(await acceptRules(m, 'aaa', c.id)).toEqual({ ok: true, value: { accepted: true } });
+    expect(await acceptRules(m, 'aaa', c.id)).toEqual({ ok: true, value: { accepted: true } });
+    expect(await needsRulesAcceptance(m, 'aaa', c.id)).toBe(false);
+    expect(
+      (await createPost(m, 'aaa', c.id, { kind: 'text', title: 'After rules', body: '' }, settings))
+        .ok,
+    ).toBe(true);
+  });
+
+  it('archives by the tenant only, refuses posts while archived, and reopens; the sweep leaves live communities alone', async () => {
+    const owner = await member('ar-owner');
+    const overseer = await admin('ar-admin');
+    const c = await community(owner, 'Old Hall');
+    expect(await setArchived(owner, 'aaa', c.id, true)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await setArchived(overseer, 'aaa', c.id, true)).toEqual({
+      ok: true,
+      value: { archived: true },
+    });
+    expect(
+      await createPost(owner, 'aaa', c.id, { kind: 'text', title: 'Anyone?', body: '' }, settings),
+    ).toEqual({ ok: false, error: 'archived' });
+    const listed = await listCommunitiesForOversight(overseer, 'aaa');
+    expect(listed.ok && listed.value.find((x) => x.id === c.id)?.archivedAt).toBeInstanceOf(Date);
+    expect(await setArchived(overseer, 'aaa', c.id, false)).toEqual({
+      ok: true,
+      value: { archived: false },
+    });
+    expect(
+      (await createPost(owner, 'aaa', c.id, { kind: 'text', title: 'Back', body: '' }, settings))
+        .ok,
+    ).toBe(true);
+    // Everything here is newer than any window, so the sweep archives nothing.
+    expect(await archiveIdle('aaa', 1)).toEqual({ archived: [] });
+    expect(
+      await setArchived(overseer, 'aaa', '00000000-0000-0000-0000-000000000000', true),
+    ).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+  });
+
+  it('lists held items across the tenant for oversight only', async () => {
+    const overseer = await admin('hd-admin');
+    const o1 = await member('hd-o1');
+    const o2 = await member('hd-o2');
+    const c1 = await community(o1, 'Held One');
+    const c2 = await community(o2, 'Held Two');
+    for (const [who, c] of [
+      [o1, c1],
+      [o2, c2],
+    ] as const) {
+      const set = await setAutomodRules(who, 'aaa', c.id, [
+        { kind: 'keyword', pattern: 'lottery', action: 'queue' },
+      ]);
+      expect(set.ok).toBe(true);
+      const held = await createPost(
+        who,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Free lottery tickets', body: '' },
+        settings,
+      );
+      expect(held.ok && held.value.held).toBe(true);
+    }
+    expect(await listHeld(o1, 'aaa', null)).toEqual({ ok: false, error: 'not_allowed' });
+    const mine = await listHeld(o1, 'aaa', c1.id);
+    expect(mine.ok && mine.value.map((h) => h.communityId)).toEqual([c1.id]);
+    const all = await listHeld(overseer, 'aaa', null);
+    expect(all.ok && all.value.map((h) => h.communityId).sort()).toEqual([c1.id, c2.id].sort());
   });
 });

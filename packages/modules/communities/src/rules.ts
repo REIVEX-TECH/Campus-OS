@@ -1,9 +1,9 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { withActorInTenant, withTenant } from '@campusos/db';
+import { type TenantTransaction, withActorInTenant, withTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { communityPermissions, type Refusal } from './access';
-import { communityRules, moderationActions } from './schema/communities';
+import { communityMemberships, communityRules, moderationActions } from './schema/communities';
 
 /**
  * A community's own rules, shown under the platform's. Ordered, titled, with
@@ -89,5 +89,80 @@ export async function setRules(
         description: r.description,
       })),
     );
+  });
+}
+
+/** True when the community has rules this member has not yet said they read. Managers are exempt. */
+export async function rulesPending(
+  tx: TenantTransaction,
+  userId: string,
+  tenantId: string,
+  communityId: string,
+): Promise<boolean> {
+  const [rule] = await tx
+    .select({ id: communityRules.id })
+    .from(communityRules)
+    .where(eq(communityRules.communityId, communityId))
+    .limit(1);
+  if (!rule) return false;
+  const perms = await communityPermissions(tx, userId, tenantId, communityId);
+  if (perms.hasAny('communities.manage', 'communities.oversee')) return false;
+  const [membership] = await tx
+    .select({ acceptedAt: communityMemberships.rulesAcceptedAt })
+    .from(communityMemberships)
+    .where(
+      and(
+        eq(communityMemberships.communityId, communityId),
+        eq(communityMemberships.userId, userId),
+        isNull(communityMemberships.leftAt),
+      ),
+    );
+  return membership ? membership.acceptedAt === null : false;
+}
+
+/** Whether this person must accept the rules before posting here. */
+export async function needsRulesAcceptance(
+  actor: { userId: string },
+  tenantId: string,
+  communityId: string,
+): Promise<boolean> {
+  return withActorInTenant(actor.userId, tenantId, (tx) =>
+    rulesPending(tx, actor.userId, tenantId, communityId),
+  );
+}
+
+/** Record that the member read the rules. Their own membership row; idempotent. */
+export async function acceptRules(
+  actor: { userId: string },
+  tenantId: string,
+  communityId: string,
+): Promise<Result<{ accepted: true }, Refusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = await tx
+      .update(communityMemberships)
+      .set({ rulesAcceptedAt: new Date() })
+      .where(
+        and(
+          eq(communityMemberships.communityId, communityId),
+          eq(communityMemberships.userId, actor.userId),
+          isNull(communityMemberships.leftAt),
+          isNull(communityMemberships.rulesAcceptedAt),
+        ),
+      )
+      .returning({ id: communityMemberships.id });
+    if (rows.length === 0) {
+      const [member] = await tx
+        .select({ id: communityMemberships.id })
+        .from(communityMemberships)
+        .where(
+          and(
+            eq(communityMemberships.communityId, communityId),
+            eq(communityMemberships.userId, actor.userId),
+            isNull(communityMemberships.leftAt),
+          ),
+        );
+      if (!member) return err('not_allowed');
+    }
+    return ok({ accepted: true });
   });
 }

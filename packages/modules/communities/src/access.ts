@@ -30,7 +30,8 @@ export type Refusal =
   | 'last_owner'
   | 'muted'
   | 'pin_cap'
-  | 'closed';
+  | 'closed'
+  | 'rules_not_accepted';
 
 function toSet(rows: unknown[]): PermissionSet {
   return new PermissionSet(

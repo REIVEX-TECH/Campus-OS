@@ -169,3 +169,11 @@ test('an unknown profile is not found, and the hidden list asks for a sign in', 
   await page.goto('/u/lgu/hidden');
   await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
 });
+
+test('the rules acceptance route refuses a stranger', async ({ request }) => {
+  const response = await request.post(
+    '/api/communities/00000000-0000-0000-0000-000000000000/rules/accept',
+    { headers: fromOurPage(), data: { tenant: 'lgu' } },
+  );
+  expect(response.status()).toBe(401);
+});

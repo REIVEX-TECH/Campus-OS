@@ -20,6 +20,7 @@ export interface OversightCommunity {
   approvalStatus: string;
   memberCount: number;
   createdAt: Date;
+  archivedAt: Date | null;
   openReports: number;
 }
 
@@ -40,6 +41,7 @@ export async function listCommunitiesForOversight(
         approvalStatus: communities.approvalStatus,
         memberCount: communities.memberCount,
         createdAt: communities.createdAt,
+        archivedAt: communities.archivedAt,
         // Named in full: inside a single table select the column would render bare and bind to r.id.
         openReports: sql<number>`(select count(*)::int from reports r
           where r.community_id = communities.id and r.status = 'open')`,

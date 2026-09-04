@@ -248,15 +248,18 @@ const HELD_REASONS: Record<string, HeldItem['reason']> = {
   [HIDDEN_BY_REPORTS]: 'reports',
 };
 
-/** What automod and the report threshold took down in a community, newest first, for its moderators. */
+/** What automod and the report threshold took down: in a community for its moderators, or tenant wide for oversight. */
 export async function listHeld(
   actor: { userId: string },
   tenantId: string,
-  communityId: string,
+  communityId: string | null,
   limit = 50,
 ): Promise<Result<HeldItem[], Refusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await moderates(tx, actor.userId, tenantId, communityId))) return err('not_allowed');
+    const allowed = communityId
+      ? await moderates(tx, actor.userId, tenantId, communityId)
+      : await canInTenant(tx, actor.userId, tenantId, 'communities.oversee');
+    if (!allowed) return err('not_allowed');
     const codes = Object.keys(HELD_REASONS);
     const rows = [
       ...(await tx.execute(sql`
@@ -265,14 +268,16 @@ export async function listHeld(
                  p.title, left(coalesce(p.body, ''), 280) as excerpt, p.is_anonymous,
                  p.removal_reason, p.removed_at
           from posts_read p
-          where p.community_id = ${communityId}::uuid and p.deleted_at is null
+          where p.tenant_id = ${tenantId} and p.deleted_at is null
+            ${communityId ? sql`and p.community_id = ${communityId}::uuid` : sql``}
             and p.removal_reason in ${codes}
           union all
           select 'comment', cm.id, cm.post_id, pc.community_id,
                  pc.title, left(cm.body, 280), cm.is_anonymous, cm.removal_reason, cm.removed_at
           from comments_read cm
           join posts_read pc on pc.id = cm.post_id
-          where pc.community_id = ${communityId}::uuid and cm.deleted_at is null
+          where pc.tenant_id = ${tenantId} and cm.deleted_at is null
+            ${communityId ? sql`and pc.community_id = ${communityId}::uuid` : sql``}
             and cm.removal_reason in ${codes}
         ) h
         join communities c on c.id = h.community_id
