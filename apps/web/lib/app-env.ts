@@ -20,23 +20,44 @@
  *   - Every var that `.env` sets must have actually reached the process
  *     (production only - in dev, Next loads `.env*` itself, so there is no
  *     forwarding layer to verify).
+ *
+ * File-system access uses `process.getBuiltinModule` rather than a static
+ * `import 'node:fs'`. This app has an edge middleware, so Next compiles
+ * `instrumentation.ts` (and this module, which it imports) for the edge runtime
+ * too, where a static `node:` import is a build error. A runtime builtin lookup
+ * is invisible to the bundler and only ever runs under the Node-runtime guard in
+ * `instrumentation.ts`.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-
 import manifest from './app-env.vars.json';
 
 type EnvVar = { name: string; required: boolean };
+
+type FsLike = {
+  existsSync(p: string): boolean;
+  readFileSync(p: string, encoding: 'utf8'): string;
+};
+type PathLike = {
+  join(...parts: string[]): string;
+  dirname(p: string): string;
+};
 
 const VARS: EnvVar[] = manifest.vars;
 
 const nonEmpty = (v: string | undefined): boolean => typeof v === 'string' && v.trim() !== '';
 
+function getBuiltin<T>(id: string): T {
+  const proc = process as unknown as {
+    getBuiltinModule?: (id: string) => unknown;
+  };
+  if (typeof proc.getBuiltinModule !== 'function') {
+    throw new Error(`process.getBuiltinModule unavailable; cannot load ${id}`);
+  }
+  return proc.getBuiltinModule(id) as T;
+}
+
 /**
- * Minimal `.env` reader - enough for this repo's flat `KEY=value` format. We do
- * not depend on `dotenv` here so this module stays require-able from anywhere
- * (including a slim production install) with zero dependencies. Only the KEYS
- * and whether they are non-empty matter; values are never logged.
+ * Minimal `.env` reader - enough for this repo's flat `KEY=value` format. Only
+ * the KEYS and whether they are non-empty matter; values are never logged.
  */
 function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -62,12 +83,12 @@ function parseEnvFile(text: string): Record<string, string> {
  * Returns null when no file is found - some deployments inject env directly and
  * have no file to compare against; that is not an error.
  */
-function findEnvFile(startDir: string): string | null {
+function findEnvFile(startDir: string, fs: FsLike, path: PathLike): string | null {
   let dir = startDir;
   for (let i = 0; i < 6; i += 1) {
-    const candidate = join(dir, '.env');
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -102,12 +123,16 @@ export function assertAppEnv(opts: AssertOptions = {}): void {
 
   const isProd = (env.NODE_ENV ?? '') === 'production';
   if (opts.forceCompare || isProd) {
+    const fs = getBuiltin<FsLike>('node:fs');
+    const path = getBuiltin<PathLike>('node:path');
     const dotenvPath =
-      opts.dotenvPath !== undefined ? opts.dotenvPath : findEnvFile(opts.startDir ?? process.cwd());
-    if (dotenvPath && existsSync(dotenvPath)) {
+      opts.dotenvPath !== undefined
+        ? opts.dotenvPath
+        : findEnvFile(opts.startDir ?? process.cwd(), fs, path);
+    if (dotenvPath && fs.existsSync(dotenvPath)) {
       let parsed: Record<string, string> = {};
       try {
-        parsed = parseEnvFile(readFileSync(dotenvPath, 'utf8'));
+        parsed = parseEnvFile(fs.readFileSync(dotenvPath, 'utf8'));
       } catch {
         // Unreadable .env: cannot compare; the required check above still runs.
         parsed = {};
