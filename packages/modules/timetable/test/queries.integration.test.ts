@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '@campusos/db';
-import { getDb, getSqlClient } from '@campusos/db/client';
+import { getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
   migrationDatabaseUrl,
   runAsMigrationRole,
   runBaseMigrations,
 } from '@campusos/db/migrate';
-import { buildings, campuses, rooms, universities } from '@campusos/db/schema';
+import { buildings, campuses, rooms } from '@campusos/db/schema';
 import { migrationsFolder } from '../src/manifest';
 import { createTimetableQueries } from '../src/read/queries';
 import {
@@ -171,10 +171,11 @@ async function seed() {
 }
 
 async function universitiesRepoUpsert() {
-  await getDb()
-    .insert(universities)
-    .values({ slug: 'aaa', name: 'Alpha U', timezone: 'Asia/Karachi' })
-    .onConflictDoNothing();
+  // universities is platform-admin-write under RLS (0017); the owner seeds it.
+  await runAsMigrationRole(
+    `insert into "universities" ("slug","name","timezone")
+     values ('aaa', 'Alpha U', 'Asia/Karachi') on conflict ("slug") do nothing`,
+  );
 }
 
 let ids: {

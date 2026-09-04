@@ -1,14 +1,14 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '@campusos/db';
-import { getDb, getSqlClient } from '@campusos/db/client';
+import { getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
   migrationDatabaseUrl,
   runAsMigrationRole,
   runBaseMigrations,
 } from '@campusos/db/migrate';
-import { buildings, campuses, rooms, universities } from '@campusos/db/schema';
+import { buildings, campuses, rooms } from '@campusos/db/schema';
 import { migrationsFolder } from '../src/manifest';
 import { computeContentHash } from '../src/domain/index';
 import { AdminRoomsRepository } from '../src/repositories/admin-rooms';
@@ -201,10 +201,11 @@ async function pendingRoomCount(tenant: string): Promise<number> {
 }
 
 async function seedTenant(slug: string): Promise<void> {
-  await getDb()
-    .insert(universities)
-    .values({ slug, name: `U ${slug}`, timezone: 'Asia/Karachi' })
-    .onConflictDoNothing();
+  // universities is platform-admin-write under RLS (0017); the owner seeds it.
+  await runAsMigrationRole(
+    `insert into "universities" ("slug","name","timezone")
+     values ('${slug}', 'U ${slug}', 'Asia/Karachi') on conflict ("slug") do nothing`,
+  );
 }
 
 beforeEach(async () => {
