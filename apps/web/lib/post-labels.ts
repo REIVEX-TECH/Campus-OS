@@ -6,6 +6,7 @@ export function postErrors(t: Translate): Record<string, string> {
   return {
     ...communityErrors(t),
     locked: t('posts.error.locked'),
+    closed: t('communities.error.closed'),
     kind_not_allowed: t('posts.error.kind_not_allowed'),
     anonymous_not_allowed: t('posts.error.anonymous_not_allowed'),
     exists: t('posts.error.exists'),
@@ -18,6 +19,16 @@ export function postFormLabels(t: Translate, mode: 'create' | 'edit'): PostFormL
   return {
     text: t('posts.compose.text'),
     link: t('posts.compose.link'),
+    poll: t('posts.compose.poll'),
+    pollOption: t('poll.option', { n: '{n}' }),
+    pollAddOption: t('poll.addOption'),
+    pollRemoveOption: t('poll.removeOption', { n: '{n}' }),
+    pollDuration: t('poll.duration'),
+    pollDurations: {
+      day: t('poll.day'),
+      threeDays: t('poll.threeDays'),
+      week: t('poll.week'),
+    },
     title: t('posts.compose.title'),
     body: t('posts.compose.body'),
     url: t('posts.compose.url'),

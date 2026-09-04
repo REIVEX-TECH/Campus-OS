@@ -101,6 +101,11 @@ export function PostCard({
               {t('posts.edited')}
             </Link>
           ) : null}
+          {post.kind === 'poll' ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
+              {t('posts.pollPill')}
+            </span>
+          ) : null}
           {post.pinnedAt ? (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
               {t('posts.pinned')}

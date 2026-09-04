@@ -93,7 +93,7 @@ export default async function CommunitySettingsPage({ params }: Params) {
               description: community.description,
               allowAnonymous: community.allowAnonymous,
               allowedKinds: community.allowedKinds.filter(
-                (k): k is 'text' | 'link' => k === 'text' || k === 'link',
+                (k): k is 'text' | 'link' | 'poll' => k === 'text' || k === 'link' || k === 'poll',
               ),
               visibility: community.visibility === 'restricted' ? 'restricted' : 'public',
               modLogPublic: false,

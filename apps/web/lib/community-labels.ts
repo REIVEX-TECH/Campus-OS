@@ -27,6 +27,7 @@ export function communityFormLabels(t: Translate, mode: 'create' | 'edit'): Comm
     kinds: t('communities.form.kinds'),
     kindText: t('communities.form.kind.text'),
     kindLink: t('communities.form.kind.link'),
+    kindPoll: t('communities.form.kind.poll'),
     visibility: t('communities.form.visibility'),
     visibilityPublic: t('communities.form.visibility.public'),
     visibilityRestricted: t('communities.form.visibility.restricted'),

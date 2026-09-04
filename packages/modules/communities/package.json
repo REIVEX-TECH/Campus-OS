@@ -25,7 +25,8 @@
     "./mod-actions": "./src/mod-actions.ts",
     "./queue": "./src/queue.ts",
     "./oversight": "./src/oversight.ts",
-    "./automod": "./src/automod.ts"
+    "./automod": "./src/automod.ts",
+    "./polls": "./src/polls.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

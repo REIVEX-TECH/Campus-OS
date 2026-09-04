@@ -17,7 +17,7 @@ export const communitySettingsSchema = z.object({
   description: z.string().trim().max(500),
   allowAnonymous: z.boolean(),
   visibility: z.enum(['public', 'restricted']),
-  allowedKinds: z.array(z.enum(['text', 'link'])).min(1),
+  allowedKinds: z.array(z.enum(['text', 'link', 'poll'])).min(1),
   modLogPublic: z.boolean(),
 });
 

@@ -128,7 +128,7 @@ export const createCommunitySchema = z.object({
   allowAnonymous: z.boolean().default(true),
   visibility: z.enum(['public', 'restricted']).default('public'),
   allowedKinds: z
-    .array(z.enum(['text', 'link']))
+    .array(z.enum(['text', 'link', 'poll']))
     .min(1)
     .default(['text', 'link']),
 });

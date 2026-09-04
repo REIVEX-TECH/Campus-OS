@@ -5,12 +5,22 @@ import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
 import { postPath } from '@/lib/community-constants';
 
+export type PostKind = 'text' | 'link' | 'poll';
+
 export type PostFormLabels = {
   text: string;
   link: string;
+  poll: string;
   title: string;
   body: string;
   url: string;
+  /** "{n}" is replaced with the option's number. */
+  pollOption: string;
+  pollAddOption: string;
+  /** "{n}" is replaced with the option's number. */
+  pollRemoveOption: string;
+  pollDuration: string;
+  pollDurations: { day: string; threeDays: string; week: string };
   anonymous: string;
   anonymousHint: string;
   spoiler: string;
@@ -19,6 +29,9 @@ export type PostFormLabels = {
   done: string;
   errors: Record<string, string>;
 };
+
+const DURATIONS = { day: 24, threeDays: 72, week: 168 } as const;
+type Duration = keyof typeof DURATIONS;
 
 const field =
   'ios-field h-11 w-full rounded-xl px-3.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -30,8 +43,9 @@ const tab = (active: boolean) =>
   }`;
 
 /**
- * Compose a post, or edit one. Text or a link on creation; edits change the
- * title and text only. The anonymous option says what it does, every time.
+ * Compose a post, or edit one. Text, a link or a poll on creation; edits
+ * change the title and text only. The anonymous option says what it does,
+ * every time.
  */
 export function PostForm({
   tenant,
@@ -51,16 +65,18 @@ export function PostForm({
   communitySlug: string;
   mode: 'create' | 'edit';
   postId?: string;
-  allowedKinds: ('text' | 'link')[];
+  allowedKinds: PostKind[];
   anonymousAllowed: boolean;
   initial?: { title: string; body: string };
   labels: PostFormLabels;
 }) {
   const router = useRouter();
-  const [kind, setKind] = useState<'text' | 'link'>(allowedKinds[0] ?? 'text');
+  const [kind, setKind] = useState<PostKind>(allowedKinds[0] ?? 'text');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
   const [url, setUrl] = useState('');
+  const [options, setOptions] = useState<string[]>(['', '']);
+  const [duration, setDuration] = useState<Duration>('threeDays');
   const [isAnonymous, setAnonymous] = useState(false);
   const [spoiler, setSpoiler] = useState(false);
   const [status, setStatus] = useState<{
@@ -70,6 +86,8 @@ export function PostForm({
     kind: 'idle',
   });
   const working = status.kind === 'working';
+  const kindLabel = (k: PostKind) =>
+    k === 'text' ? labels.text : k === 'link' ? labels.link : labels.poll;
 
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -83,8 +101,15 @@ export function PostForm({
               tenant,
               kind,
               title,
-              body: kind === 'text' ? body : undefined,
+              body: kind === 'link' ? undefined : body,
               url: kind === 'link' ? url : undefined,
+              poll:
+                kind === 'poll'
+                  ? {
+                      options: options.map((o) => o.trim()).filter(Boolean),
+                      closesInHours: DURATIONS[duration],
+                    }
+                  : undefined,
               isAnonymous,
               spoiler,
             }),
@@ -122,7 +147,7 @@ export function PostForm({
               onClick={() => setKind(k)}
               className={tab(kind === k)}
             >
-              {k === 'text' ? labels.text : labels.link}
+              {kindLabel(k)}
             </button>
           ))}
         </div>
@@ -164,6 +189,62 @@ export function PostForm({
           />
         </label>
       )}
+
+      {kind === 'poll' && mode === 'create' ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="sr-only">{labels.poll}</legend>
+          {options.map((o, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                className={field}
+                value={o}
+                onChange={(e) =>
+                  setOptions((all) => all.map((x, j) => (j === i ? e.target.value : x)))
+                }
+                required
+                maxLength={80}
+                autoComplete="off"
+                aria-label={labels.pollOption.replace('{n}', String(i + 1))}
+                placeholder={labels.pollOption.replace('{n}', String(i + 1))}
+              />
+              {options.length > 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setOptions((all) => all.filter((_, j) => j !== i))}
+                  aria-label={labels.pollRemoveOption.replace('{n}', String(i + 1))}
+                  className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={options.length >= 6}
+              onClick={() => setOptions((all) => [...all, ''])}
+              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            >
+              {labels.pollAddOption}
+            </button>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{labels.pollDuration}</span>
+              <select
+                value={duration}
+                onChange={(e) => setDuration(e.target.value as Duration)}
+                className="ios-field h-9 rounded-xl px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {(Object.keys(DURATIONS) as Duration[]).map((d) => (
+                  <option key={d} value={d}>
+                    {labels.pollDurations[d]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
 
       {mode === 'create' ? (
         <div className="flex flex-col gap-2">

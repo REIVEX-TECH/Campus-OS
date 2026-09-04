@@ -52,7 +52,7 @@ export const communities = pgTable(
     allowedKinds: text('allowed_kinds')
       .array()
       .notNull()
-      .default(sql`'{text,link}'::text[]`),
+      .default(sql`'{text,link,poll}'::text[]`),
     /** approved | pending */
     approvalStatus: text('approval_status').notNull().default('approved'),
     modLogPublic: boolean('mod_log_public').notNull().default(false),
@@ -234,6 +234,8 @@ export const posts = pgTable(
     hotScore: numeric('hot_score', { precision: 20, scale: 7 }).notNull().default('0'),
     controversy: numeric('controversy', { precision: 20, scale: 7 }).notNull().default('0'),
     commentCount: integer('comment_count').notNull().default(0),
+    /** Polls only: when voting closes. */
+    pollClosesAt: tz('poll_closes_at'),
     createdAt,
   },
   (t) => [
@@ -356,6 +358,38 @@ export const hiddenItems = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.itemType, t.itemId] })],
 );
 
+export const pollOptions = pgTable(
+  'poll_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id').notNull(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    text: text('text').notNull(),
+    voteCount: integer('vote_count').notNull().default(0),
+  },
+  (t) => [index('poll_options_post_idx').on(t.postId, t.position)],
+);
+
+/** Who chose what: the voter's own rows only, under a restrictive policy. */
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    tenantId: text('tenant_id').notNull(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    optionId: uuid('option_id')
+      .notNull()
+      .references(() => pollOptions.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull(),
+    createdAt,
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.userId] })],
+);
+
 export const reports = pgTable(
   'reports',
   {
@@ -454,6 +488,7 @@ export const postsRead = pgView('posts_read', {
   commentCount: integer('comment_count').notNull(),
   createdAt: tz('created_at').notNull(),
   isOwn: boolean('is_own').notNull(),
+  pollClosesAt: tz('poll_closes_at'),
 }).existing();
 
 export const commentsRead = pgView('comments_read', {

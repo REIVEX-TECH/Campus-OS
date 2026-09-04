@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { reportItem } from '@campusos/module-communities/moderation';
 import { deletePost, editPost } from '@campusos/module-communities/posts';
 import { hideItem, saveItem } from '@campusos/module-communities/saved';
+import { votePoll } from '@campusos/module-communities/polls';
 import { votePost } from '@campusos/module-communities/votes';
 import { communityGate, refusalResponse } from '@/lib/community-route';
 
@@ -35,6 +36,11 @@ const schema = z.discriminatedUnion('action', [
     body: z.string().optional(),
   }),
   z.object({ tenant: z.string().min(1).max(64), action: z.literal('delete') }),
+  z.object({
+    tenant: z.string().min(1).max(64),
+    action: z.literal('pollVote'),
+    optionId: z.string().uuid(),
+  }),
 ]);
 
 export async function POST(request: Request, { params }: Params): Promise<Response> {
@@ -78,6 +84,10 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     }
     case 'edit': {
       const result = await editPost(actor, tenant, id, { title: data.title, body: data.body });
+      return result.ok ? Response.json(result.value) : refusalResponse(result.error);
+    }
+    case 'pollVote': {
+      const result = await votePoll(actor, tenant, id, data.optionId);
       return result.ok ? Response.json(result.value) : refusalResponse(result.error);
     }
     case 'delete': {

@@ -4,11 +4,13 @@ import { notFound } from 'next/navigation';
 import { commentsForPost, type CommentSort } from '@campusos/module-communities/comments';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { listModerators } from '@campusos/module-communities/members';
+import { pollFor } from '@campusos/module-communities/polls';
 import { postById } from '@campusos/module-communities/posts';
 import { listRules } from '@campusos/module-communities/rules';
 import { CommentThread } from '@/app/_components/communities/comment-thread';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
 import { ModControls } from '@/app/_components/communities/mod-controls';
+import { PollCard } from '@/app/_components/communities/poll-card';
 import { PostCard } from '@/app/_components/communities/post-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { postPath } from '@/lib/community-constants';
@@ -16,6 +18,8 @@ import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
 import { communityErrors, removalLabel } from '@/lib/community-labels';
+import { relativeTime } from '@/lib/format';
+import { postErrors } from '@/lib/post-labels';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -79,11 +83,12 @@ export default async function PostPage({ params, searchParams }: PageProps) {
   const sort: CommentSort = SORTS.includes(sortParam as CommentSort)
     ? (sortParam as CommentSort)
     : 'best';
-  const [rules, moderators, perms, comments] = await Promise.all([
+  const [rules, moderators, perms, comments, poll] = await Promise.all([
     listRules(slug, community.id),
     listModerators(slug, community.id),
     actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
     commentsForPost(actor, slug, post.id, sort),
+    post.kind === 'poll' ? pollFor(actor, slug, post.id) : Promise.resolve(null),
   ]);
   const canComment = perms?.has('communities.comment') ?? false;
   const canModerate = perms?.hasAny('communities.moderate', 'communities.oversee') ?? false;
@@ -136,6 +141,32 @@ export default async function PostPage({ params, searchParams }: PageProps) {
             t={t}
           />
         )}
+        {poll && !withheld ? (
+          <PollCard
+            tenant={slug}
+            postId={post.id}
+            poll={{
+              options: poll.options,
+              total: poll.total,
+              closed: poll.closed,
+              myOptionId: poll.myOptionId,
+            }}
+            canVote={(perms?.has('communities.vote') ?? false) && !post.lockedAt}
+            labels={{
+              vote: t('poll.vote'),
+              votes: t('poll.votes', { count: '{count}' }),
+              votesOne: t('poll.votesOne'),
+              closesLine: poll.closed
+                ? t('poll.closed')
+                : t('poll.closesIn', {
+                    when: relativeTime(poll.closesAt.toISOString(), tenant.locale),
+                  }),
+              yours: t('poll.yours'),
+              cannotVote: actor ? null : t('poll.signInToVote'),
+              errors: postErrors(t),
+            }}
+          />
+        ) : null}
         {post.removedAt && !withheld ? (
           <p className="px-1 text-sm text-muted-foreground">
             {t('posts.removedNotice')}
