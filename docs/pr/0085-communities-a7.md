@@ -87,8 +87,10 @@ column, and the anonymity model is untouched.
   skipped (the column privilege test, split database only). `pnpm --filter web
 build` clean, one new route.
 - e2e (one new case): the automod route is 401 to a stranger. `pnpm --filter web test:e2e`: 74 passed against a
-  production build (three runs: 74, then 73 on the known cold start flake in
-  the timetable recents case, then 74).
+  production build on the first run; two further runs each dropped one
+  timetable case on a navigation timeout (the recents case, then the
+  semester combobox case), the known cold start flake; the communities
+  cases passed on every run.
 - Browser (local dev server, as a community owner): the settings page shows
   the Filters editor; a keyword rule "crypto" set to hold saves ("Filters
   saved.") and is there after a reload; a new post whose title contains the
