@@ -106,6 +106,8 @@ export function CommentNode({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
   const [reporting, setReporting] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeReason, setRemoveReason] = useState('');
   const [reason, setReason] = useState<ReportReason>('harassment');
   const [note, setNote] = useState('');
   const [vote, setVote] = useState({ score: comment.score, myVote: comment.myVote });
@@ -297,25 +299,8 @@ export function CommentNode({
                     type="button"
                     disabled={busy}
                     className={`${action} hover:text-destructive`}
-                    onClick={async () => {
-                      const reason = window.prompt(labels.removeReason)?.trim() ?? '';
-                      if (reason.length < 3) return;
-                      setBusy(true);
-                      const response = await fetch(`/api/communities/${communityId}/mod`, {
-                        method: 'POST',
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({
-                          tenant,
-                          action: 'remove',
-                          itemType: 'comment',
-                          itemId: comment.id,
-                          reason,
-                        }),
-                      });
-                      setBusy(false);
-                      if (response.ok) router.refresh();
-                      else setMessage({ text: labels.errors.failed ?? '', error: true });
-                    }}
+                    aria-expanded={removing}
+                    onClick={() => setRemoving((r) => !r)}
                   >
                     {labels.remove}
                   </button>
@@ -394,6 +379,60 @@ export function CommentNode({
               </form>
             ) : null}
 
+            {removing ? (
+              <form
+                className="flex flex-col gap-2 rounded-xl bg-muted/50 p-3 sm:flex-row"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setBusy(true);
+                  const response = await fetch(`/api/communities/${communityId}/mod`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      tenant,
+                      action: 'remove',
+                      itemType: 'comment',
+                      itemId: comment.id,
+                      reason: removeReason.trim(),
+                    }),
+                  });
+                  setBusy(false);
+                  if (response.ok) {
+                    setRemoving(false);
+                    router.refresh();
+                  } else {
+                    setMessage({ text: labels.errors.failed ?? '', error: true });
+                  }
+                }}
+              >
+                <input
+                  value={removeReason}
+                  onChange={(e) => setRemoveReason(e.target.value)}
+                  placeholder={labels.removeReason}
+                  aria-label={labels.removeReason}
+                  required
+                  minLength={3}
+                  maxLength={300}
+                  className="ios-field h-9 flex-1 rounded-xl px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className={buttonVariants({ size: 'sm', variant: 'destructive' })}
+                  >
+                    {labels.remove}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRemoving(false)}
+                    className={buttonVariants({ size: 'sm', variant: 'outline' })}
+                  >
+                    {labels.cancel}
+                  </button>
+                </div>
+              </form>
+            ) : null}
             {message ? (
               <p
                 role="status"

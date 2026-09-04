@@ -20,6 +20,7 @@ webServerEnv.APP_DOMAIN = 'legacy.test';
 // Runs `next start`, so build the app first (CI does `pnpm build` before e2e).
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 30_000,
   reporter: 'line',
   use: { baseURL },
