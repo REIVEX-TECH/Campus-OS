@@ -30,16 +30,17 @@ Each phase below replaces one of those.
 **Permissions are capabilities, not roles.** The catalogue is a fixed list in
 code, because a permission only means something if some code checks it:
 
-| Permission              | Guards                                                       |
-| ----------------------- | ------------------------------------------------------------ |
-| `manage-timetable`      | Ingestion controls, term and section edits                   |
-| `manage-rooms`          | Room naming and mapping                                      |
-| `approve-verifications` | The verification queue, and the emails on it                 |
-| `manage-members`        | Viewing the member list, suspending a member                 |
-| `manage-roles`          | Creating roles, changing what a role can do, assigning roles |
-| `view-analytics`        | The analytics dashboard                                      |
-| `post`                  | Creating content in future modules                           |
-| `moderate`              | Hiding content, handling reports                             |
+| Permission              | Guards                                                      |
+| ----------------------- | ----------------------------------------------------------- |
+| `manage-timetable`      | Ingestion controls, term and section edits                  |
+| `manage-rooms`          | Room naming and mapping                                     |
+| `approve-verifications` | The verification queue, and the emails on it                |
+| `manage-members`        | Viewing the member list                                     |
+| `manage-roles`          | Assigning and revoking a tenant's existing roles            |
+| `restrict-members`      | Restricting a member to read-only, suspending their sign in |
+| `view-analytics`        | The analytics dashboard                                     |
+| `post`                  | Creating content in future modules                          |
+| `moderate`              | Hiding content, handling reports                            |
 
 **Roles are tenant-scoped bundles of permissions, stored as data.** A tenant has
 its own roles; two tenants may both have a role keyed `moderator` with different
@@ -54,6 +55,56 @@ administer itself:
 **A user may hold several roles in a tenant, and effective permissions are the
 union.** That is the whole reason for the change: a person can be a teacher who
 also moderates, without inventing a `teacher_moderator` role.
+
+### Definitions and assignments are different powers
+
+Deciding **which roles exist and what each one carries** is not the same power as
+deciding **who holds one here**, and the two belong to different people:
+
+| Power                                            | Whose            | Where                        |
+| ------------------------------------------------ | ---------------- | ---------------------------- |
+| Create a role, change its permissions, retire it | Platform admin   | The platform host, no tenant |
+| View the definitions, read only                  | Tenant admin     | `/admin/roles`               |
+| Grant a role to a member, revoke it              | Tenant admin     | `/admin/members`             |
+| Hold a role                                      | Anyone in tenant | `membership_roles`           |
+
+Until this split, `manage-roles` carried both, and that is an escalation hole
+rather than a convenience. A tenant administrator could mint a role carrying
+`communities.unmask`, a permission the catalogue deliberately gives to **nobody**,
+and grant it to themselves; nothing compared the new role against the granter's
+own. The catalogue's careful default was one form submission away from being
+undone by the person it was written to constrain.
+
+**Definitions become platform-level templates.**
+
+```
+role_templates             (key, name, is_system, created_at, updated_at)
+                           pk (key)                     -- no tenant_id
+role_template_permissions  (template_key, permission)   pk (template_key, permission)
+```
+
+There is no `tenant_id` on either, because a definition is not a tenant's to
+own. A platform admin edits them at `campusos.reivex.io`, which has no tenant
+context, so this needs no cross-tenant grant and does not wait for Phase 5.
+
+A tenant's `roles` and `role_permissions` rows stay exactly as they are, and
+become **materialisations** of the templates: written when a tenant is created,
+and rewritten when a template changes, by a sync of the same shape as
+`pnpm tenants:sync`. Every permission check keeps reading the tenant's own rows
+through `auth_effective_permissions`, so the hot path does not change at all.
+
+**Assignment gets the rule that was missing.** A grant is refused when the target
+role carries any permission the granting actor does not themselves hold:
+
+> nobody may grant a power they do not have.
+
+That is one set comparison against `auth_effective_permissions` for the actor,
+inside the granting transaction. It makes `communities.unmask` behave as written:
+a tenant admin cannot reach it, because they do not hold it.
+
+`manage-roles` therefore narrows to assigning and revoking. The permission that
+edits definitions is not in the tenant catalogue at all: it is platform-admin
+status, which is a `platform_roles` row and not a tenant permission.
 
 ### Tables
 
@@ -219,13 +270,74 @@ are shaped to receive it.
   the log fails, the action rolls back. `audit_log` is already append-only at the
   database level, with a trigger that refuses updates and deletes.
 - **Assigning tenant admins** replaces `adminEmails`. The file list is read once
-  during migration to seed the existing grants, then retired.
+  during migration to seed the existing grants, then retired. Creating a tenant
+  and appointing its first administrator are one act: a tenant with nobody who
+  can administer it is a tenant nobody can finish setting up.
 
 The security review of this design is the gate before any of it is written.
 
 ---
 
-## 6. Phases
+## 6. Membership, restriction, and suspension
+
+Three things about a person in a tenant are separate, and conflating any two of
+them is how this goes wrong:
+
+| Thing            | What it says                                | Where it lives                          |
+| ---------------- | ------------------------------------------- | --------------------------------------- |
+| **Role**         | What they may do                            | `membership_roles` → `role_permissions` |
+| **Verification** | Whether the university has confirmed them   | `tenant_memberships.verified_at`        |
+| **Standing**     | Whether they may act, or sign in, right now | `tenant_memberships.status`             |
+
+**Everyone who signs in gets `student`.** Not only those whose address matches
+the tenant's domain: a membership is created for any signed-in person on the
+tenant they signed in on, with the `student` role, which carries reading and
+nothing else that matters. Verification is layered on top and is what
+`communities.post`, `communities.comment`, `communities.vote` and
+`communities.create` actually wait for. The domain policy decides whether
+verification is automatic, not whether the person exists here.
+
+That is a change from `ensureDomainMembership`, which returned null and wrote
+nothing for an address off the list, leaving a signed-in person with no
+membership at all and therefore no way to even request verification from a page
+that reads their membership to render itself.
+
+**Standing has three values, and only one is a punishment of the account.**
+
+| Status       | May sign in | May read | May write | Set by             |
+| ------------ | ----------- | -------- | --------- | ------------------ |
+| `active`     | yes         | yes      | yes       | joining            |
+| `restricted` | yes         | yes      | **no**    | `restrict-members` |
+| `suspended`  | **no**      | no       | no        | `restrict-members` |
+
+`restricted` is what today's `suspended` already does and all it does: every
+write in the communities module passes one choke point, `isVerifiedMember`,
+which requires `status = 'active'`, so a non-active membership is read-only
+already. This renames it honestly and gives it the three things it lacked: a
+reason, an actor, and an expiry.
+
+`suspended` is new and is enforced one layer lower, where a session resolves
+into an actor. A suspended person is signed out of that tenant, not of the
+platform: the same account may be in good standing at another university.
+
+Both are reversible, both carry `restriction_reason`, `restricted_by` and
+`restricted_until` (null meaning until lifted), and both write an `audit_log`
+line in the same transaction as the change.
+
+**Nothing is ever shadow-applied.** A restricted person is shown what was done,
+why, and until when, and may leave one appeal note that reaches the tenant's
+administrators. A system that lies to the person it is punishing cannot be
+appealed against, and an unappealable moderation system is one that never
+learns it was wrong.
+
+**The ladder.** A community moderator bans and mutes inside their own community
+and nowhere else. A tenant administrator restricts and suspends inside their own
+tenant. A platform administrator does the same in any tenant, under the Phase 5
+grant, as that tenant's administrator and never as more.
+
+---
+
+## 7. Phases
 
 | Phase | What                                                      | Risk                                |
 | ----- | --------------------------------------------------------- | ----------------------------------- |
@@ -234,5 +346,13 @@ The security review of this design is the gate before any of it is written.
 | 3     | Analytics with activity timing                            | Safe, additive                      |
 | 4     | Tenant config file → database, super-admin tenant CRUD    | Delicate: touches the live tenant   |
 | 5     | Cross-tenant god-mode                                     | Gate: planned, reviewed, then built |
+| 6     | Role definitions to platform templates; no upward grant   | Delicate: moves an existing power   |
+| 7     | Membership for everyone; restriction and suspension       | Safe, additive; one status rename   |
 
 Each phase is its own pull request, green in CI, merged before the next begins.
+
+Phases 6 and 7 do not wait for 5. Definitions move to the platform host, which
+has no tenant context and therefore needs no cross-tenant grant; restriction and
+suspension are a tenant administrator's powers, which exist already. Phase 5 adds
+one line to each: a platform administrator, acting under a grant, is that
+tenant's administrator and can do exactly what one can.
