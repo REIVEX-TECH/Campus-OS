@@ -431,12 +431,63 @@ describe('handles', () => {
 });
 
 describe('platform_roles', () => {
-  it('are visible only to the user who holds them', async () => {
-    await withActor(alice, (tx) =>
-      tx.insert(platformRoles).values({ userId: alice, role: 'platform_admin' }),
-    );
+  it('cannot be written directly by the application role, only read as oneself', async () => {
+    // Hole closed (0016): the row policy is SELECT-only, so a signed-in request
+    // cannot write itself a platform-admin row. Before this the FOR ALL policy
+    // let `user_id = app.user_id` through, and only TypeScript stood between a
+    // stray insert and god-mode.
+    await expect(
+      withActor(alice, (tx) =>
+        tx.insert(platformRoles).values({ userId: alice, role: 'platform_admin' }),
+      ),
+    ).rejects.toThrow();
+    // Still nobody, because the write did not happen.
+    expect(await withActor(alice, (tx) => tx.select().from(platformRoles))).toHaveLength(0);
+  });
+
+  it('are granted only by the definer, only to the caller, only if allowlisted', async () => {
+    const grant = (userId: string, list: string[]) =>
+      withActor(userId, async (tx) => {
+        const [row] = [
+          ...(await tx.execute(
+            sql`select auth_grant_platform_admin(
+                  ${
+                    list.length === 0
+                      ? sql`array[]::text[]`
+                      : sql`array[${sql.join(
+                          list.map((e) => sql`${e}`),
+                          sql`, `,
+                        )}]::text[]`
+                  }
+                ) as granted`,
+          )),
+        ] as { granted: boolean }[];
+        return row?.granted === true;
+      });
+
+    // An empty allowlist promotes nobody: fail closed, no first-user fallback.
+    expect(await grant(alice, [])).toBe(false);
+    // A junk entry is not a wildcard, even one that contains an '@'.
+    expect(await grant(alice, ['@', 'x@', alice + '-not'])).toBe(false);
+    // An address that is not the caller's does not promote the caller.
+    expect(await grant(alice, ['bob@bbb.edu'])).toBe(false);
+    expect(await withActor(alice, (tx) => tx.select().from(platformRoles))).toHaveLength(0);
+
+    // The caller's own verified email, on the list, promotes them once.
+    expect(await grant(alice, ['ALICE@aaa.edu'])).toBe(true);
+    expect(await grant(alice, ['alice@aaa.edu'])).toBe(false); // already one; nothing written
+    // Visible only to the holder, as before.
     expect(await withActor(alice, (tx) => tx.select().from(platformRoles))).toHaveLength(1);
     expect(await withActor(bob, (tx) => tx.select().from(platformRoles))).toHaveLength(0);
+    expect(await isPlatformAdmin(alice)).toBe(true);
+    expect(await isPlatformAdmin(bob)).toBe(false);
+
+    // The grant wrote its own audit line, in the same statement.
+    const log = await withActor(alice, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'platform.admin_granted')),
+    );
+    expect(log).toHaveLength(1);
+    expect(log[0]!.actorUserId).toBe(alice);
   });
 });
 
@@ -498,7 +549,10 @@ describe('row security invariants', () => {
     // ever pointed at the owner credential by mistake.
     // Joined by auth_effective_permissions, so FORCE must stay off here too.
     tenant_memberships: false,
-    platform_roles: true,
+    // Written by auth_grant_platform_admin, a definer, so FORCE is off (0016):
+    // the app role is a non-owner and still bound to the SELECT-only policy, so
+    // it cannot write the table; the owner (the definer) can.
+    platform_roles: false,
     audit_log: true,
     user_recents: true,
     verification_requests: true,
