@@ -79,7 +79,12 @@ verification.
 
 ## Tests
 
-- Integration (three cases, two rewritten and one new): a restriction removes
+- Integration, the membership floor (two rewritten): an address off the domain
+  list now gets a `student` membership with `verifiedAt` null rather than
+  nothing at all, visible to them in this tenant and in no other; a tenant that
+  joins by invitation gives the same, because an invitation decides who is
+  verified and not who may read.
+- Integration, standing (three cases, two rewritten and one new): a restriction removes
   every permission, is visible to the person with its reason, is listed to an
   administrator, takes one appeal note that a lift clears, and lifting is
   idempotent; a suspension with a duration reports its end, and a duration

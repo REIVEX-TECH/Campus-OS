@@ -1,9 +1,9 @@
-import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { recordAudit } from './audit';
 import { canInTransaction } from './rbac';
-import { tenantMemberships, users } from './schema/identity';
+import { tenantMemberships } from './schema/identity';
 
 /**
  * Standing: whether a person may act in a tenant right now.
@@ -275,31 +275,47 @@ export async function listStandings(
     if (!(await canInTransaction(tx, actor.userId, tenantId, 'restrict-members'))) {
       return err('not_allowed');
     }
-    const rows = await tx
-      .select({
-        userId: tenantMemberships.userId,
-        handle: users.handle,
-        avatarSeed: users.avatarSeed,
-        status: tenantMemberships.status,
-        standingReason: tenantMemberships.standingReason,
-        standingUntil: tenantMemberships.standingUntil,
-        standingAt: tenantMemberships.standingAt,
-        appealNote: tenantMemberships.appealNote,
-        appealAt: tenantMemberships.appealAt,
-      })
-      .from(tenantMemberships)
-      .innerJoin(users, eq(users.id, tenantMemberships.userId))
-      .where(
-        and(
-          eq(tenantMemberships.tenantId, tenantId),
-          ne(tenantMemberships.status, 'active'),
-          or(
-            isNull(tenantMemberships.standingUntil),
-            sql`${tenantMemberships.standingUntil} > now()`,
-          ),
-        ),
-      )
-      .orderBy(desc(tenantMemberships.standingAt));
+    // `users` is readable only to its owner, so another member's handle comes
+    // from `public_profiles`, the sanctioned view, exactly as the member list
+    // reads it. Joining `users` here returned nothing at all and said nothing.
+    const rows = [
+      ...(await tx.execute(sql`
+        select m.user_id, p.handle, coalesce(p.avatar_seed, m.user_id::text) as avatar_seed,
+               m.status, m.standing_reason, m.standing_until, m.standing_at,
+               m.appeal_note, m.appeal_at
+        from tenant_memberships m
+        left join public_profiles p on p.user_id = m.user_id
+        where m.tenant_id = ${tenantId}
+          and m.status <> 'active'
+          and (m.standing_until is null or m.standing_until > now())
+        order by m.standing_at desc nulls last`)),
+    ].map((row) => {
+      const r = row as {
+        user_id: string;
+        handle: string | null;
+        avatar_seed: string;
+        status: string;
+        standing_reason: string | null;
+        standing_until: string | Date | null;
+        standing_at: string | Date | null;
+        appeal_note: string | null;
+        appeal_at: string | Date | null;
+      };
+      // Raw rows carry their timestamps as text.
+      const date = (value: string | Date | null) =>
+        value === null ? null : value instanceof Date ? value : new Date(value);
+      return {
+        userId: r.user_id,
+        handle: r.handle ?? '',
+        avatarSeed: r.avatar_seed,
+        status: r.status,
+        standingReason: r.standing_reason,
+        standingUntil: date(r.standing_until),
+        standingAt: date(r.standing_at),
+        appealNote: r.appeal_note,
+        appealAt: date(r.appeal_at),
+      };
+    });
     return ok(
       rows.map((r) => {
         const standing = effective(r);

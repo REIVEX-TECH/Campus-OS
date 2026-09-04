@@ -27,7 +27,12 @@ import {
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
-import { ensureConfiguredAdmin, ensureDomainMembership, membershipFor } from '../src/membership';
+import {
+  ensureConfiguredAdmin,
+  ensureDomainMembership,
+  isVerified,
+  membershipFor,
+} from '../src/membership';
 import {
   can,
   effectivePermissions,
@@ -548,15 +553,34 @@ describe('membership by domain', () => {
     expect(await membershipFor(actor.userId, 'bbb')).toBeNull();
   });
 
-  it('does nothing for anyone else', async () => {
+  it('makes anyone else a student too, but unverified', async () => {
     const actor = await findOrCreateUser({ subject: 'dom-2', email: 'someone@gmail.com' });
-    expect(await ensureDomainMembership(actor, policy)).toBeNull();
-    expect(await membershipFor(actor.userId, 'aaa')).toBeNull();
+    const membership = await ensureDomainMembership(actor, policy);
+    // The floor everyone stands on: a place to read from and to ask from.
+    // Before this an address off the list got nothing, which left the person
+    // unable to reach the page that would have let them ask to be verified.
+    expect(membership).toMatchObject({
+      tenantId: 'aaa',
+      role: 'student',
+      status: 'active',
+      verifiedAt: null,
+      verificationMethod: null,
+    });
+    expect(isVerified(membership)).toBe(false);
+    expect(await membershipFor(actor.userId, 'aaa')).toMatchObject({ id: membership!.id });
+    // And it grants nothing anywhere else.
+    expect(await membershipFor(actor.userId, 'bbb')).toBeNull();
   });
 
-  it('does nothing for a tenant that joins by invitation', async () => {
+  it('does the same for a tenant that joins by invitation', async () => {
+    // An invitation decides who is verified, not who may read: the same
+    // address on the domain list is still unverified here, because this
+    // tenant does not verify by domain at all.
     const actor = await findOrCreateUser({ subject: 'dom-3', email: 'student@aaa.edu' });
-    expect(await ensureDomainMembership(actor, { ...policy, joinMode: 'invite' })).toBeNull();
+    expect(await ensureDomainMembership(actor, { ...policy, joinMode: 'invite' })).toMatchObject({
+      role: 'student',
+      verifiedAt: null,
+    });
   });
 
   it('is idempotent across sign ins', async () => {
