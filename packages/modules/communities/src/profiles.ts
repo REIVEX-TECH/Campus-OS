@@ -22,12 +22,6 @@ export interface Profile {
   avatarSeed: string;
 }
 
-export interface Karma {
-  posts: number;
-  comments: number;
-  total: number;
-}
-
 export interface AuthoredComment {
   id: string;
   body: string;
@@ -51,37 +45,6 @@ export async function profileByHandle(tenantId: string, handle: string): Promise
       .where(sql`lower(${publicProfiles.handle}) = ${wanted}`)
       .limit(1);
     return row ? { userId: row.userId, handle: row.handle, avatarSeed: row.avatarSeed } : null;
-  });
-}
-
-/** Score summed over what a person wrote under their handle, live items only. */
-export async function karmaOf(tenantId: string, userId: string): Promise<Karma> {
-  return withTenant(tenantId, async (tx) => {
-    const [p] = await tx
-      .select({ n: sql<number>`coalesce(sum(${postsRead.score}), 0)::int` })
-      .from(postsRead)
-      .where(
-        and(
-          eq(postsRead.tenantId, tenantId),
-          eq(postsRead.publicAuthorId, userId),
-          isNull(postsRead.deletedAt),
-          isNull(postsRead.removedAt),
-        ),
-      );
-    const [c] = await tx
-      .select({ n: sql<number>`coalesce(sum(${commentsRead.score}), 0)::int` })
-      .from(commentsRead)
-      .where(
-        and(
-          eq(commentsRead.tenantId, tenantId),
-          eq(commentsRead.publicAuthorId, userId),
-          isNull(commentsRead.deletedAt),
-          isNull(commentsRead.removedAt),
-        ),
-      );
-    const posts = p?.n ?? 0;
-    const cm = c?.n ?? 0;
-    return { posts, comments: cm, total: posts + cm };
   });
 }
 

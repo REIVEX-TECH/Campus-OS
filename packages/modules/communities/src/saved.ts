@@ -114,7 +114,10 @@ export async function listSavedPosts(
       .innerJoin(postsRead, eq(postsRead.id, savedItems.itemId))
       .leftJoin(communities, eq(communities.id, postsRead.communityId))
       .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
-      .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
+      .leftJoin(
+        postVotes,
+        and(eq(postVotes.postId, postsRead.id), eq(postVotes.userId, actor.userId)),
+      )
       .where(
         and(
           eq(savedItems.userId, actor.userId),

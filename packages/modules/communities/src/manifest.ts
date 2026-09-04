@@ -22,6 +22,13 @@ export const settingsSchema = z.object({
   /** Open reports on one item before it is hidden pending a moderator. */
   reportThreshold: z.number().int().min(2).max(20).default(3),
   karmaVisible: z.boolean().default(false),
+  /**
+   * The most karma one account may give another in a day, in either direction.
+   * A cap on the net, so changing a vote and changing it back costs nothing:
+   * it stops a pair of accounts inflating each other and a grudge burying
+   * anyone, without making an ordinary reader's votes stop counting.
+   */
+  karmaVotePerDayCap: z.number().int().min(1).max(100).default(10),
   archiveAfterMonths: z.number().int().min(1).nullable().default(null),
 });
 

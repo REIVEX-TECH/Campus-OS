@@ -280,8 +280,14 @@ async function readTree(
     })
     .from(commentsRead)
     .leftJoin(publicProfiles, eq(publicProfiles.userId, commentsRead.publicAuthorId))
-    // Own-row tables: these joins yield the viewer's rows and nobody else's.
-    .leftJoin(commentVotes, eq(commentVotes.commentId, commentsRead.id))
+    // The vote join names the viewer: the own-row policy alone stopped being
+    // enough when the vote tables lost FORCE for the karma recompute (0006).
+    .leftJoin(
+      commentVotes,
+      viewer
+        ? and(eq(commentVotes.commentId, commentsRead.id), eq(commentVotes.userId, viewer.userId))
+        : sql`false`,
+    )
     .leftJoin(
       savedItems,
       and(eq(savedItems.itemType, 'comment'), eq(savedItems.itemId, commentsRead.id)),

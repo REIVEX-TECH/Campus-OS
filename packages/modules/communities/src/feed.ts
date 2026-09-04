@@ -198,7 +198,7 @@ export function scopeWhere(
   }
 }
 
-export function selectPosts(tx: TenantTransaction) {
+export function selectPosts(tx: TenantTransaction, viewer: { userId: string } | null) {
   return (
     tx
       .select({
@@ -213,8 +213,14 @@ export function selectPosts(tx: TenantTransaction) {
       .from(postsRead)
       .leftJoin(communities, eq(communities.id, postsRead.communityId))
       .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
-      // Own-row tables: these joins yield the viewer's rows and nobody else's.
-      .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
+      // The vote join names the viewer: the own-row policy alone stopped being
+      // enough when the vote tables lost FORCE for the karma recompute (0006).
+      .leftJoin(
+        postVotes,
+        viewer
+          ? and(eq(postVotes.postId, postsRead.id), eq(postVotes.userId, viewer.userId))
+          : sql`false`,
+      )
       .leftJoin(
         savedItems,
         and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)),
@@ -255,7 +261,7 @@ async function page(
   // A community's pinned posts lead its first page, in every sort, outside the cursor.
   const pinned =
     scope.kind === 'community' && !options.cursor
-      ? await selectPosts(tx)
+      ? await selectPosts(tx, viewer)
           .where(
             and(
               eq(postsRead.tenantId, tenantId),
@@ -270,7 +276,7 @@ async function page(
           .limit(10)
       : [];
 
-  const rows = await selectPosts(tx)
+  const rows = await selectPosts(tx, viewer)
     .where(
       and(
         eq(postsRead.tenantId, tenantId),

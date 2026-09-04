@@ -35,7 +35,7 @@ async function findPosts(
   limit: number,
 ): Promise<PostView[]> {
   const query = tsquery(q);
-  const rows = await selectPosts(tx)
+  const rows = await selectPosts(tx, viewer)
     .where(
       and(
         eq(postsRead.tenantId, tenantId),

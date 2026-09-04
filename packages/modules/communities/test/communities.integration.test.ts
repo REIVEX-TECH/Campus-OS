@@ -34,7 +34,8 @@ import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { listFlairs, setFlairs } from '../src/flairs';
 import { crosspost } from '../src/crosspost';
-import { commentsByAuthor, isBlocked, karmaOf, profileByHandle } from '../src/profiles';
+import { ownKarma, publicKarma, publicKarmaFor, recomputeKarma } from '../src/karma';
+import { commentsByAuthor, isBlocked, profileByHandle } from '../src/profiles';
 import { archiveIdle, setArchived } from '../src/archive';
 import { pollFor, votePoll } from '../src/polls';
 import { searchCommunities, searchPosts } from '../src/search';
@@ -166,10 +167,12 @@ describe('row security invariants', () => {
     user_flairs: true,
     posts: true,
     post_edits: true,
-    post_votes: true,
+    // Read by communities_karma_recompute, so FORCE must be off. Their
+    // restrictive own-row policy binds the owner too while it is on.
+    post_votes: false,
     comments: true,
     comment_edits: true,
-    comment_votes: true,
+    comment_votes: false,
     saved_items: true,
     hidden_items: true,
     reports: true,
@@ -334,8 +337,10 @@ describe('votes and ranking', () => {
   it('counts one vote per person, moves it, and recomputes the ranking', async () => {
     const owner = await member('vote-owner');
     const voter = await member('vote-voter');
+    const second = await member('vote-second');
     const c = await community(owner);
     await joinCommunity(voter, 'aaa', c.id);
+    await joinCommunity(second, 'aaa', c.id);
     const post = await createPost(
       owner,
       'aaa',
@@ -358,7 +363,12 @@ describe('votes and ranking', () => {
       ok: true,
       value: { upVotes: 0, downVotes: 1, score: -1 },
     });
+    // The author's own vote is refused, so the second upvote is somebody else's.
     expect(await votePost(owner, 'aaa', post.value.id, 1)).toEqual({
+      ok: false,
+      error: 'self_vote',
+    });
+    expect(await votePost(second, 'aaa', post.value.id, 1)).toEqual({
       ok: true,
       value: { upVotes: 1, downVotes: 1, score: 0 },
     });
@@ -1945,8 +1955,20 @@ describe('profiles and private lists', () => {
     expect((await commentsByAuthor('aaa', author.userId)).map((x) => x.body)).toEqual([
       'a signed comment',
     ]);
-    // Karma counts the signed post and comment, not the anonymous post.
-    expect(await karmaOf('aaa', author.userId)).toEqual({ posts: 1, comments: 1, total: 2 });
+    // The public number counts the signed post and comment and not the
+    // anonymous post, which is the whole reason there are two.
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 1, comments: 1, total: 2 });
+    // Their own number counts the anonymous post too, and nobody else can ask
+    // for it: `ownKarma` reads the caller's row and the policy allows no other.
+    expect(await ownKarma(author, 'aaa')).toEqual({
+      posts: 2,
+      comments: 1,
+      total: 3,
+      publicPosts: 1,
+      publicComments: 1,
+      publicTotal: 2,
+    });
+    expect(await ownKarma(fan, 'aaa')).toMatchObject({ total: 0 });
     // The private anonymous list is the author's alone.
     expect((await myAnonymousPosts(author, 'aaa')).map((p) => p.title)).toEqual(['Unsigned words']);
     expect(await myAnonymousPosts(fan, 'aaa')).toEqual([]);
@@ -2089,5 +2111,162 @@ describe('polish: rules acceptance, archive, held across the tenant', () => {
     expect(mine.ok && mine.value.map((h) => h.communityId)).toEqual([c1.id]);
     const all = await listHeld(overseer, 'aaa', null);
     expect(all.ok && all.value.map((h) => h.communityId).sort()).toEqual([c1.id, c2.id].sort());
+  });
+});
+
+describe('karma: what other people did', () => {
+  it('counts votes received, refuses an author their own, and keeps the anonymous half private', async () => {
+    const owner = await member('k-owner');
+    const author = await member('k-author');
+    const fan = await member('k-fan');
+    const c = await community(owner, 'Karma');
+    await joinCommunity(author, 'aaa', c.id);
+    await joinCommunity(fan, 'aaa', c.id);
+    const post = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'A post', body: '' },
+      settings,
+    );
+    if (!post.ok) throw new Error(post.error);
+    const comment = await createComment(
+      author,
+      'aaa',
+      post.value.id,
+      null,
+      { body: 'and a comment' },
+      settings,
+    );
+    if (!comment.ok) throw new Error('setup');
+
+    // Nothing accrues for writing it. Karma is what other people did.
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
+
+    // An author's own vote is refused rather than counted and then subtracted,
+    // so the tally on the item and the karma agree about what happened.
+    expect(await votePost(author, 'aaa', post.value.id, 1)).toEqual({
+      ok: false,
+      error: 'self_vote',
+    });
+    expect(await voteComment(author, 'aaa', comment.value.id, 1)).toEqual({
+      ok: false,
+      error: 'self_vote',
+    });
+    expect((await postById(null, 'aaa', post.value.id))!.score).toBe(0);
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
+
+    await votePost(fan, 'aaa', post.value.id, 1);
+    await voteComment(fan, 'aaa', comment.value.id, 1);
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 1, comments: 1, total: 2 });
+
+    // A downvote takes it away again, and clearing the vote puts it back: the
+    // ledger holds the net, so the same voter cannot pump by toggling.
+    await votePost(fan, 'aaa', post.value.id, -1);
+    expect(await publicKarma('aaa', author.userId)).toMatchObject({ posts: -1, total: 0 });
+    await votePost(fan, 'aaa', post.value.id, 0);
+    expect(await publicKarma('aaa', author.userId)).toMatchObject({ posts: 0, total: 1 });
+    await votePost(fan, 'aaa', post.value.id, 1);
+    expect(await publicKarma('aaa', author.userId)).toMatchObject({ posts: 1, total: 2 });
+
+    // An anonymous item is the author's, and stays out of the public number.
+    const anon = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Unsigned', body: '', isAnonymous: true },
+      settings,
+    );
+    if (!anon.ok) throw new Error('setup');
+    await votePost(fan, 'aaa', anon.value.id, 1);
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 1, comments: 1, total: 2 });
+    expect(await ownKarma(author, 'aaa')).toMatchObject({ posts: 2, total: 3, publicTotal: 2 });
+
+    // The ledger names a voter and an author side by side, so the application
+    // may not read it at all: seeing one row would name an anonymous author.
+    const ledger = await withActorInTenant(fan.userId, 'aaa', (tx) =>
+      tx.execute(sql`select count(*)::int as n from karma_ledger`),
+    );
+    // One row, not three: the cap is per voter per author per day, and all
+    // three votes were one person's, on one person's items, on one day.
+    expect(([...ledger] as { n: number }[])[0]!.n).toBe(split ? 0 : 1);
+
+    // And it is per tenant: the same person starts at nothing next door.
+    await member('k-author', 'bbb');
+    expect(await publicKarma('bbb', author.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
+  });
+
+  it('caps how far one account can move another in a day, and rebuilds the same total', async () => {
+    // Two is enough to show the shape, and keeps the fixture inside the
+    // per-hour comment limit. The default is ten.
+    await runAsMigrationRole(
+      `insert into tenant_configs (slug, config) values ('aaa', '{"moduleSettings":{"communities":{"karmaVotePerDayCap":2}}}'::jsonb)
+       on conflict (slug) do update set config = excluded.config`,
+    );
+    const owner = await member('cap-owner');
+    const author = await member('cap-author');
+    const fan = await member('cap-fan');
+    const other = await member('cap-other');
+    const c = await community(owner, 'Capped');
+    for (const who of [author, fan, other]) await joinCommunity(who, 'aaa', c.id);
+    const post = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Thread', body: '' },
+      settings,
+    );
+    if (!post.ok) throw new Error(post.error);
+    const ids: string[] = [];
+    for (const body of ['one', 'two', 'three', 'four']) {
+      const made = await createComment(author, 'aaa', post.value.id, null, { body }, settings);
+      if (!made.ok) throw new Error('setup');
+      ids.push(made.value.id);
+    }
+
+    for (const id of ids) await voteComment(fan, 'aaa', id, 1);
+    // Four upvotes from one account, two of them counted. The votes themselves
+    // all landed: the cap is on the karma, not on being allowed to vote.
+    expect(await publicKarma('aaa', author.userId)).toMatchObject({ comments: 2, total: 2 });
+    expect((await commentsByAuthor('aaa', author.userId)).every((x) => x.score === 1)).toBe(true);
+
+    // A second account has its own budget, so a real thread still adds up.
+    for (const id of ids) await voteComment(other, 'aaa', id, 1);
+    expect(await publicKarma('aaa', author.userId)).toMatchObject({ comments: 4, total: 4 });
+
+    // The table is a cache of a derivation, and this is the derivation.
+    const before = await publicKarma('aaa', author.userId);
+    await runAsMigrationRole(`delete from community_karma where tenant_id = 'aaa'`);
+    expect(await publicKarma('aaa', author.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
+    // Eight votes replayed, four of them counted: the cap applies on the way
+    // back in exactly as it did the first time.
+    expect(await recomputeKarma('aaa')).toBe(4);
+    expect(await publicKarma('aaa', author.userId)).toEqual(before);
+  });
+
+  it('answers for several people in one query, and zero for someone nobody voted on', async () => {
+    const owner = await member('many-owner');
+    const author = await member('many-author');
+    const quiet = await member('many-quiet');
+    const fan = await member('many-fan');
+    const c = await community(owner, 'Many');
+    await joinCommunity(author, 'aaa', c.id);
+    await joinCommunity(fan, 'aaa', c.id);
+    const post = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Hello', body: '' },
+      settings,
+    );
+    if (!post.ok) throw new Error(post.error);
+    await votePost(fan, 'aaa', post.value.id, 1);
+    const found = await publicKarmaFor('aaa', [author.userId, quiet.userId, quiet.userId]);
+    expect(found.get(author.userId)).toEqual({ posts: 1, comments: 0, total: 1 });
+    // Nobody has voted on them, so there is no row and the page shows nothing
+    // rather than waiting for one.
+    expect(found.get(quiet.userId)).toBeUndefined();
+    expect(await publicKarma('aaa', quiet.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
+    expect(await publicKarmaFor('aaa', [])).toEqual(new Map());
   });
 });

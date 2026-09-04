@@ -43,6 +43,13 @@
       "when": 1756800105000,
       "tag": "0005_rules_acceptance",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1756800106000,
+      "tag": "0006_karma",
+      "breakpoints": true
     }
   ]
 }

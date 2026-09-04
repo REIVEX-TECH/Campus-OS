@@ -14,6 +14,7 @@
     "./posts": "./src/posts.ts",
     "./comments": "./src/comments.ts",
     "./votes": "./src/votes.ts",
+    "./karma": "./src/karma.ts",
     "./moderation": "./src/moderation.ts",
     "./directory": "./src/directory.ts",
     "./settings": "./src/settings.ts",

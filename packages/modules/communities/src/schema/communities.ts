@@ -551,3 +551,36 @@ export const publicProfiles = pgView('public_profiles', {
   handle: text('handle').notNull(),
   avatarSeed: text('avatar_seed').notNull(),
 }).existing();
+
+/**
+ * Karma, materialised. Two totals per person per tenant: everything they wrote
+ * and the signed part of it. The private pair is summed on `author_id`, which
+ * the application role cannot read, so only the definer writes here; the
+ * policy lets a person read their own row and nothing else. (0006)
+ */
+export const communityKarma = pgTable(
+  'community_karma',
+  {
+    tenantId: text('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    postKarma: integer('post_karma').notNull().default(0),
+    commentKarma: integer('comment_karma').notNull().default(0),
+    publicPostKarma: integer('public_post_karma').notNull().default(0),
+    publicCommentKarma: integer('public_comment_karma').notNull().default(0),
+    updatedAt: tz('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
+);
+
+/**
+ * The signed half of karma, for anyone in the tenant. Bound to the caller's
+ * tenant by the view itself, so it can only ever answer for the university
+ * they are looking at.
+ */
+export const karmaPublic = pgView('karma_public', {
+  tenantId: text('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  postKarma: integer('post_karma').notNull(),
+  commentKarma: integer('comment_karma').notNull(),
+  karma: integer('karma').notNull(),
+}).existing();

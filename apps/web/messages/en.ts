@@ -630,6 +630,7 @@ export const en = {
   'communities.error.muted': 'You are muted in this community for now.',
   'communities.error.pin_cap': 'This community has as many pinned posts as it can have.',
   'communities.error.self': 'That is you.',
+  'communities.error.selfVote': 'You cannot vote on your own post or comment.',
   'communities.error.failed': 'That did not go through. You can try again.',
   'communities.back': 'All communities',
   'feeds.home': 'Home',
@@ -846,6 +847,8 @@ export const en = {
   'mod.action.pin_order': 'reordered the pins',
   'mod.action.flairs.updated': 'changed the flairs',
   'profile.karma': '{count} karma',
+  'profile.karmaPrivate':
+    'Including {count} from what you posted anonymously. Only you see that part.',
   'profile.tabsLabel': 'Profile sections',
   'profile.posts': 'Posts',
   'profile.comments': 'Comments',

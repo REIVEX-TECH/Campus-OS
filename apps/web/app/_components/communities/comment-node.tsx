@@ -13,6 +13,8 @@ export type CommentData = {
   body: string;
   author: { handle: string; avatarSeed: string } | null;
   authorHref: string | null;
+  /** The author's public karma, when the tenant shows it. Null when it does not, or anonymous. */
+  karma: number | null;
   isAnonymous: boolean;
   isOwn: boolean;
   myVote: -1 | 0 | 1;
@@ -41,6 +43,8 @@ export type CommentLabels = {
   collapse: string;
   /** "{count}" is replaced. */
   expand: string;
+  /** "{count}" is replaced. */
+  karma: string;
   reply: string;
   edit: string;
   save: string;
@@ -191,6 +195,9 @@ export function CommentNode({
             <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">
               {labels.mod}
             </span>
+          ) : null}
+          {!gone && comment.karma !== null ? (
+            <span>{labels.karma.replace('{count}', String(comment.karma))}</span>
           ) : null}
           <span>{comment.when}</span>
           {comment.edited && !gone ? <span>{labels.edited}</span> : null}
