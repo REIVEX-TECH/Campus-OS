@@ -26,7 +26,8 @@
     "./queue": "./src/queue.ts",
     "./oversight": "./src/oversight.ts",
     "./automod": "./src/automod.ts",
-    "./polls": "./src/polls.ts"
+    "./polls": "./src/polls.ts",
+    "./notifications": "./src/notifications.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

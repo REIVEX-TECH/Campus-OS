@@ -436,6 +436,28 @@ export const moderationActions = pgTable(
   (t) => [index('moderation_actions_community_idx').on(t.communityId, t.createdAt)],
 );
 
+/** A recipient's own rows; written by communities_notify, so not forced. */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    /** comment_on_post | reply | post_removed | comment_removed */
+    kind: text('kind').notNull(),
+    /** The person who acted, only when they acted under their handle. */
+    actorId: uuid('actor_id'),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' }),
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'cascade' }),
+    readAt: tz('read_at'),
+    createdAt,
+  },
+  (t) => [index('notifications_inbox_idx').on(t.tenantId, t.userId, t.createdAt, t.id)],
+);
+
 export const automodRules = pgTable(
   'automod_rules',
   {

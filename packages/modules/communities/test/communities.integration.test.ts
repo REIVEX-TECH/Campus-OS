@@ -29,6 +29,7 @@ import { listCommunities, listPendingCommunities, membershipState } from '../src
 import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
 import { listHeld, listModLog, listQueue } from '../src/queue';
 import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
+import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { pollFor, votePoll } from '../src/polls';
 import {
   approveItem,
@@ -157,6 +158,8 @@ describe('row security invariants', () => {
     automod_rules: true,
     poll_options: true,
     poll_votes: true,
+    // Written by communities_notify for a recipient the app never reads, so no FORCE.
+    notifications: false,
     // Read by auth_effective_community_permissions, so FORCE must be off.
     community_memberships: false,
     community_member_roles: false,
@@ -1506,5 +1509,88 @@ describe('polls', () => {
     ).toEqual({ ok: false, error: 'kind_not_allowed' });
     // A text post has no poll.
     expect(await pollFor(null, 'aaa', plain.id)).toBeNull();
+  });
+});
+
+describe('notifications', () => {
+  it('tells an author who replied under a handle, "someone" for an anonymous one, and nobody about themselves', async () => {
+    const owner = await member('nf-owner');
+    const m = await member('nf-member');
+    const other = await member('nf-other');
+    const c = await community(owner, 'Inbox Hall');
+    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(other, 'aaa', c.id);
+    const p = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Tell me things', body: '' },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+
+    // A signed comment names its author; an anonymous one does not; the author's own comment tells nobody.
+    const signed = await createComment(m, 'aaa', p.value.id, null, { body: 'hello' }, settings);
+    if (!signed.ok) throw new Error(signed.error);
+    await createComment(
+      other,
+      'aaa',
+      p.value.id,
+      null,
+      { body: 'psst', isAnonymous: true },
+      settings,
+    );
+    await createComment(owner, 'aaa', p.value.id, null, { body: 'my own' }, settings);
+    const inbox = await listNotifications(owner, 'aaa');
+    expect(inbox.items.map((n) => [n.kind, n.actor?.handle ?? null])).toEqual([
+      ['comment_on_post', null],
+      ['comment_on_post', expect.any(String)],
+    ]);
+    expect(inbox.items[1]?.actor?.handle).not.toBe('');
+    expect(
+      inbox.items.every((n) => n.postId === p.value.id && n.postTitle === 'Tell me things'),
+    ).toBe(true);
+    expect(JSON.stringify(inbox)).not.toContain(other.userId);
+    expect(await unreadCount(owner, 'aaa')).toBe(2);
+    // Nobody else's inbox has these.
+    expect((await listNotifications(m, 'aaa')).items).toEqual([]);
+    expect(await unreadCount(other, 'aaa')).toBe(0);
+
+    // A reply tells the parent's author, not the post's; a self reply tells nobody.
+    const reply = await createComment(
+      owner,
+      'aaa',
+      p.value.id,
+      signed.value.id,
+      { body: 'thanks' },
+      settings,
+    );
+    if (!reply.ok) throw new Error(reply.error);
+    await createComment(m, 'aaa', p.value.id, signed.value.id, { body: 'me again' }, settings);
+    const mInbox = await listNotifications(m, 'aaa');
+    expect(mInbox.items.map((n) => [n.kind, n.commentId])).toEqual([['reply', reply.value.id]]);
+    expect(await unreadCount(owner, 'aaa')).toBe(2);
+
+    // A removal tells the author it happened, not who did it.
+    expect(
+      (await removeItem(owner, 'aaa', 'comment', signed.value.id, { reason: 'Off topic' })).ok,
+    ).toBe(true);
+    const afterRemoval = await listNotifications(m, 'aaa');
+    expect(afterRemoval.items[0]).toMatchObject({ kind: 'comment_removed', actor: null });
+    expect(await unreadCount(m, 'aaa')).toBe(2);
+
+    // Marking read: some, then all; own rows only.
+    expect(await markRead(m, 'aaa', [afterRemoval.items[0]!.id])).toEqual({ marked: 1 });
+    expect(await unreadCount(m, 'aaa')).toBe(1);
+    expect(await markRead(owner, 'aaa', [afterRemoval.items[1]!.id])).toEqual({ marked: 0 });
+    expect(await markRead(m, 'aaa', 'all')).toEqual({ marked: 1 });
+    expect(await unreadCount(m, 'aaa')).toBe(0);
+    expect((await listNotifications(m, 'aaa')).items.every((n) => n.readAt !== null)).toBe(true);
+    // Paging.
+    const first = await listNotifications(owner, 'aaa', { limit: 1 });
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await listNotifications(owner, 'aaa', { limit: 1, cursor: first.nextCursor! });
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
   });
 });

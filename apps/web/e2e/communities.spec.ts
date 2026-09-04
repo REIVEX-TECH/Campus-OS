@@ -122,3 +122,16 @@ test('the poll vote action refuses a stranger', async ({ request }) => {
   );
   expect(response.status()).toBe(401);
 });
+
+test('the inbox asks a stranger to sign in, and the mark read route refuses them', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/u/lgu/notifications');
+  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+  const response = await request.post('/api/communities/notifications', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', action: 'read', ids: 'all' },
+  });
+  expect(response.status()).toBe(401);
+});
