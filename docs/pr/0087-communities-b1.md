@@ -82,7 +82,11 @@ function reads, so FORCE stays on.
   database that applied `0001_polls` on setup. `pnpm --filter web build`
   clean.
 - e2e (one new case): the poll vote action is 401 to a stranger. `pnpm --filter web test:e2e` against a production build:
-  1 failed 76 passed on the first run, 1 failed 78 passed on the second.
+  the first two runs each lost one case, once the journey's report step (its
+  Send button matched a comment's as well; the clicks are now scoped to the
+  post's card) and once the known timetable cold start flake; after the
+  scoping the journey passed twice on its own and the full suite read
+  79 passed.
 - Browser (local dev server, as a community owner): Polls ticked in the
   community settings saves and reads back ticked; the compose form shows the
   Poll tab; a three option poll posts and lands on its page open, with three
