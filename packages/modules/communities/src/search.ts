@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
-import type { CommunitySummary } from './communities';
+import { toCommunitySummary, type CommunitySummary } from './communities';
 import { scopeWhere, selectPosts, viewerFilters } from './feed';
 import { attachCrossposts, toPostView, type PostView } from './posts';
 import { communities } from './schema/communities';
@@ -108,20 +108,6 @@ export async function searchCommunities(
         asc(communities.name),
       )
       .limit(limit);
-    return rows.map((row) => ({
-      id: row.id,
-      slug: row.slug,
-      name: row.name,
-      description: row.description,
-      iconSeed: row.iconSeed,
-      bannerSeed: row.bannerSeed,
-      visibility: row.visibility,
-      allowAnonymous: row.allowAnonymous,
-      allowedKinds: row.allowedKinds,
-      approvalStatus: row.approvalStatus,
-      memberCount: row.memberCount,
-      createdAt: row.createdAt,
-      archivedAt: row.archivedAt,
-    }));
+    return rows.map(toCommunitySummary);
   });
 }

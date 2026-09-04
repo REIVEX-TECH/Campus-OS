@@ -100,6 +100,11 @@ export default async function CommunitySettingsPage({ params }: Params) {
               ),
               visibility: community.visibility === 'restricted' ? 'restricted' : 'public',
               modLogPublic: false,
+              minKarmaToPost: community.minKarmaToPost,
+              minKarmaToComment: community.minKarmaToComment,
+              minKarmaToJoin: community.minKarmaToJoin,
+              minAccountAgeDays: community.minAccountAgeDays,
+              requireVerified: community.requireVerified,
             }}
             anonymousAllowedByTenant={settings.anonymousPosting === 'on'}
             labels={communityFormLabels(t, 'edit')}

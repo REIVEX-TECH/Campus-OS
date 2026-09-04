@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { communityPermissions, type Refusal } from './access';
-import type { CommunitySummary } from './communities';
+import { toCommunitySummary, type CommunitySummary } from './communities';
 import { communities, moderationActions } from './schema/communities';
 
 /**
@@ -19,6 +19,13 @@ export const communitySettingsSchema = z.object({
   visibility: z.enum(['public', 'restricted']),
   allowedKinds: z.array(z.enum(['text', 'link', 'poll'])).min(1),
   modLogPublic: z.boolean(),
+  // Participation gates (§12). Zero is "ask for nothing"; the tenant floor is
+  // applied where the check runs, so zero never drops below the university's.
+  minKarmaToPost: z.number().int().min(0).max(10_000).default(0),
+  minKarmaToComment: z.number().int().min(0).max(10_000).default(0),
+  minKarmaToJoin: z.number().int().min(0).max(10_000).default(0),
+  minAccountAgeDays: z.number().int().min(0).max(365).default(0),
+  requireVerified: z.boolean().default(true),
 });
 
 export type CommunitySettingsInput = z.input<typeof communitySettingsSchema>;
@@ -44,6 +51,11 @@ export async function updateCommunitySettings(
         visibility: s.visibility,
         allowedKinds: s.allowedKinds,
         modLogPublic: s.modLogPublic,
+        minKarmaToPost: s.minKarmaToPost,
+        minKarmaToComment: s.minKarmaToComment,
+        minKarmaToJoin: s.minKarmaToJoin,
+        minAccountAgeDays: s.minAccountAgeDays,
+        requireVerified: s.requireVerified,
       })
       .where(and(eq(communities.id, communityId), isNull(communities.deletedAt)))
       .returning();
@@ -57,21 +69,7 @@ export async function updateCommunitySettings(
       targetId: communityId,
       meta: { fields: Object.keys(s) },
     });
-    return ok({
-      id: updated.id,
-      slug: updated.slug,
-      name: updated.name,
-      description: updated.description,
-      iconSeed: updated.iconSeed,
-      bannerSeed: updated.bannerSeed,
-      visibility: updated.visibility,
-      allowAnonymous: updated.allowAnonymous,
-      allowedKinds: updated.allowedKinds,
-      approvalStatus: updated.approvalStatus,
-      memberCount: updated.memberCount,
-      createdAt: updated.createdAt,
-      archivedAt: updated.archivedAt,
-    });
+    return ok(toCommunitySummary(updated));
   });
 }
 

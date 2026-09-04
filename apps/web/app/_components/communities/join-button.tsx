@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
+import { refusalMessage } from '@/lib/refusal-message';
 
 export type JoinLabels = {
   join: string;
@@ -38,7 +39,7 @@ export function JoinButton({
     setWorking(false);
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(labels.errors[body.error ?? ''] ?? labels.errors.failed ?? null);
+      setError(refusalMessage(labels.errors, body) || null);
       return;
     }
     router.refresh();

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { joinCommunity, leaveCommunity } from '@campusos/module-communities/communities';
-import { communityGate, refusalResponse } from '@/lib/community-route';
+import { communityGate, refusalWithGate } from '@/lib/community-route';
 
 /** Join or leave a community. */
 export const dynamic = 'force-dynamic';
@@ -22,8 +22,16 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   const actor = { userId: gate.actor.userId };
   const result =
     gate.data.action === 'join'
-      ? await joinCommunity(actor, gate.tenant.slug, id)
+      ? await joinCommunity(actor, gate.tenant.slug, id, gate.settings)
       : await leaveCommunity(actor, gate.tenant.slug, id);
-  if (!result.ok) return refusalResponse(result.error);
+  if (!result.ok) {
+    return refusalWithGate(result.error, {
+      actor,
+      tenant: gate.tenant.slug,
+      communityId: id,
+      action: 'join',
+      settings: gate.settings,
+    });
+  }
   return Response.json(result.value);
 }

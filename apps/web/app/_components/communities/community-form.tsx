@@ -16,6 +16,11 @@ export type CommunityFormValues = {
   allowedKinds: ('text' | 'link' | 'poll')[];
   visibility: 'public' | 'restricted';
   modLogPublic: boolean;
+  minKarmaToPost: number;
+  minKarmaToComment: number;
+  minKarmaToJoin: number;
+  minAccountAgeDays: number;
+  requireVerified: boolean;
 };
 
 export type CommunityFormLabels = {
@@ -31,6 +36,13 @@ export type CommunityFormLabels = {
   visibilityPublic: string;
   visibilityRestricted: string;
   modLogPublic: string;
+  gates: string;
+  gatesHint: string;
+  minKarmaToPost: string;
+  minKarmaToComment: string;
+  minKarmaToJoin: string;
+  minAccountAgeDays: string;
+  requireVerified: string;
   submit: string;
   working: string;
   done: string;
@@ -187,6 +199,46 @@ export function CommunityForm({
           />
           {labels.modLogPublic}
         </label>
+      ) : null}
+
+      {mode === 'edit' ? (
+        <fieldset className="flex flex-col gap-3 rounded-2xl border border-border p-4">
+          <legend className="px-1 text-sm font-medium">{labels.gates}</legend>
+          <p className="text-xs text-muted-foreground">{labels.gatesHint}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ['minKarmaToPost', labels.minKarmaToPost, 10_000],
+                ['minKarmaToComment', labels.minKarmaToComment, 10_000],
+                ['minKarmaToJoin', labels.minKarmaToJoin, 10_000],
+                ['minAccountAgeDays', labels.minAccountAgeDays, 365],
+              ] as const
+            ).map(([key, label, max]) => (
+              <label key={key} className="flex flex-col gap-1.5 text-sm font-medium">
+                {label}
+                <input
+                  type="number"
+                  min={0}
+                  max={max}
+                  value={v[key]}
+                  onChange={(e) =>
+                    set(key, Math.max(0, Math.min(max, Number(e.target.value) || 0)))
+                  }
+                  className="ios-field h-10 w-full rounded-xl px-3.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+            ))}
+          </div>
+          <label className="flex min-h-10 items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={v.requireVerified}
+              onChange={(e) => set('requireVerified', e.target.checked)}
+            />
+            {labels.requireVerified}
+          </label>
+        </fieldset>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">

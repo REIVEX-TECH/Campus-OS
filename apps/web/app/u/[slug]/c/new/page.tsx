@@ -60,6 +60,12 @@ export default async function NewCommunityPage({ params }: Params) {
               allowedKinds: ['text', 'link'],
               visibility: 'public',
               modLogPublic: false,
+              // A new community asks for nothing beyond what the university does.
+              minKarmaToPost: 0,
+              minKarmaToComment: 0,
+              minKarmaToJoin: 0,
+              minAccountAgeDays: 0,
+              requireVerified: true,
             }}
             anonymousAllowedByTenant={settings.anonymousPosting === 'on'}
             labels={communityFormLabels(t, 'create')}

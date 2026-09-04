@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { TenantConfig } from '@campusos/core/tenant';
+import { describeGate, type GateAction } from '@campusos/module-communities/gates';
 import type { Refusal } from '@campusos/module-communities/access';
 import type { CommunitiesSettings } from '@campusos/module-communities/manifest';
 import type { Actor } from '@campusos/module-identity/sessions';
@@ -72,9 +73,40 @@ const STATUS: Record<Refusal, number> = {
   pin_cap: 409,
   closed: 409,
   rules_not_accepted: 409,
+  gate_karma: 403,
+  gate_account_age: 403,
 };
 
 /** A module refusal as a response: the reason by name, a status the client can branch on. */
-export function refusalResponse(error: Refusal): Response {
-  return Response.json({ error }, { status: STATUS[error] ?? 400 });
+export function refusalResponse(error: Refusal, detail?: { need: number; have: number }): Response {
+  return Response.json({ error, ...detail }, { status: STATUS[error] ?? 400 });
+}
+
+/**
+ * The same, but a participation gate carries its numbers.
+ *
+ * "You need 50 karma to post here, and you have 12" is a better thing to read
+ * than "you cannot post here". The extra read happens only when somebody was
+ * actually refused, so an ordinary write pays nothing for it.
+ */
+export async function refusalWithGate(
+  error: Refusal,
+  where: {
+    actor: { userId: string };
+    tenant: string;
+    communityId: string;
+    action: GateAction;
+    settings: CommunitiesSettings;
+  },
+): Promise<Response> {
+  if (error !== 'gate_karma' && error !== 'gate_account_age') return refusalResponse(error);
+  const detail = await describeGate(
+    where.actor,
+    where.tenant,
+    where.communityId,
+    where.action,
+    where.settings,
+    error,
+  );
+  return refusalResponse(error, detail ?? undefined);
 }

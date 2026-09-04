@@ -34,6 +34,7 @@ import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { listFlairs, setFlairs } from '../src/flairs';
 import { crosspost } from '../src/crosspost';
+import { describeGate, effectiveGates } from '../src/gates';
 import { ownKarma, publicKarma, publicKarmaFor, recomputeKarma } from '../src/karma';
 import { commentsByAuthor, isBlocked, profileByHandle } from '../src/profiles';
 import { archiveIdle, setArchived } from '../src/archive';
@@ -232,8 +233,11 @@ describe('communities and roles', () => {
     const joiner = await member('role-joiner');
     const outsider = await member('role-outsider');
     const c = await community(owner);
-    expect(await joinCommunity(joiner, 'aaa', c.id)).toEqual({ ok: true, value: { joined: true } });
-    expect(await joinCommunity(joiner, 'aaa', c.id)).toEqual({
+    expect(await joinCommunity(joiner, 'aaa', c.id, settings)).toEqual({
+      ok: true,
+      value: { joined: true },
+    });
+    expect(await joinCommunity(joiner, 'aaa', c.id, settings)).toEqual({
       ok: true,
       value: { joined: false },
     });
@@ -264,7 +268,7 @@ describe('communities and roles', () => {
     const helper = await member('mod-helper');
     const tenantAdmin = await admin('mod-admin');
     const c = await community(owner);
-    await joinCommunity(helper, 'aaa', c.id);
+    await joinCommunity(helper, 'aaa', c.id, settings);
 
     expect(
       await setCommunityRole(helper, 'aaa', c.id, helper.userId, 'community_moderator', 'grant'),
@@ -306,9 +310,12 @@ describe('communities and roles', () => {
       ok: false,
       error: 'not_verified',
     });
-    expect(await joinCommunity(nobody, 'aaa', c.id)).toEqual({ ok: false, error: 'not_verified' });
+    expect(await joinCommunity(nobody, 'aaa', c.id, settings)).toEqual({
+      ok: false,
+      error: 'not_verified',
+    });
 
-    await joinCommunity(target, 'aaa', c.id);
+    await joinCommunity(target, 'aaa', c.id, settings);
     expect(await banMember(target, 'aaa', c.id, owner.userId, { reason: 'because' })).toEqual({
       ok: false,
       error: 'not_allowed',
@@ -339,8 +346,8 @@ describe('votes and ranking', () => {
     const voter = await member('vote-voter');
     const second = await member('vote-second');
     const c = await community(owner);
-    await joinCommunity(voter, 'aaa', c.id);
-    await joinCommunity(second, 'aaa', c.id);
+    await joinCommunity(voter, 'aaa', c.id, settings);
+    await joinCommunity(second, 'aaa', c.id, settings);
     const post = await createPost(
       owner,
       'aaa',
@@ -431,7 +438,7 @@ describe('the anonymity model', () => {
     const author = await member('anon-author');
     const tenantAdmin = await admin('anon-admin');
     const c = await community(owner);
-    await joinCommunity(author, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
     const postId = await anonymousPost(author, c.id);
     const comment = await createComment(
       author,
@@ -480,7 +487,7 @@ describe('the anonymity model', () => {
     const owner = await member('edit-owner');
     const author = await member('edit-author');
     const c = await community(owner);
-    await joinCommunity(author, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
     const postId = await anonymousPost(author, c.id);
     expect(await editPost(owner, 'aaa', postId, { title: 'Hijacked' })).toEqual({
       ok: false,
@@ -500,8 +507,8 @@ describe('the anonymity model', () => {
     const reporter = await member('unmask-reporter');
     const tenantAdmin = await admin('unmask-admin');
     const c = await community(owner);
-    await joinCommunity(author, 'aaa', c.id);
-    await joinCommunity(reporter, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
+    await joinCommunity(reporter, 'aaa', c.id, settings);
     const postId = await anonymousPost(author, c.id);
 
     // A tenant administrator holds everything except this.
@@ -630,7 +637,7 @@ describe('directory, settings, rules and members', () => {
     const owner = await member('set-owner');
     const plain = await member('set-plain');
     const c = await community(owner);
-    await joinCommunity(plain, 'aaa', c.id);
+    await joinCommunity(plain, 'aaa', c.id, settings);
     const next = {
       name: 'CS Freshers 2026',
       description: 'For the new intake.',
@@ -686,8 +693,8 @@ describe('directory, settings, rules and members', () => {
     const mod = await member('mem-mod');
     const plain = await member('mem-plain');
     const c = await community(owner);
-    await joinCommunity(plain, 'aaa', c.id);
-    await joinCommunity(mod, 'aaa', c.id);
+    await joinCommunity(plain, 'aaa', c.id, settings);
+    await joinCommunity(mod, 'aaa', c.id, settings);
     await setCommunityRole(owner, 'aaa', c.id, mod.userId, 'community_moderator', 'grant');
 
     const members = await listMembers('aaa', c.id);
@@ -760,7 +767,7 @@ describe('post lists, saved and hidden, history', () => {
     const owner = await member('sv-owner');
     const voter = await member('sv-voter');
     const c = await community(owner);
-    await joinCommunity(voter, 'aaa', c.id);
+    await joinCommunity(voter, 'aaa', c.id, settings);
     const p = await createPost(
       owner,
       'aaa',
@@ -809,7 +816,7 @@ describe('comment threads for a viewer', () => {
     const owner = await member('ct-owner');
     const replier = await member('ct-replier');
     const c = await community(owner);
-    await joinCommunity(replier, 'aaa', c.id);
+    await joinCommunity(replier, 'aaa', c.id, settings);
     const p = await createPost(
       owner,
       'aaa',
@@ -877,7 +884,7 @@ describe('sorts and feeds', () => {
     const voters = await Promise.all(['sf-v1', 'sf-v2', 'sf-v3'].map((n) => member(n)));
     const down = await member('sf-down');
     const c = await community(owner, 'Sorted');
-    for (const v of [...voters, down]) await joinCommunity(v, 'aaa', c.id);
+    for (const v of [...voters, down]) await joinCommunity(v, 'aaa', c.id, settings);
     const make = async (title: string) => {
       const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
       if (!r.ok) throw new Error(r.error);
@@ -956,7 +963,7 @@ describe('sorts and feeds', () => {
     expect(await titles(null, 'all')).not.toContain('Closed post');
     expect(await titles(null, 'home')).toEqual([]);
     // Joining fills Home; a restricted community's member sees it at Home.
-    await joinCommunity(reader, 'aaa', open.id);
+    await joinCommunity(reader, 'aaa', open.id, settings);
     expect(await titles(reader, 'home')).toEqual(['Open post']);
     expect(await titles(o2, 'home')).toEqual(['Closed post']);
     // The feed names the community on every card, and the rail's rising list is tenant wide.
@@ -977,8 +984,8 @@ describe('moderation', () => {
     const writer = await member('md-writer');
     const reporter = await member('md-reporter');
     const c = await community(owner, 'Moderated');
-    await joinCommunity(writer, 'aaa', c.id);
-    await joinCommunity(reporter, 'aaa', c.id);
+    await joinCommunity(writer, 'aaa', c.id, settings);
+    await joinCommunity(reporter, 'aaa', c.id, settings);
     const p = await createPost(
       writer,
       'aaa',
@@ -1072,7 +1079,7 @@ describe('moderation', () => {
     const owner = await member('pin-owner');
     const m = await member('pin-member');
     const c = await community(owner, 'Pinned Hall');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     const ids: string[] = [];
     for (const title of ['P1', 'P2', 'P3', 'P4']) {
       const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
@@ -1119,7 +1126,7 @@ describe('moderation', () => {
     const owner = await member('mu-owner');
     const m = await member('mu-member');
     const c = await community(owner, 'Quiet Room');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     // Distinct titles: the same title again in a day is a repeat since A7.
     let n = 0;
     const post = () =>
@@ -1190,8 +1197,8 @@ describe('moderation', () => {
     const blocker = await member('bl-blocker');
     const other = await member('bl-other');
     const c = await community(owner, 'Blocks');
-    await joinCommunity(blocker, 'aaa', c.id);
-    await joinCommunity(other, 'aaa', c.id);
+    await joinCommunity(blocker, 'aaa', c.id, settings);
+    await joinCommunity(other, 'aaa', c.id, settings);
     const signed = await createPost(
       other,
       'aaa',
@@ -1249,8 +1256,8 @@ describe('moderation', () => {
     const reporter = await member('ov-reporter');
     const c1 = await community(o1, 'Overseen One');
     const c2 = await community(o2, 'Overseen Two');
-    await joinCommunity(reporter, 'aaa', c1.id);
-    await joinCommunity(reporter, 'aaa', c2.id);
+    await joinCommunity(reporter, 'aaa', c1.id, settings);
+    await joinCommunity(reporter, 'aaa', c2.id, settings);
     for (const [who, c] of [
       [o1, c1],
       [o2, c2],
@@ -1301,7 +1308,7 @@ describe('anti abuse', () => {
     const owner = await member('am-owner');
     const m = await member('am-member');
     const c = await community(owner, 'Filtered');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     expect(await setAutomodRules(m, 'aaa', c.id, [])).toEqual({ ok: false, error: 'not_allowed' });
     expect(await listAutomodRules(m, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
     const set = await setAutomodRules(owner, 'aaa', c.id, [
@@ -1393,7 +1400,7 @@ describe('anti abuse', () => {
     const writer = await member('rt-writer');
     const reporters = await Promise.all(['rt-r1', 'rt-r2', 'rt-r3'].map((n) => member(n)));
     const c = await community(owner, 'Thresholds');
-    for (const who of [writer, ...reporters]) await joinCommunity(who, 'aaa', c.id);
+    for (const who of [writer, ...reporters]) await joinCommunity(who, 'aaa', c.id, settings);
     const p = await createPost(
       writer,
       'aaa',
@@ -1453,8 +1460,8 @@ describe('polls', () => {
     );
     if (!made.ok) throw new Error(made.error);
     const c = made.value;
-    await joinCommunity(a, 'aaa', c.id);
-    await joinCommunity(b, 'aaa', c.id);
+    await joinCommunity(a, 'aaa', c.id, settings);
+    await joinCommunity(b, 'aaa', c.id, settings);
 
     expect(
       await createPost(
@@ -1559,8 +1566,8 @@ describe('notifications', () => {
     const m = await member('nf-member');
     const other = await member('nf-other');
     const c = await community(owner, 'Inbox Hall');
-    await joinCommunity(m, 'aaa', c.id);
-    await joinCommunity(other, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
+    await joinCommunity(other, 'aaa', c.id, settings);
     const p = await createPost(
       owner,
       'aaa',
@@ -1701,7 +1708,7 @@ describe('flairs, pins in order, crossposts', () => {
     const m = await member('fl-member');
     const c = await community(owner, 'Flair Hall');
     const other = await community(owner, 'Other Hall');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     expect(await setFlairs(m, 'aaa', c.id, [{ name: 'Q', color: '#000000' }])).toEqual({
       ok: false,
       error: 'not_allowed',
@@ -1784,7 +1791,7 @@ describe('flairs, pins in order, crossposts', () => {
     const owner = await member('po-owner');
     const m = await member('po-member');
     const c = await community(owner, 'Pin Order');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     const ids: string[] = [];
     for (const title of ['One', 'Two', 'Three']) {
       const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
@@ -1832,8 +1839,8 @@ describe('flairs, pins in order, crossposts', () => {
     );
     if (!made.ok) throw new Error(made.error);
     const closed = made.value;
-    await joinCommunity(m, 'aaa', home.id);
-    await joinCommunity(m, 'aaa', target.id);
+    await joinCommunity(m, 'aaa', home.id, settings);
+    await joinCommunity(m, 'aaa', target.id, settings);
     const original = await createPost(
       owner,
       'aaa',
@@ -1887,7 +1894,7 @@ describe('flairs, pins in order, crossposts', () => {
     expect(feed.items[0]?.crosspost?.communitySlug).toBe(home.slug);
     // Crossposting a crosspost points at the original; the removed original leaves the pointer bare.
     const third = await community(founder, 'Third Hall');
-    await joinCommunity(m, 'aaa', third.id);
+    await joinCommunity(m, 'aaa', third.id, settings);
     const again = await crosspost(m, 'aaa', made2.value.id, third.id, settings);
     expect(again.ok && (await postById(null, 'aaa', again.value.id))?.crosspostOf).toBe(
       original.value.id,
@@ -1905,8 +1912,8 @@ describe('profiles and private lists', () => {
     const author = await member('pr-author');
     const fan = await member('pr-fan');
     const c = await community(owner, 'Profile Hall');
-    await joinCommunity(author, 'aaa', c.id);
-    await joinCommunity(fan, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
+    await joinCommunity(fan, 'aaa', c.id, settings);
     const me = await profileByHandle('aaa', 'nobody-like-this');
     expect(me).toBeNull();
     const signed = await createPost(
@@ -2004,7 +2011,7 @@ describe('polish: rules acceptance, archive, held across the tenant', () => {
     const owner = await member('ra-owner');
     const m = await member('ra-member');
     const c = await community(owner, 'Rules Hall');
-    await joinCommunity(m, 'aaa', c.id);
+    await joinCommunity(m, 'aaa', c.id, settings);
     // No rules: nothing to accept.
     expect(await needsRulesAcceptance(m, 'aaa', c.id)).toBe(false);
     expect(
@@ -2120,8 +2127,8 @@ describe('karma: what other people did', () => {
     const author = await member('k-author');
     const fan = await member('k-fan');
     const c = await community(owner, 'Karma');
-    await joinCommunity(author, 'aaa', c.id);
-    await joinCommunity(fan, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
+    await joinCommunity(fan, 'aaa', c.id, settings);
     const post = await createPost(
       author,
       'aaa',
@@ -2208,7 +2215,7 @@ describe('karma: what other people did', () => {
     const fan = await member('cap-fan');
     const other = await member('cap-other');
     const c = await community(owner, 'Capped');
-    for (const who of [author, fan, other]) await joinCommunity(who, 'aaa', c.id);
+    for (const who of [author, fan, other]) await joinCommunity(who, 'aaa', c.id, settings);
     const post = await createPost(
       author,
       'aaa',
@@ -2250,8 +2257,8 @@ describe('karma: what other people did', () => {
     const quiet = await member('many-quiet');
     const fan = await member('many-fan');
     const c = await community(owner, 'Many');
-    await joinCommunity(author, 'aaa', c.id);
-    await joinCommunity(fan, 'aaa', c.id);
+    await joinCommunity(author, 'aaa', c.id, settings);
+    await joinCommunity(fan, 'aaa', c.id, settings);
     const post = await createPost(
       author,
       'aaa',
@@ -2268,5 +2275,202 @@ describe('karma: what other people did', () => {
     expect(found.get(quiet.userId)).toBeUndefined();
     expect(await publicKarma('aaa', quiet.userId)).toEqual({ posts: 0, comments: 0, total: 0 });
     expect(await publicKarmaFor('aaa', [])).toEqual(new Map());
+  });
+});
+
+describe('participation gates', () => {
+  /** A community with gates set, since only a moderator may set them. */
+  async function gated(
+    owner: { userId: string },
+    name: string,
+    gates: Partial<{
+      minKarmaToPost: number;
+      minKarmaToComment: number;
+      minKarmaToJoin: number;
+      minAccountAgeDays: number;
+    }>,
+  ) {
+    const c = await community(owner, name);
+    const saved = await updateCommunitySettings(owner, 'aaa', c.id, {
+      name: c.name,
+      description: '',
+      allowAnonymous: true,
+      visibility: 'public',
+      allowedKinds: ['text', 'link', 'poll'],
+      modLogPublic: false,
+      minKarmaToPost: 0,
+      minKarmaToComment: 0,
+      minKarmaToJoin: 0,
+      minAccountAgeDays: 0,
+      requireVerified: true,
+      ...gates,
+    });
+    if (!saved.ok) throw new Error(saved.error);
+    return saved.value;
+  }
+
+  it('takes the greater of what the community asks and what the university requires', () => {
+    const community = {
+      minKarmaToPost: 5,
+      minKarmaToComment: 0,
+      minKarmaToJoin: 0,
+      minAccountAgeDays: 2,
+      requireVerified: false,
+    };
+    const floor = { floorMinKarma: 10, floorAccountAgeDays: 0, floorRequireVerified: true };
+    // The community asks five and the university ten, so ten. Setting a gate to
+    // zero does not drop below the floor, which is the point of having one.
+    expect(effectiveGates(community, floor, 'post')).toEqual({
+      minKarma: 10,
+      minAccountAgeDays: 2,
+      requireVerified: true,
+    });
+    expect(effectiveGates(community, floor, 'comment')).toMatchObject({ minKarma: 10 });
+    // And a community may ask for more than the floor.
+    expect(effectiveGates(community, { ...floor, floorMinKarma: 1 }, 'post').minKarma).toBe(5);
+    // requireVerified can only ever go on, never off.
+    expect(
+      effectiveGates(community, { ...floor, floorRequireVerified: false }, 'post').requireVerified,
+    ).toBe(false);
+    expect(
+      effectiveGates(
+        { ...community, requireVerified: true },
+        { ...floor, floorRequireVerified: false },
+        'post',
+      ).requireVerified,
+    ).toBe(true);
+  });
+
+  it('blocks a post and a comment below the karma the community asks for, then admits them', async () => {
+    const owner = await member('g-owner');
+    const writer = await member('g-writer');
+    const fan = await member('g-fan');
+    const c = await gated(owner, 'Karma Gate', { minKarmaToPost: 2, minKarmaToComment: 1 });
+    await joinCommunity(writer, 'aaa', c.id, settings);
+    await joinCommunity(fan, 'aaa', c.id, settings);
+
+    expect(
+      await createPost(
+        writer,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Too soon', body: '' },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'gate_karma' });
+    // The refusal knows the numbers, which is what the message is made of.
+    expect(await describeGate(writer, 'aaa', c.id, 'post', settings, 'gate_karma')).toEqual({
+      need: 2,
+      have: 0,
+    });
+
+    // Somewhere else, they earn some. Karma is per tenant, not per community,
+    // so a gate here is answered by anything they wrote anywhere in the tenant.
+    const open = await community(owner, 'Open Hall');
+    await joinCommunity(writer, 'aaa', open.id, settings);
+    await joinCommunity(fan, 'aaa', open.id, settings);
+    const first = await createPost(
+      writer,
+      'aaa',
+      open.id,
+      { kind: 'text', title: 'Elsewhere', body: '' },
+      settings,
+    );
+    if (!first.ok) throw new Error(first.error);
+    await votePost(fan, 'aaa', first.value.id, 1);
+
+    // One karma is enough to comment here and not yet enough to post.
+    const host = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'A thread', body: '' },
+      settings,
+    );
+    if (!host.ok) throw new Error(host.error);
+    expect(
+      (await createComment(writer, 'aaa', host.value.id, null, { body: 'hello' }, settings)).ok,
+    ).toBe(true);
+    // The owner set the gate and is not who it is for: they can still write in
+    // their own community without lowering it first.
+    expect(await publicKarma('aaa', owner.userId)).toMatchObject({ total: 0 });
+    expect(
+      await createPost(writer, 'aaa', c.id, { kind: 'text', title: 'Still', body: '' }, settings),
+    ).toEqual({ ok: false, error: 'gate_karma' });
+
+    const second = await createComment(
+      writer,
+      'aaa',
+      host.value.id,
+      null,
+      { body: 'again' },
+      settings,
+    );
+    if (!second.ok) throw new Error(second.error);
+    await voteComment(fan, 'aaa', second.value.id, 1);
+    expect(await publicKarma('aaa', writer.userId)).toMatchObject({ total: 2 });
+    expect(
+      (await createPost(writer, 'aaa', c.id, { kind: 'text', title: 'Now', body: '' }, settings))
+        .ok,
+    ).toBe(true);
+  });
+
+  it('blocks an account younger than the community asks for, and joining as well as writing', async () => {
+    const owner = await member('age-owner');
+    const young = await member('age-young');
+    const c = await gated(owner, 'Age Gate', { minAccountAgeDays: 3, minKarmaToJoin: 1 });
+
+    // Joining is gated too, and karma is checked before age so the thing they
+    // cannot fix by waiting is the thing they are told about first.
+    expect(await joinCommunity(young, 'aaa', c.id, settings)).toEqual({
+      ok: false,
+      error: 'gate_karma',
+    });
+    expect(await describeGate(young, 'aaa', c.id, 'join', settings, 'gate_karma')).toEqual({
+      need: 1,
+      have: 0,
+    });
+
+    // With the karma gate out of the way, the account age is what remains.
+    const open = await gated(owner, 'Age Open', { minAccountAgeDays: 3 });
+    expect(await joinCommunity(young, 'aaa', open.id, settings)).toEqual({
+      ok: false,
+      error: 'gate_account_age',
+    });
+    expect(await describeGate(young, 'aaa', open.id, 'join', settings, 'gate_account_age')).toEqual(
+      { need: 3, have: 0 },
+    );
+
+    // Age the account by four days and the same person is admitted.
+    await runAsMigrationRole(
+      `update users set created_at = now() - interval '4 days' where id = '${young.userId}'`,
+    );
+    expect(await joinCommunity(young, 'aaa', open.id, settings)).toEqual({
+      ok: true,
+      value: { joined: true },
+    });
+  });
+
+  it('applies the tenant floor to a community that asks for nothing', async () => {
+    const owner = await member('floor-owner');
+    const writer = await member('floor-writer');
+    const c = await community(owner, 'Ungated');
+    await joinCommunity(writer, 'aaa', c.id, settings);
+    // Nothing set here, so today anyone may write.
+    expect(
+      (await createPost(writer, 'aaa', c.id, { kind: 'text', title: 'Fine', body: '' }, settings))
+        .ok,
+    ).toBe(true);
+
+    // The university raises its floor, and the same community is now gated
+    // without anybody editing it: the floor is applied where the check runs.
+    const strict = { ...settings, floorMinKarma: 3 };
+    expect(
+      await createPost(writer, 'aaa', c.id, { kind: 'text', title: 'Not now', body: '' }, strict),
+    ).toEqual({ ok: false, error: 'gate_karma' });
+    expect(await describeGate(writer, 'aaa', c.id, 'post', strict, 'gate_karma')).toEqual({
+      need: 3,
+      have: 0,
+    });
   });
 });

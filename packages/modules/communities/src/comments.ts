@@ -13,6 +13,7 @@ import {
   type Refusal,
 } from './access';
 import { applyVerdict, screen } from './automod';
+import { checkGate } from './gates';
 import { notify } from './notifications';
 import { canReplyAt, childPath } from './domain/paths';
 import type { CommunitiesSettings } from './manifest';
@@ -141,6 +142,18 @@ export async function createComment(
     ) {
       return err('not_allowed');
     }
+    // The community's own gate, after the ban and the mute and before the rate
+    // limits: it is about who this person is here, not how fast they are.
+    const gate = await checkGate(
+      tx,
+      actor.userId,
+      tenantId,
+      post.communityId,
+      community,
+      settings,
+      'comment',
+    );
+    if (gate) return err(gate);
     if ((await ownCommentsLastHour(tx, tenantId)) >= LIMITS.commentsPerHour) {
       return err('rate_limited');
     }

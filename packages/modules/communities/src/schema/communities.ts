@@ -56,6 +56,12 @@ export const communities = pgTable(
     /** approved | pending */
     approvalStatus: text('approval_status').notNull().default('approved'),
     modLogPublic: boolean('mod_log_public').notNull().default(false),
+    /** Participation gates (0007). Zero and true are what the module already did. */
+    minKarmaToPost: integer('min_karma_to_post').notNull().default(0),
+    minKarmaToComment: integer('min_karma_to_comment').notNull().default(0),
+    minKarmaToJoin: integer('min_karma_to_join').notNull().default(0),
+    minAccountAgeDays: integer('min_account_age_days').notNull().default(0),
+    requireVerified: boolean('require_verified').notNull().default(true),
     memberCount: integer('member_count').notNull().default(0),
     archivedAt: tz('archived_at'),
     createdBy: uuid('created_by').notNull(),
