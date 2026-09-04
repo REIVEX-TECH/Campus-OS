@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
 import { POST, toPostView, type PostView, type ReadRow } from './posts';
 import {
@@ -196,6 +196,39 @@ function scopeWhere(
   }
 }
 
+function selectPosts(tx: TenantTransaction) {
+  return (
+    tx
+      .select({
+        post: POST,
+        handle: publicProfiles.handle,
+        avatarSeed: publicProfiles.avatarSeed,
+        myVote: postVotes.value,
+        saved: savedItems.itemId,
+        communitySlug: communities.slug,
+        communityName: communities.name,
+      })
+      .from(postsRead)
+      .leftJoin(communities, eq(communities.id, postsRead.communityId))
+      .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
+      // Own-row tables: these joins yield the viewer's rows and nobody else's.
+      .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
+      .leftJoin(
+        savedItems,
+        and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)),
+      )
+  );
+}
+
+/** What the viewer chose not to see: what they hid, and who they blocked (by public author). */
+function viewerFilters(viewer: { userId: string } | null): SQL[] {
+  if (!viewer) return [];
+  return [
+    sql`not exists (select 1 from hidden_items h where h.item_type = 'post' and h.item_id = ${postsRead.id} and h.user_id = ${viewer.userId}::uuid)`,
+    sql`not exists (select 1 from user_blocks b where b.blocker_id = ${viewer.userId}::uuid and b.blocked_id = ${postsRead.publicAuthorId})`,
+  ];
+}
+
 async function page(
   tx: TenantTransaction,
   tenantId: string,
@@ -207,50 +240,49 @@ async function page(
   const limit = Math.min(Math.max(1, options.limit ?? PAGE_SIZE), 100);
   const p = plan(sort, options.cursor);
   const windowMs = sort === 'top' ? WINDOW_MS[options.window ?? 'day'] : null;
-  const rows = await tx
-    .select({
-      post: POST,
-      handle: publicProfiles.handle,
-      avatarSeed: publicProfiles.avatarSeed,
-      myVote: postVotes.value,
-      saved: savedItems.itemId,
-      communitySlug: communities.slug,
-      communityName: communities.name,
-    })
-    .from(postsRead)
-    .leftJoin(communities, eq(communities.id, postsRead.communityId))
-    .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
-    // Own-row tables: these joins yield the viewer's rows and nobody else's.
-    .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
-    .leftJoin(savedItems, and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)))
-    .where(
-      and(
-        eq(postsRead.tenantId, tenantId),
-        scopeWhere(tx, tenantId, scope, viewer),
-        isNull(postsRead.deletedAt),
-        isNull(postsRead.removedAt),
-        p.where,
-        windowMs ? gt(postsRead.createdAt, new Date(Date.now() - windowMs)) : undefined,
-        viewer
-          ? sql`not exists (select 1 from hidden_items h where h.item_type = 'post' and h.item_id = ${postsRead.id} and h.user_id = ${viewer.userId}::uuid)`
-          : undefined,
-      ),
-    )
-    .orderBy(...p.order)
-    .limit(limit + 1);
-  const shown = rows.slice(0, limit);
-  const items = shown.map((r) =>
+  const live = [isNull(postsRead.deletedAt), isNull(postsRead.removedAt), ...viewerFilters(viewer)];
+  const shape = (r: Awaited<ReturnType<ReturnType<typeof selectPosts>['execute']>>[number]) =>
     toPostView(
       r.post,
       r.handle,
       r.avatarSeed,
       { myVote: r.myVote, saved: r.saved !== null },
       { slug: r.communitySlug, name: r.communityName },
-    ),
-  );
+    );
+
+  // A community's pinned posts lead its first page, in every sort, outside the cursor.
+  const pinned =
+    scope.kind === 'community' && !options.cursor
+      ? await selectPosts(tx)
+          .where(
+            and(
+              eq(postsRead.tenantId, tenantId),
+              eq(postsRead.communityId, scope.communityId),
+              isNotNull(postsRead.pinnedAt),
+              ...live,
+            ),
+          )
+          .orderBy(desc(postsRead.pinnedAt))
+          .limit(10)
+      : [];
+
+  const rows = await selectPosts(tx)
+    .where(
+      and(
+        eq(postsRead.tenantId, tenantId),
+        scopeWhere(tx, tenantId, scope, viewer),
+        scope.kind === 'community' ? isNull(postsRead.pinnedAt) : undefined,
+        ...live,
+        p.where,
+        windowMs ? gt(postsRead.createdAt, new Date(Date.now() - windowMs)) : undefined,
+      ),
+    )
+    .orderBy(...p.order)
+    .limit(limit + 1);
+  const shown = rows.slice(0, limit);
   const last = shown[shown.length - 1];
   return {
-    items,
+    items: [...pinned.map(shape), ...shown.map(shape)],
     nextCursor: p.pageable && rows.length > limit && last ? p.cursorOf(last.post) : null,
   };
 }

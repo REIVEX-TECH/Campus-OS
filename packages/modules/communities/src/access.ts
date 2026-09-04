@@ -27,7 +27,9 @@ export type Refusal =
   | 'exists'
   | 'depth'
   | 'self'
-  | 'last_owner';
+  | 'last_owner'
+  | 'muted'
+  | 'pin_cap';
 
 function toSet(rows: unknown[]): PermissionSet {
   return new PermissionSet(
@@ -114,6 +116,24 @@ export async function isBanned(
       select 1 from community_bans
       where user_id = ${userId}::uuid and tenant_id = ${tenantId}
         and (community_id is null or community_id = ${communityId}::uuid)
+        and lifted_at is null and (until is null or until > now())
+      limit 1`)),
+  ];
+  return rows.length > 0;
+}
+
+/** Muted in this community: still a member, silent for a while. */
+export async function isMuted(
+  tx: TenantTransaction,
+  userId: string,
+  tenantId: string,
+  communityId: string,
+): Promise<boolean> {
+  const rows = [
+    ...(await tx.execute(sql`
+      select 1 from community_mutes
+      where user_id = ${userId}::uuid and tenant_id = ${tenantId}
+        and community_id = ${communityId}::uuid
         and lifted_at is null and (until is null or until > now())
       limit 1`)),
   ];

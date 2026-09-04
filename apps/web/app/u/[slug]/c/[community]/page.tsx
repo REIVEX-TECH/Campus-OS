@@ -119,6 +119,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
           base={base}
           locale={tenant.locale}
           canManage={canManage}
+          canModerate={perms?.hasAny('communities.moderate', 'communities.oversee') ?? false}
           t={t}
         />
       }

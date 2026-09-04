@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
 import { REPORT_REASONS, type ReportReason } from '@/lib/community-constants';
+import { BlockButton } from './block-button';
 
 export type PostActionLabels = {
   comments: string;
@@ -26,6 +27,8 @@ export type PostActionLabels = {
   delete: string;
   deleteConfirm: string;
   deleted: string;
+  block: string;
+  blocked: string;
   errors: Record<string, string>;
 };
 
@@ -45,6 +48,7 @@ export function PostActions({
   editHref,
   saved,
   isOwn,
+  authorId = null,
   signedIn,
   afterDelete,
   labels,
@@ -55,6 +59,8 @@ export function PostActions({
   editHref: string;
   saved: boolean;
   isOwn: boolean;
+  /** The public author, when there is one, for blocking. */
+  authorId?: string | null;
   signedIn: boolean;
   /** Where to go once the post is deleted, when this row is on the post's own page. */
   afterDelete?: string;
@@ -142,6 +148,20 @@ export function PostActions({
             >
               {labels.report}
             </button>
+            {authorId && !isOwn ? (
+              <BlockButton
+                tenant={tenant}
+                userId={authorId}
+                blocked={false}
+                labels={{
+                  block: labels.block,
+                  unblock: labels.block,
+                  done: labels.blocked,
+                  errors: labels.errors,
+                }}
+                className={action}
+              />
+            ) : null}
             {isOwn ? (
               <>
                 <Link href={editHref} className={action}>

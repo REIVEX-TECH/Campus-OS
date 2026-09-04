@@ -1,13 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { communityBySlug } from '@campusos/module-communities/communities';
+import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
+import { listSanctions } from '@campusos/module-communities/mod-actions';
 import { listMembers } from '@campusos/module-communities/members';
+import { MemberSanctions } from '@/app/_components/communities/member-sanctions';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
+import { communityErrors } from '@/lib/community-labels';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -55,6 +58,13 @@ export default async function CommunityMembersPage({ params }: Params) {
     );
   }
   const members = await listMembers(slug, community.id);
+  const perms = actor ? await permissionsIn(actor, slug, community.id) : null;
+  const canModerate = perms?.hasAny('communities.moderate', 'communities.oversee') ?? false;
+  const sanctions = actor && canModerate ? await listSanctions(actor, slug, community.id) : null;
+  const whenAt = new Intl.DateTimeFormat(tenant.locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
   const when = new Intl.DateTimeFormat(tenant.locale, { dateStyle: 'medium' });
 
   return (
@@ -87,6 +97,48 @@ export default async function CommunityMembersPage({ params }: Params) {
             </li>
           ))}
         </ul>
+        {canModerate && sanctions?.ok ? (
+          <MemberSanctions
+            tenant={slug}
+            communityId={community.id}
+            members={members
+              .filter((m) => m.roles.length === 0 && m.userId !== actor?.userId)
+              .map((m) => ({ userId: m.userId, handle: m.handle }))}
+            sanctions={sanctions.value.map((x) => ({
+              id: x.id,
+              kind: x.kind,
+              handle: x.handle,
+              reason: x.reason,
+              until: x.until
+                ? t('mod.sanction.until', { date: whenAt.format(x.until) })
+                : t('mod.sanction.permanent'),
+            }))}
+            labels={{
+              heading: t('mod.sanction.heading'),
+              member: t('mod.sanction.member'),
+              kind: t('mod.sanction.kind'),
+              ban: t('mod.sanction.ban'),
+              mute: t('mod.sanction.mute'),
+              banHint: t('mod.sanction.banHint'),
+              muteHint: t('mod.sanction.muteHint'),
+              duration: t('mod.sanction.duration'),
+              durations: {
+                day: t('mod.sanction.day'),
+                week: t('mod.sanction.week'),
+                month: t('mod.sanction.month'),
+                forever: t('mod.sanction.forever'),
+              },
+              reason: t('mod.sanction.reason'),
+              apply: t('mod.sanction.apply'),
+              applied: t('mod.sanction.applied'),
+              active: t('mod.sanction.active'),
+              none: t('mod.sanction.none'),
+              lift: t('mod.sanction.lift'),
+              lifted: t('mod.sanction.lifted'),
+              errors: communityErrors(t),
+            }}
+          />
+        ) : null}
         <p className="px-1 text-sm">
           <Link
             href={`${base}/c/${community.slug}`}

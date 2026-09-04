@@ -18,6 +18,8 @@ const SORTS: CommentSort[] = ['best', 'top', 'new', 'old', 'controversial'];
 export function CommentThread({
   tenant,
   postId,
+  communityId,
+  canModerate,
   postAuthorId,
   moderatorIds,
   comments,
@@ -34,6 +36,8 @@ export function CommentThread({
 }: {
   tenant: string;
   postId: string;
+  communityId: string;
+  canModerate: boolean;
   postAuthorId: string | null;
   moderatorIds: ReadonlySet<string>;
   comments: CommentView[];
@@ -89,6 +93,9 @@ export function CommentThread({
     mod: t('comments.mod'),
     deleted: t('comments.deleted'),
     removed: t('comments.removed'),
+    blocked: t('comments.blocked'),
+    remove: t('comments.remove'),
+    removeReason: t('comments.removeReason'),
     edited: t('posts.edited'),
     collapse: t('comments.collapse'),
     expand: t('comments.expand', { count: '{count}' }),
@@ -132,6 +139,8 @@ export function CommentThread({
         key={c.id}
         tenant={tenant}
         postId={postId}
+        communityId={communityId}
+        canModerate={canModerate}
         comment={{
           id: c.id,
           body: c.body,
@@ -145,6 +154,7 @@ export function CommentThread({
           edited: c.editedAt !== null,
           deleted: c.deletedAt !== null,
           removed: c.removedAt !== null,
+          blocked: c.blocked,
           depth: c.depth,
           replyCount: countReplies(c.id),
         }}

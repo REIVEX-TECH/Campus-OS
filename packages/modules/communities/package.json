@@ -20,7 +20,11 @@
     "./rules": "./src/rules.ts",
     "./members": "./src/members.ts",
     "./feed": "./src/feed.ts",
-    "./saved": "./src/saved.ts"
+    "./saved": "./src/saved.ts",
+    "./blocks": "./src/blocks.ts",
+    "./mod-actions": "./src/mod-actions.ts",
+    "./queue": "./src/queue.ts",
+    "./oversight": "./src/oversight.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
