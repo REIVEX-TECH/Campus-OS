@@ -78,7 +78,7 @@ function Placeholder({ t }: { t: Translate }) {
         <p className="max-w-prose text-base text-muted-foreground">{t('platform.admin.body')}</p>
       </header>
       <div className="flex flex-wrap items-center gap-3">
-        <Link className={buttonVariants()} href="/signin">
+        <Link className={buttonVariants()} href="/login">
           {t('platform.admin.signIn')}
         </Link>
         <Link className={buttonVariants({ variant: 'outline' })} href="/">
