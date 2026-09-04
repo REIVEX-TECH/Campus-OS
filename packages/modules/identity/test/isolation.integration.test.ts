@@ -1757,6 +1757,17 @@ describe('platform administration', () => {
 });
 
 describe('tenant grants (cross-tenant platform administration)', () => {
+  // The tenants are re-created empty each test (beforeEach truncates and
+  // re-inserts aaa/bbb), so their system roles must be synced for the resolver's
+  // grant branch to have a tenant_admin role to resolve to. A resident member is
+  // what normally triggers this; a grant test creates none, so sync explicitly.
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `select auth_sync_tenant_roles('bbb')`,
+    );
+  });
+
   async function platformActor(subject: string) {
     const actor = await findOrCreateUser({ subject, email: `${subject}@example.com` });
     await ensurePlatformAdmin(actor, [`${subject}@example.com`]);
@@ -1809,7 +1820,7 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
     // No transaction, no use row: the grant branch cannot see itself.
-    expect(await effectivePermissions(p.userId, 'aaa')).toEqual(new Set());
+    expect((await effectivePermissions(p.userId, 'aaa')).size).toBe(0);
   });
 
   it('refuses self-promotion under a grant, even when app.user_id is forged mid-transaction', async () => {
@@ -1933,6 +1944,7 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     const grant = await withPlatformGrant(p, 'aaa', 'a legitimate reason', async (_tx, g) => g);
     // This suite refuses to run on an unsplit database (see the guard in
     // beforeAll), so the application role is always a non-owner here.
+    // Writing the grant table directly is revoked from the app role.
     await expect(
       withActorInTenant(p.userId, 'aaa', (tx) =>
         tx.execute(
@@ -1943,10 +1955,12 @@ describe('tenant grants (cross-tenant platform administration)', () => {
         ),
       ),
     ).rejects.toThrow();
-    const uses = await withActorInTenant(p.userId, 'aaa', (tx) =>
-      tx.execute(sql`select count(*)::int as n from platform_grant_uses`),
-    );
-    expect(([...uses] as { n: number }[])[0]!.n).toBe(0);
+    // The uses table has no grant to the app at all, so even reading it is denied.
+    await expect(
+      withActorInTenant(p.userId, 'aaa', (tx) =>
+        tx.execute(sql`select count(*) from platform_grant_uses`),
+      ),
+    ).rejects.toThrow();
     expect(grant.grantId).toBeTruthy();
   });
 });
