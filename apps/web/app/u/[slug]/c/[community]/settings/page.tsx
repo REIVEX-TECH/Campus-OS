@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { listMembers } from '@campusos/module-communities/members';
+import { listAutomodRules } from '@campusos/module-communities/automod';
 import { listRules } from '@campusos/module-communities/rules';
+import { AutomodEditor } from '@/app/_components/communities/automod-editor';
 import { CommunityForm } from '@/app/_components/communities/community-form';
 import { ModeratorsPanel } from '@/app/_components/communities/moderators-panel';
 import { RulesEditor } from '@/app/_components/communities/rules-editor';
@@ -54,9 +56,10 @@ export default async function CommunitySettingsPage({ params }: Params) {
   if (!perms.hasAny('communities.manage', 'communities.oversee')) notFound();
   const t = translator(tenant.locale);
   const settings = communitiesSettings(tenant);
-  const [rules, members] = await Promise.all([
+  const [rules, members, filters] = await Promise.all([
     listRules(slug, community.id),
     listMembers(slug, community.id),
+    listAutomodRules(actor, slug, community.id),
   ]);
   const errors = communityErrors(t);
 
@@ -125,6 +128,34 @@ export default async function CommunitySettingsPage({ params }: Params) {
             }}
           />
         </section>
+
+        <AutomodEditor
+          tenant={slug}
+          communityId={community.id}
+          initial={(filters.ok ? filters.value : []).map((r) => ({
+            kind: r.kind,
+            pattern: r.pattern,
+            action: r.action,
+          }))}
+          labels={{
+            heading: t('automod.heading'),
+            intro: t('automod.intro'),
+            kind: t('automod.kind'),
+            keyword: t('automod.keyword'),
+            domain: t('automod.domain'),
+            pattern: t('automod.pattern'),
+            action: t('automod.action'),
+            queue: t('automod.queue'),
+            remove: t('automod.remove'),
+            add: t('automod.add'),
+            delete: t('automod.delete', { n: '{n}' }),
+            save: t('automod.save'),
+            saved: t('automod.saved'),
+            working: t('communities.working'),
+            empty: t('automod.empty'),
+            errors,
+          }}
+        />
 
         <section aria-labelledby="c-mods" className="ios-card flex flex-col gap-3 rounded-2xl p-4">
           <div className="flex flex-col gap-0.5">

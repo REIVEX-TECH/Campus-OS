@@ -10,8 +10,8 @@ Design: `docs/design-communities.md`.
 | A3    | Posts                                                   | Merged, `2218e04`       |
 | A4    | Comments                                                | Done (#94)              |
 | A5    | Voting, ranking, feeds, pagination                      | Done (#95)              |
-| A6    | Moderation, oversight, audited unmask                   | **In review** (this PR) |
-| A7    | Anti-abuse                                              | Not started             |
+| A6    | Moderation, oversight, audited unmask                   | Done (#96)              |
+| A7    | Anti-abuse                                              | **In review** (this PR) |
 | A8    | UI and Playwright                                       | Not started             |
 | B1–B6 | Polls, notifications, search, flairs, profiles, polish  | Not started             |
 

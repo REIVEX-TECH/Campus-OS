@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { communityBySlug } from '@campusos/module-communities/communities';
-import { listModLog, listQueue } from '@campusos/module-communities/queue';
+import { listHeld, listModLog, listQueue } from '@campusos/module-communities/queue';
 import { buttonVariants } from '@campusos/ui';
 import { ModLog } from '@/app/_components/communities/mod-log';
 import { ModQueue } from '@/app/_components/communities/mod-queue';
@@ -38,8 +38,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 /**
- * A community's mod tools: the queue of open reports and the log of what was
- * done. Anyone without `communities.moderate` here (or oversight in the
+ * A community's mod tools: the queue of open reports, what the filters and
+ * the report threshold held, and the log of what was done. Anyone without `communities.moderate` here (or oversight in the
  * tenant) gets a 404, the same page a stranger sees for a community that does
  * not exist. Revealing an anonymous author is not offered here; that belongs
  * to the tenant's oversight page and its permission.
@@ -57,10 +57,33 @@ export default async function ModPage({ params, searchParams }: PageProps) {
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const query = await searchParams;
-  const tab = query.tab === 'log' ? 'log' : 'queue';
+  const tab = query.tab === 'log' ? 'log' : query.tab === 'held' ? 'held' : 'queue';
   const log =
     tab === 'log' ? await listModLog(actor, slug, community.id, { cursor: query.after }) : null;
+  const held = tab === 'held' ? await listHeld(actor, slug, community.id) : null;
   const here = `${base}/c/${community.slug}/mod`;
+
+  const queueLabels = {
+    empty: t('mod.queueEmpty'),
+    post: t('mod.post'),
+    comment: t('mod.comment'),
+    reports: t('mod.reports', { count: '{count}' }),
+    reportsOne: t('mod.reportsOne'),
+    anonymousAuthor: t('mod.anonymousAuthor'),
+    alreadyRemoved: t('mod.alreadyRemoved'),
+    open: t('mod.open'),
+    approve: t('mod.approve'),
+    approved: t('mod.approved'),
+    remove: t('mod.remove'),
+    removeReason: t('mod.removeReason'),
+    removed: t('mod.removed'),
+    confirm: t('mod.confirm'),
+    cancel: t('mod.cancel'),
+    unmask: t('mod.unmask'),
+    unmaskConfirm: t('mod.unmaskConfirm'),
+    unmasked: t('mod.unmasked', { handle: '{handle}' }),
+    errors: communityErrors(t),
+  };
 
   return (
     <PageShell>
@@ -72,10 +95,10 @@ export default async function ModPage({ params, searchParams }: PageProps) {
           </h1>
         </header>
         <nav aria-label={t('mod.tools')} className="flex flex-wrap gap-1 px-1">
-          {(['queue', 'log'] as const).map((k) => (
+          {(['queue', 'held', 'log'] as const).map((k) => (
             <Link
               key={k}
-              href={k === 'queue' ? here : `${here}?tab=log`}
+              href={k === 'queue' ? here : `${here}?tab=${k}`}
               aria-current={k === tab ? 'page' : undefined}
               className={`ios-pressable rounded-lg px-3 py-1.5 text-sm font-semibold ${
                 k === tab
@@ -113,27 +136,28 @@ export default async function ModPage({ params, searchParams }: PageProps) {
               reportIds: q.reportIds,
               when: relativeTime(q.lastReportedAt.toISOString(), tenant.locale),
             }))}
-            labels={{
-              empty: t('mod.queueEmpty'),
-              post: t('mod.post'),
-              comment: t('mod.comment'),
-              reports: t('mod.reports', { count: '{count}' }),
-              reportsOne: t('mod.reportsOne'),
-              anonymousAuthor: t('mod.anonymousAuthor'),
-              alreadyRemoved: t('mod.alreadyRemoved'),
-              open: t('mod.open'),
-              approve: t('mod.approve'),
-              approved: t('mod.approved'),
-              remove: t('mod.remove'),
-              removeReason: t('mod.removeReason'),
-              removed: t('mod.removed'),
-              confirm: t('mod.confirm'),
-              cancel: t('mod.cancel'),
-              unmask: t('mod.unmask'),
-              unmaskConfirm: t('mod.unmaskConfirm'),
-              unmasked: t('mod.unmasked', { handle: '{handle}' }),
-              errors: communityErrors(t),
-            }}
+            labels={queueLabels}
+          />
+        ) : tab === 'held' ? (
+          <ModQueue
+            tenant={slug}
+            canUnmask={false}
+            items={(held?.ok ? held.value : []).map((h) => ({
+              itemType: h.itemType,
+              itemId: h.itemId,
+              communityId: h.communityId,
+              communityName: h.communityName,
+              href: postPath(base, h.communitySlug, h.postId, h.title),
+              title: h.title,
+              excerpt: h.excerpt,
+              isAnonymous: h.isAnonymous,
+              removed: true,
+              reportCount: 0,
+              reasons: [t(`mod.held.${h.reason}` as MessageKey)],
+              reportIds: [],
+              when: relativeTime(h.heldAt.toISOString(), tenant.locale),
+            }))}
+            labels={{ ...queueLabels, empty: t('mod.heldEmpty'), alreadyRemoved: '' }}
           />
         ) : log?.ok ? (
           <>

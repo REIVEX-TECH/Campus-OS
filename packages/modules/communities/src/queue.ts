@@ -4,6 +4,7 @@ import { err, ok, type Result } from '@campusos/core';
 import { canInTenant, type Refusal } from './access';
 import { decodeCursor, encodeCursor } from './feed';
 import { moderates } from './mod-actions';
+import { HELD_BY_FILTER, HIDDEN_BY_REPORTS, REMOVED_BY_FILTER, SYSTEM_ACTOR } from './automod';
 import { communities } from './schema/communities';
 
 /**
@@ -121,6 +122,8 @@ export interface ModLogEntry {
   meta: Record<string, unknown> | null;
   createdAt: Date;
   actorHandle: string | null;
+  /** Written by automod or the report threshold, not by a person. */
+  system: boolean;
   /** Only for moderators, and only when the target is a person. */
   targetHandle: string | null;
 }
@@ -138,6 +141,7 @@ interface LogRow {
   reason: string | null;
   meta: Record<string, unknown> | null;
   created_at: string;
+  actor_id: string;
   actor_handle: string | null;
   target_handle: string | null;
 }
@@ -152,7 +156,7 @@ async function readLog(
   const rows = [
     ...(await tx.execute(sql`
       select m.id, m.action, m.target_type, m.target_id, m.reason, m.meta, m.created_at,
-             a.handle as actor_handle,
+             m.actor_id, a.handle as actor_handle,
              case when m.target_type = 'user' then u.handle end as target_handle
       from moderation_actions m
       left join public_profiles a on a.user_id = m.actor_id
@@ -175,6 +179,7 @@ async function readLog(
       meta: r.meta,
       createdAt: new Date(r.created_at),
       actorHandle: r.actor_handle,
+      system: r.actor_id === SYSTEM_ACTOR,
       targetHandle: isModerator ? r.target_handle : null,
     })),
     nextCursor:
@@ -206,4 +211,88 @@ export async function listModLog(
         read(tx, await moderates(tx, viewer.userId, tenantId, communityId)),
       )
     : withTenant(tenantId, (tx) => read(tx, false));
+}
+
+export interface HeldItem {
+  itemType: 'post' | 'comment';
+  itemId: string;
+  postId: string;
+  communityId: string;
+  communitySlug: string;
+  communityName: string;
+  title: string;
+  excerpt: string;
+  isAnonymous: boolean;
+  /** Why it is held: a filter's hold, a filter's removal, or the report threshold. */
+  reason: 'filter_hold' | 'filter_remove' | 'reports';
+  heldAt: Date;
+}
+
+interface HeldRow {
+  item_type: 'post' | 'comment';
+  item_id: string;
+  post_id: string;
+  community_id: string;
+  community_slug: string;
+  community_name: string;
+  title: string | null;
+  excerpt: string | null;
+  is_anonymous: boolean | null;
+  removal_reason: string;
+  removed_at: string;
+}
+
+const HELD_REASONS: Record<string, HeldItem['reason']> = {
+  [HELD_BY_FILTER]: 'filter_hold',
+  [REMOVED_BY_FILTER]: 'filter_remove',
+  [HIDDEN_BY_REPORTS]: 'reports',
+};
+
+/** What automod and the report threshold took down in a community, newest first, for its moderators. */
+export async function listHeld(
+  actor: { userId: string },
+  tenantId: string,
+  communityId: string,
+  limit = 50,
+): Promise<Result<HeldItem[], Refusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    if (!(await moderates(tx, actor.userId, tenantId, communityId))) return err('not_allowed');
+    const codes = Object.keys(HELD_REASONS);
+    const rows = [
+      ...(await tx.execute(sql`
+        select * from (
+          select 'post' as item_type, p.id as item_id, p.id as post_id, p.community_id,
+                 p.title, left(coalesce(p.body, ''), 280) as excerpt, p.is_anonymous,
+                 p.removal_reason, p.removed_at
+          from posts_read p
+          where p.community_id = ${communityId}::uuid and p.deleted_at is null
+            and p.removal_reason in ${codes}
+          union all
+          select 'comment', cm.id, cm.post_id, pc.community_id,
+                 pc.title, left(cm.body, 280), cm.is_anonymous, cm.removal_reason, cm.removed_at
+          from comments_read cm
+          join posts_read pc on pc.id = cm.post_id
+          where pc.community_id = ${communityId}::uuid and cm.deleted_at is null
+            and cm.removal_reason in ${codes}
+        ) h
+        join communities c on c.id = h.community_id
+        order by h.removed_at desc
+        limit ${limit}`)),
+    ] as unknown as HeldRow[];
+    return ok(
+      rows.map((r) => ({
+        itemType: r.item_type,
+        itemId: r.item_id,
+        postId: r.post_id,
+        communityId: r.community_id,
+        communitySlug: r.community_slug,
+        communityName: r.community_name,
+        title: r.title ?? '',
+        excerpt: r.excerpt ?? '',
+        isAnonymous: r.is_anonymous ?? false,
+        reason: HELD_REASONS[r.removal_reason] ?? 'filter_hold',
+        heldAt: new Date(r.removed_at),
+      })),
+    );
+  });
 }

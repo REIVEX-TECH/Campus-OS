@@ -37,3 +37,17 @@ export function communityFormLabels(t: Translate, mode: 'create' | 'edit'): Comm
     errors: communityErrors(t),
   };
 }
+
+/** A removal reason as a sentence: the codes automod and the threshold write, or a moderator's own words. */
+export function removalLabel(reason: string, t: Translate): string {
+  switch (reason) {
+    case 'automod:queue':
+      return t('posts.heldByFilter');
+    case 'automod:remove':
+      return t('posts.removedByFilter');
+    case 'auto:reports':
+      return t('posts.hiddenByReports');
+    default:
+      return t('posts.removedReason', { reason });
+  }
+}

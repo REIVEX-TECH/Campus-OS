@@ -27,7 +27,7 @@ import {
 } from '../src/communities';
 import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
 import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
-import { listModLog, listQueue } from '../src/queue';
+import { listHeld, listModLog, listQueue } from '../src/queue';
 import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
 import {
   approveItem,
@@ -38,6 +38,7 @@ import {
   setLocked,
   setPinned,
 } from '../src/mod-actions';
+import { listAutomodRules, setAutomodRules } from '../src/automod';
 import { blockUser, listBlocked, unblockUser } from '../src/blocks';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
@@ -1072,8 +1073,10 @@ describe('moderation', () => {
     const m = await member('mu-member');
     const c = await community(owner, 'Quiet Room');
     await joinCommunity(m, 'aaa', c.id);
+    // Distinct titles: the same title again in a day is a repeat since A7.
+    let n = 0;
     const post = () =>
-      createPost(m, 'aaa', c.id, { kind: 'text', title: 'Hello there', body: '' }, settings);
+      createPost(m, 'aaa', c.id, { kind: 'text', title: `Hello there ${++n}`, body: '' }, settings);
 
     expect(await muteMember(owner, 'aaa', c.id, owner.userId, { reason: 'Myself' })).toEqual({
       ok: false,
@@ -1243,5 +1246,149 @@ describe('moderation', () => {
     });
     const after = await listCommunitiesForOversight(overseer, 'aaa');
     expect(after.ok && after.value.some((c) => c.id === c2.id)).toBe(false);
+  });
+});
+
+describe('anti abuse', () => {
+  it('holds or removes by a filter, keeps the rules to moderators, and lets a moderator restore', async () => {
+    const owner = await member('am-owner');
+    const m = await member('am-member');
+    const c = await community(owner, 'Filtered');
+    await joinCommunity(m, 'aaa', c.id);
+    expect(await setAutomodRules(m, 'aaa', c.id, [])).toEqual({ ok: false, error: 'not_allowed' });
+    expect(await listAutomodRules(m, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
+    const set = await setAutomodRules(owner, 'aaa', c.id, [
+      { kind: 'keyword', pattern: 'Crypto Giveaway', action: 'queue' },
+      { kind: 'domain', pattern: 'spam.example', action: 'remove' },
+    ]);
+    expect(set.ok && set.value.map((r) => [r.kind, r.action])).toEqual([
+      ['keyword', 'queue'],
+      ['domain', 'remove'],
+    ]);
+
+    const held = await createPost(
+      m,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Free CRYPTO giveaway tonight', body: '' },
+      settings,
+    );
+    expect(held.ok && held.value.held).toBe(true);
+    if (!held.ok) throw new Error(held.error);
+    // Held: out of the feed, visible to its author with the reason code, in the Held tab.
+    expect((await listCommunityPosts(null, 'aaa', c.id)).items.map((p) => p.id)).not.toContain(
+      held.value.id,
+    );
+    expect(await postById(m, 'aaa', held.value.id)).toMatchObject({
+      isOwn: true,
+      removalReason: 'automod:queue',
+    });
+    const list = await listHeld(owner, 'aaa', c.id);
+    expect(list.ok && list.value.map((h) => [h.itemId, h.reason])).toEqual([
+      [held.value.id, 'filter_hold'],
+    ]);
+    const log = await listModLog(owner, 'aaa', c.id, { limit: 1 });
+    expect(log.ok && log.value.items[0]).toMatchObject({
+      action: 'automod_hold',
+      system: true,
+      actorHandle: null,
+    });
+    expect(log.ok && log.value.items[0]?.meta).toMatchObject({ pattern: 'Crypto Giveaway' });
+    expect(await approveItem(owner, 'aaa', 'post', held.value.id)).toEqual({
+      ok: true,
+      value: { approved: true },
+    });
+    expect((await postById(null, 'aaa', held.value.id))?.removedAt).toBeNull();
+    expect(
+      (await listHeld(owner, 'aaa', c.id)).ok && (await listHeld(owner, 'aaa', c.id)),
+    ).toMatchObject({ value: [] });
+
+    const removed = await createPost(
+      m,
+      'aaa',
+      c.id,
+      { kind: 'link', title: 'Look at this', url: 'https://www.spam.example/offer' },
+      settings,
+    );
+    expect(removed.ok && removed.value.held).toBe(true);
+    if (!removed.ok) throw new Error(removed.error);
+    expect(await postById(m, 'aaa', removed.value.id)).toMatchObject({
+      removalReason: 'automod:remove',
+    });
+    const clean = await createPost(
+      m,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Study group tonight', body: 'Library, 7pm' },
+      settings,
+    );
+    expect(clean.ok && clean.value.held).toBe(false);
+    // A comment is screened the same way.
+    if (!clean.ok) throw new Error(clean.error);
+    const cm = await createComment(
+      m,
+      'aaa',
+      clean.value.id,
+      null,
+      { body: 'crypto giveaway, dm me' },
+      settings,
+    );
+    if (!cm.ok) throw new Error(cm.error);
+    expect((await commentsForPost(owner, 'aaa', clean.value.id))[0]?.removedAt).toBeInstanceOf(
+      Date,
+    );
+    const heldNow = await listHeld(owner, 'aaa', c.id);
+    expect(heldNow.ok && heldNow.value.map((h) => h.itemType).sort()).toEqual(['comment', 'post']);
+  });
+
+  it('hides an item at the report threshold until a moderator looks, and refuses a repeated title', async () => {
+    const owner = await member('rt-owner');
+    const writer = await member('rt-writer');
+    const reporters = await Promise.all(['rt-r1', 'rt-r2', 'rt-r3'].map((n) => member(n)));
+    const c = await community(owner, 'Thresholds');
+    for (const who of [writer, ...reporters]) await joinCommunity(who, 'aaa', c.id);
+    const p = await createPost(
+      writer,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Borderline', body: '' },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+    expect(
+      await createPost(
+        writer,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Borderline', body: '' },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'exists' });
+
+    const report = (who: { userId: string }) =>
+      reportItem(who, 'aaa', { itemType: 'post', itemId: p.value.id, reason: 'spam' }, settings);
+    expect(await report(reporters[0]!)).toMatchObject({ ok: true, value: { hidden: false } });
+    expect(await report(reporters[1]!)).toMatchObject({ ok: true, value: { hidden: false } });
+    expect((await postById(null, 'aaa', p.value.id))?.removedAt).toBeNull();
+    expect(await report(reporters[2]!)).toMatchObject({ ok: true, value: { hidden: true } });
+    expect(await postById(null, 'aaa', p.value.id)).toMatchObject({
+      removalReason: 'auto:reports',
+    });
+    expect((await listCommunityPosts(null, 'aaa', c.id)).items.map((x) => x.id)).not.toContain(
+      p.value.id,
+    );
+    const held = await listHeld(owner, 'aaa', c.id);
+    expect(held.ok && held.value.map((h) => h.reason)).toEqual(['reports']);
+    const queue = await listQueue(owner, 'aaa', c.id);
+    expect(queue.ok && queue.value[0]).toMatchObject({ itemId: p.value.id, reportCount: 3 });
+    expect(queue.ok && queue.value[0]?.removedAt).toBeInstanceOf(Date);
+    const log = await listModLog(owner, 'aaa', c.id, { limit: 1 });
+    expect(log.ok && log.value.items[0]).toMatchObject({ action: 'auto_hide', system: true });
+    // A moderator's approve restores it and clears the reports in one go.
+    expect((await approveItem(owner, 'aaa', 'post', p.value.id)).ok).toBe(true);
+    expect((await postById(null, 'aaa', p.value.id))?.removedAt).toBeNull();
+    expect(
+      (await listQueue(owner, 'aaa', c.id)).ok && (await listQueue(owner, 'aaa', c.id)),
+    ).toMatchObject({ value: [] });
   });
 });

@@ -15,7 +15,7 @@ import { postPath } from '@/lib/community-constants';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
-import { communityErrors } from '@/lib/community-labels';
+import { communityErrors, removalLabel } from '@/lib/community-labels';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -139,9 +139,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
         {post.removedAt && !withheld ? (
           <p className="px-1 text-sm text-muted-foreground">
             {t('posts.removedNotice')}
-            {post.removalReason
-              ? ` · ${t('posts.removedReason', { reason: post.removalReason })}`
-              : ''}
+            {post.removalReason ? ` · ${removalLabel(post.removalReason, t)}` : ''}
           </p>
         ) : null}
         {canModerate ? (
