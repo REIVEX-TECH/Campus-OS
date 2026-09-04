@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { listCommunitiesForOversight } from '@campusos/module-communities/oversight';
-import { listQueue } from '@campusos/module-communities/queue';
+import { listHeld, listQueue } from '@campusos/module-communities/queue';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { ModQueue } from '@/app/_components/communities/mod-queue';
 import { OversightList } from '@/app/_components/communities/oversight-list';
@@ -48,12 +48,35 @@ export default async function AdminCommunitiesPage({ params }: Params) {
   const base = await tenantBase(slug);
   const { actor, permissions } = await requirePermission(slug, 'communities.oversee');
   const me = { userId: actor.userId };
-  const [communities, queue] = await Promise.all([
+  const [communities, queue, held] = await Promise.all([
     listCommunitiesForOversight(me, slug),
     listQueue(me, slug, null),
+    listHeld(me, slug, null),
   ]);
   const rows = communities.ok ? communities.value : [];
   const canUnmask = permissions.has('communities.unmask');
+
+  const queueLabels = {
+    empty: t('mod.queueEmpty'),
+    post: t('mod.post'),
+    comment: t('mod.comment'),
+    reports: t('mod.reports', { count: '{count}' }),
+    reportsOne: t('mod.reportsOne'),
+    anonymousAuthor: t('mod.anonymousAuthor'),
+    alreadyRemoved: t('mod.alreadyRemoved'),
+    open: t('mod.open'),
+    approve: t('mod.approve'),
+    approved: t('mod.approved'),
+    remove: t('mod.remove'),
+    removeReason: t('mod.removeReason'),
+    removed: t('mod.removed'),
+    confirm: t('mod.confirm'),
+    cancel: t('mod.cancel'),
+    unmask: t('mod.unmask'),
+    unmaskConfirm: t('mod.unmaskConfirm'),
+    unmasked: t('mod.unmasked', { handle: '{handle}' }),
+    errors: communityErrors(t),
+  };
 
   return (
     <PageShell>
@@ -94,27 +117,36 @@ export default async function AdminCommunitiesPage({ params }: Params) {
               reportIds: q.reportIds,
               when: relativeTime(q.lastReportedAt.toISOString(), tenant.locale),
             }))}
-            labels={{
-              empty: t('mod.queueEmpty'),
-              post: t('mod.post'),
-              comment: t('mod.comment'),
-              reports: t('mod.reports', { count: '{count}' }),
-              reportsOne: t('mod.reportsOne'),
-              anonymousAuthor: t('mod.anonymousAuthor'),
-              alreadyRemoved: t('mod.alreadyRemoved'),
-              open: t('mod.open'),
-              approve: t('mod.approve'),
-              approved: t('mod.approved'),
-              remove: t('mod.remove'),
-              removeReason: t('mod.removeReason'),
-              removed: t('mod.removed'),
-              confirm: t('mod.confirm'),
-              cancel: t('mod.cancel'),
-              unmask: t('mod.unmask'),
-              unmaskConfirm: t('mod.unmaskConfirm'),
-              unmasked: t('mod.unmasked', { handle: '{handle}' }),
-              errors: communityErrors(t),
-            }}
+            labels={queueLabels}
+          />
+        </section>
+
+        <section aria-labelledby="oversight-held" className="flex flex-col gap-2">
+          <h2
+            id="oversight-held"
+            className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            {t('oversight.held')}
+          </h2>
+          <ModQueue
+            tenant={slug}
+            canUnmask={false}
+            items={(held.ok ? held.value : []).map((h) => ({
+              itemType: h.itemType,
+              itemId: h.itemId,
+              communityId: h.communityId,
+              communityName: h.communityName,
+              href: postPath(base, h.communitySlug, h.postId, h.title),
+              title: h.title,
+              excerpt: h.excerpt,
+              isAnonymous: h.isAnonymous,
+              removed: true,
+              reportCount: 0,
+              reasons: [t(`mod.held.${h.reason}` as MessageKey)],
+              reportIds: [],
+              when: relativeTime(h.heldAt.toISOString(), tenant.locale),
+            }))}
+            labels={{ ...queueLabels, empty: t('mod.heldEmpty'), alreadyRemoved: '' }}
           />
         </section>
 
@@ -136,6 +168,7 @@ export default async function AdminCommunitiesPage({ params }: Params) {
                 name: c.name,
                 pending: c.approvalStatus === 'pending',
                 restricted: c.visibility === 'restricted',
+                archived: c.archivedAt !== null,
                 members: t('communities.members', { count: c.memberCount }),
                 openReports:
                   c.openReports > 0 ? t('oversight.openReports', { count: c.openReports }) : null,
@@ -148,6 +181,10 @@ export default async function AdminCommunitiesPage({ params }: Params) {
                 dissolve: t('oversight.dissolve'),
                 dissolveReason: t('oversight.dissolveReason'),
                 dissolved: t('oversight.dissolved'),
+                archive: t('oversight.archive'),
+                reopen: t('oversight.reopen'),
+                archivedBadge: t('communities.archived'),
+                toggled: t('oversight.toggled'),
                 confirm: t('mod.confirm'),
                 cancel: t('mod.cancel'),
                 errors: communityErrors(t),

@@ -14,6 +14,8 @@ export function communityErrors(t: Translate): Record<string, string> {
     muted: t('communities.error.muted'),
     pin_cap: t('communities.error.pin_cap'),
     self: t('communities.error.self'),
+    rules_not_accepted: t('communities.error.rules_not_accepted'),
+    archived: t('posts.error.archived'),
     failed: t('communities.error.failed'),
   };
 }

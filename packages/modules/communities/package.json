@@ -31,7 +31,8 @@
     "./search": "./src/search.ts",
     "./flairs": "./src/flairs.ts",
     "./crosspost": "./src/crosspost.ts",
-    "./profiles": "./src/profiles.ts"
+    "./profiles": "./src/profiles.ts",
+    "./archive": "./src/archive.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

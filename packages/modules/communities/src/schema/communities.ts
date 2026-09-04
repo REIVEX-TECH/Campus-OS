@@ -91,6 +91,8 @@ export const communityMemberships = pgTable(
     userId: uuid('user_id').notNull(),
     joinedAt: tz('joined_at').notNull().defaultNow(),
     leftAt: tz('left_at'),
+    /** When the member said they had read the rules; null until a first post asks. */
+    rulesAcceptedAt: tz('rules_accepted_at'),
   },
   (t) => [
     uniqueIndex('community_memberships_community_user_uq').on(t.communityId, t.userId),

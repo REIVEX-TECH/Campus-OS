@@ -36,6 +36,13 @@
       "when": 1756800104000,
       "tag": "0004_crosspost",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1756800105000,
+      "tag": "0005_rules_acceptance",
+      "breakpoints": true
     }
   ]
 }

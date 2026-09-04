@@ -9,6 +9,7 @@ import {
   setPinned,
 } from '@campusos/module-communities/mod-actions';
 import { banMember, unmaskAuthor } from '@campusos/module-communities/moderation';
+import { setArchived } from '@campusos/module-communities/archive';
 import { dissolveCommunity, handleOf } from '@campusos/module-communities/oversight';
 import { approveCommunity } from '@campusos/module-communities/settings';
 import { communityGate, refusalResponse } from '@/lib/community-route';
@@ -48,6 +49,7 @@ const schema = z.discriminatedUnion('action', [
   }),
   z.object({ tenant, action: z.literal('dissolve'), reason: z.string() }),
   z.object({ tenant, action: z.literal('approveCommunity') }),
+  z.object({ tenant, action: z.literal('archive'), on: z.boolean() }),
   z.object({ tenant, action: z.literal('unmask'), itemType, itemId: uuid, reportId: uuid }),
 ]);
 
@@ -93,6 +95,8 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       return reply(await movePin(actor, slug, data.postId, data.direction));
     case 'lift':
       return reply(await liftSanction(actor, slug, data.kind, data.id));
+    case 'archive':
+      return reply(await setArchived(actor, slug, id, data.on));
     case 'approveCommunity':
       return reply(await approveCommunity(actor, slug, id));
     case 'dissolve':

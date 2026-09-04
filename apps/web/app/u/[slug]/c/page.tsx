@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { buttonVariants } from '@campusos/ui';
 import { myCommunities } from '@campusos/module-communities/communities';
+import { flairsByIds } from '@campusos/module-communities/flairs';
 import {
   isFeedSort,
   isTopWindow,
@@ -110,6 +111,14 @@ export default async function CommunitiesPage({ params, searchParams }: PageProp
     actor ? myCommunities(actor, slug) : Promise.resolve([]),
     trendingPosts(actor, slug, 5),
   ]);
+  const flairs = [
+    ...(
+      await flairsByIds(
+        slug,
+        page.items.map((p) => p.flairId).filter((x): x is string => x !== null),
+      )
+    ).values(),
+  ];
   const href = (patch: Partial<{ feed: string; sort: string; t: string; after: string }>) => {
     const p = new URLSearchParams();
     const next = { feed, sort, t: window, ...patch };
@@ -201,6 +210,7 @@ export default async function CommunitiesPage({ params, searchParams }: PageProp
                   locale={tenant.locale}
                   signedIn={actor !== null}
                   canVote={actor !== null}
+                  flairs={flairs}
                   t={t}
                 />
               </li>

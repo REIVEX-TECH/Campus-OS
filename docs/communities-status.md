@@ -17,8 +17,8 @@ Design: `docs/design-communities.md`.
 | B2   | Notifications, unread count in the top bar               | Done                    |
 | B3   | Search and the community directory                       | Done                    |
 | B4   | Flairs, pinned ordering, crosspost, share                | Done                    |
-| B5   | Profiles, karma toggle, saved and hidden, blocked list   | **In review** (this PR) |
-| B6   | Polish: counts, rules acceptance, archive after N months | Not started             |
+| B5   | Profiles, karma toggle, saved and hidden, blocked list   | Done                    |
+| B6   | Polish: counts, rules acceptance, archive after N months | **In review** (this PR) |
 
 Deferred on purpose (design §11): media uploads, direct messages, awards, wiki,
 email digests.
@@ -33,3 +33,14 @@ by omission: saved comments and the blocked list on a profile (B5), the
 community icon and link on feed cards (B5), a tenant wide Held view for
 oversight (B6), the audit line for a dissolution under test (B6), regular
 expression filters (not planned).
+
+## Phase B: complete
+
+Polls (B1), notifications (B2), search and the directory (B3), flairs, pinned
+order, crossposts and share (B4), profiles and private lists (B5), and the
+polish step (B6: rules acceptance on a first post, the archive sweep and
+reopen, flair pills on every feed, held items across the university) are
+merged or in review. Left for later, by choice: user flairs, search over
+comments, karma decay, comment paging on profiles, and email digests (design
+§11). Live-database steps for each migration are in the PR bodies and
+`docs/runbooks/`.
