@@ -119,8 +119,9 @@ The pages stay pages: tabs and paging are links; there is no nested scroll.
 build` clean, three new routes.
 - e2e (one new case): the mod page, the oversight page and the blocked page
   are 404, 404 and a sign in redirect for a stranger; the mod and block
-  routes are 401. `pnpm --filter web test:e2e`: 72 passed against a
-  production build.
+  routes are 401. `pnpm --filter web test:e2e`: 73 passed against a
+  production build (three runs: 73, then 72 on the known cold start flake in
+  the timetable recents case, then 73).
 - Browser (local dev server, as a community owner): the post page shows the
   moderator row and the rail's Mod tools link; Pin sets the Pinned pill and
   reads "Pinned to the top.", Lock sets the Locked pill and removes the
