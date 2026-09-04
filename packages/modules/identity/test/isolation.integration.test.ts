@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { withActor, withActorInTenant, withTenant } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withGrantedTenant,
+  withPlatformGrant,
+  withTenant,
+} from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
@@ -564,6 +570,12 @@ describe('row security invariants', () => {
     // admin under policies; never read by a definer function. No FORCE so the
     // owner can write it; the application owns nothing, so RLS binds it anyway.
     tenant_configs: false,
+    // Read by the grant definers (0018) as the owner, so FORCE must be off, or
+    // auth_under_tenant_grant and the resolver would see nothing and the
+    // subtraction would fail OPEN. The app cannot write them: the uses table has
+    // no policy and the grants table's writes are revoked from the app role.
+    platform_tenant_grants: false,
+    platform_grant_uses: false,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {
@@ -1741,5 +1753,214 @@ describe('platform administration', () => {
       ok: false,
       reason: 'not_found',
     });
+  });
+});
+
+describe('tenant grants (cross-tenant platform administration)', () => {
+  // The tenants are re-created empty each test (beforeEach truncates and
+  // re-inserts aaa/bbb), so their system roles must be synced for the resolver's
+  // grant branch to have a tenant_admin role to resolve to. A resident member is
+  // what normally triggers this; a grant test creates none, so sync explicitly.
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `select auth_sync_tenant_roles('bbb')`,
+    );
+  });
+
+  async function platformActor(subject: string) {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@example.com` });
+    await ensurePlatformAdmin(actor, [`${subject}@example.com`]);
+    const issued = await issueSession(actor);
+    const [row] = await withActor(actor.userId, (tx) =>
+      tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, actor.userId)),
+    );
+    return { userId: actor.userId, sessionId: row!.id, token: issued.token };
+  }
+
+  /** The resolver, evaluated INSIDE a granted transaction (as 5B surfaces will). */
+  function permsUnderGrant(a: { userId: string; sessionId: string }, tenant: string) {
+    return withGrantedTenant(a, async (tx) => {
+      const rows = [
+        ...(await tx.execute(
+          sql`select permission from auth_effective_permissions(${a.userId}::uuid, ${tenant})`,
+        )),
+      ] as { permission: string }[];
+      return rows.map((r) => r.permission);
+    });
+  }
+
+  it('opens a grant, resolves as the tenant admin minus unmask, and logs it once', async () => {
+    const p = await platformActor('grant-a');
+    const grant = await withPlatformGrant(
+      p,
+      'aaa',
+      'helping during an outage',
+      async (_tx, g) => g,
+    );
+    expect(grant.tenantId).toBe('aaa');
+    expect(grant.reason).toBe('helping during an outage');
+
+    const perms = await permsUnderGrant(p, 'aaa');
+    // The tenant's own tenant_admin set, which includes managing members/roles...
+    expect(perms).toEqual(
+      expect.arrayContaining(['manage-members', 'manage-roles', 'restrict-members']),
+    );
+    // ...but never the sharpest power: a visitor is narrower than the resident.
+    expect(perms).not.toContain('communities.unmask');
+
+    // The opening was audited, exactly once, against the tenant.
+    const log = await withActor(p.userId, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'platform.tenant_grant_opened')),
+    );
+    expect(log.filter((r) => r.tenantId === 'aaa' && r.actorUserId === p.userId)).toHaveLength(1);
+  });
+
+  it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
+    const p = await platformActor('grant-bare');
+    await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
+    // No transaction, no use row: the grant branch cannot see itself.
+    expect((await effectivePermissions(p.userId, 'aaa')).size).toBe(0);
+  });
+
+  it('refuses self-promotion under a grant, even when app.user_id is forged mid-transaction', async () => {
+    const p = await platformActor('grant-self');
+    await withPlatformGrant(p, 'aaa', 'entered to look at reports', async () => undefined);
+
+    // The attack the review found: open the grant, then re-set app.user_id to a
+    // decoy so a check against the GUC would pass, then self-insert. The policy
+    // keys on the unforgeable grant admin, so it stays refused.
+    await expect(
+      withGrantedTenant(p, async (tx) => {
+        await tx.execute(sql`select set_config('app.user_id', gen_random_uuid()::text, true)`);
+        await tx.execute(
+          sql`insert into tenant_memberships (tenant_id, user_id, role, status)
+              values ('aaa', ${p.userId}::uuid, 'tenant_admin', 'active')`,
+        );
+      }),
+    ).rejects.toThrow();
+
+    // And the role-assignment half of the same escalation.
+    await expect(
+      withGrantedTenant(p, async (tx) => {
+        const [r] = [
+          ...(await tx.execute(
+            sql`select id from roles where tenant_id = 'aaa' and key = 'tenant_admin'`,
+          )),
+        ] as { id: string }[];
+        const [m] = [
+          ...(await tx.execute(
+            sql`insert into tenant_memberships (tenant_id, user_id, role, status)
+                values ('aaa', ${p.userId}::uuid, 'student', 'active')
+                on conflict do nothing returning id`,
+          )),
+        ] as { id: string }[];
+        await tx.execute(
+          sql`insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+              values (${m?.id ?? null}, ${r!.id}::uuid, 'aaa', ${p.userId}::uuid)`,
+        );
+      }),
+    ).rejects.toThrow();
+
+    // Nothing stuck: they hold no membership in aaa.
+    expect(await membershipFor(p.userId, 'aaa')).toBeNull();
+  });
+
+  it('withdraws the platform-level powers a resident admin does not have', async () => {
+    const p = await platformActor('grant-sub');
+    await withPlatformGrant(p, 'aaa', 'entered to moderate a thread', async () => undefined);
+
+    // Role definitions, tenant config and universities: INSERT raises under a grant.
+    for (const stmt of [
+      sql`insert into roles (tenant_id, key, name, is_system) values ('aaa', 'rogue', 'Rogue', false)`,
+      sql`insert into tenant_configs (slug, config) values ('aaa', '{}'::jsonb)`,
+      sql`insert into universities (slug, name, timezone) values ('rogue-u', 'Rogue', 'UTC')`,
+    ]) {
+      await expect(withGrantedTenant(p, (tx) => tx.execute(stmt))).rejects.toThrow();
+    }
+
+    // UPDATE is the silent case the review flagged: a RESTRICTIVE USING filters
+    // rather than raising, so assert the ROW COUNT is zero, not that it throws.
+    const updated = await withGrantedTenant(p, async (tx) => {
+      const rows = [
+        ...(await tx.execute(
+          sql`update universities set name = 'hijacked' where slug = 'aaa' returning slug`,
+        )),
+      ];
+      return rows.length;
+    });
+    expect(updated).toBe(0);
+    const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'aaa'));
+    expect(u?.name).toBe('Alpha U');
+  });
+
+  it('allows only one open grant per administrator at a time', async () => {
+    const p = await platformActor('grant-one');
+    await withPlatformGrant(p, 'aaa', 'first entry reason here', async () => undefined);
+    await expect(
+      withPlatformGrant(p, 'bbb', 'second entry reason here', async () => undefined),
+    ).rejects.toThrow();
+  });
+
+  it('is ended by the holder or revoked by another platform admin, and not by a stranger', async () => {
+    const p = await platformActor('grant-rev');
+    const other = await platformActor('grant-rev2');
+    const stranger = await findOrCreateUser({ subject: 'grant-rev-str', email: 'str@aaa.edu' });
+    const grant = await withPlatformGrant(p, 'aaa', 'a reason to be here', async (_tx, g) => g);
+
+    // A stranger cannot revoke it.
+    await expect(
+      withActor(stranger.userId, (tx) =>
+        tx.execute(sql`select auth_revoke_tenant_grant(${grant.grantId}::uuid, 'nope')`),
+      ),
+    ).rejects.toThrow();
+
+    // Another platform admin can, and a second revoke is a no-op (false).
+    const revoked = await withActor(other.userId, async (tx) => {
+      const [r] = [
+        ...(await tx.execute(
+          sql`select auth_revoke_tenant_grant(${grant.grantId}::uuid, 'covering') as ok`,
+        )),
+      ] as { ok: boolean }[];
+      return r!.ok;
+    });
+    expect(revoked).toBe(true);
+    const again = await withActor(other.userId, async (tx) => {
+      const [r] = [
+        ...(await tx.execute(
+          sql`select auth_revoke_tenant_grant(${grant.grantId}::uuid, 'x') as ok`,
+        )),
+      ] as { ok: boolean }[];
+      return r!.ok;
+    });
+    expect(again).toBe(false);
+
+    // Once revoked, the grant cannot be re-entered.
+    await expect(withGrantedTenant(p, async () => undefined)).rejects.toThrow();
+  });
+
+  it('lets the application neither write the grants nor read the uses (split database only)', async () => {
+    const p = await platformActor('grant-lock');
+    const grant = await withPlatformGrant(p, 'aaa', 'a legitimate reason', async (_tx, g) => g);
+    // This suite refuses to run on an unsplit database (see the guard in
+    // beforeAll), so the application role is always a non-owner here.
+    // Writing the grant table directly is revoked from the app role.
+    await expect(
+      withActorInTenant(p.userId, 'aaa', (tx) =>
+        tx.execute(
+          sql`insert into platform_tenant_grants
+              (admin_user_id, session_id, tenant_id, reason, expires_at, audit_id)
+              values (${p.userId}::uuid, ${p.sessionId}::uuid, 'aaa', 'forged forged forged',
+                      now() + interval '1 hour', 1)`,
+        ),
+      ),
+    ).rejects.toThrow();
+    // The uses table has no grant to the app at all, so even reading it is denied.
+    await expect(
+      withActorInTenant(p.userId, 'aaa', (tx) =>
+        tx.execute(sql`select count(*) from platform_grant_uses`),
+      ),
+    ).rejects.toThrow();
+    expect(grant.grantId).toBeTruthy();
   });
 });
