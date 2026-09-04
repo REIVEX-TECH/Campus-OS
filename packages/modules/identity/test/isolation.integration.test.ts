@@ -249,16 +249,12 @@ describe('auth_resolve_session', () => {
 
 describe('tenant_memberships', () => {
   beforeEach(async () => {
-    // Memberships are written in a tenant context (0008): a person can read
-    // the ones they hold but never write one themselves.
-    await withActorInTenant(alice, 'aaa', (tx) =>
-      tx.insert(tenantMemberships).values({ tenantId: 'aaa', userId: alice, role: 'student' }),
-    );
-    await withActorInTenant(alice, 'bbb', (tx) =>
-      tx.insert(tenantMemberships).values({ tenantId: 'bbb', userId: alice, role: 'teacher' }),
-    );
-    await withActorInTenant(bob, 'bbb', (tx) =>
-      tx.insert(tenantMemberships).values({ tenantId: 'bbb', userId: bob, role: 'student' }),
+    // Memberships are written only by the owner now (0019): the application role
+    // cannot write the table at all, so the suite seeds fixtures as the owner.
+    await runAsMigrationRole(
+      `insert into "tenant_memberships" ("tenant_id","user_id","role") values
+         ('aaa', '${alice}', 'student'), ('bbb', '${alice}', 'teacher'), ('bbb', '${bob}', 'student')
+       on conflict do nothing`,
     );
   });
 
@@ -289,7 +285,9 @@ describe('tenant_memberships', () => {
       withActor(bob, (tx) =>
         tx.insert(tenantMemberships).values({ tenantId: 'aaa', userId: bob, role: 'student' }),
       ),
-    ).rejects.toMatchObject({ code: '42501' });
+    ).rejects.toThrow();
+    // And a self-update is refused too: the write lock (0019) revoked UPDATE
+    // from the app role, so a person cannot forge their own verification.
     await expect(
       withActor(bob, (tx) =>
         tx
@@ -297,11 +295,48 @@ describe('tenant_memberships', () => {
           .set({ verifiedAt: new Date(), verificationMethod: 'admin' })
           .where(eq(tenantMemberships.userId, bob)),
       ),
-    ).resolves.toBeDefined();
+    ).rejects.toThrow();
     // An update the policy hides simply matches nothing, so it must have
     // changed nothing either.
     const [row] = await withActor(bob, (tx) => tx.select().from(tenantMemberships));
     expect(row!.verifiedAt).toBeNull();
+  });
+
+  it('lets the application write memberships and roles only through the definers (0019)', async () => {
+    // The hole 5A's review named: the app could self-insert a privileged
+    // membership because the policies checked only tenant_id. Now the app has no
+    // direct write on either table at all; a tenant admin's own context cannot
+    // do it either, grant or no grant.
+    await expect(
+      withActorInTenant(bob, 'aaa', (tx) =>
+        tx.insert(tenantMemberships).values({ tenantId: 'aaa', userId: bob, role: 'tenant_admin' }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withActorInTenant(alice, 'aaa', (tx) =>
+        tx.execute(
+          sql`insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+              select m.id, r.id, 'aaa', ${alice}::uuid
+              from tenant_memberships m, roles r
+              where m.tenant_id='aaa' and m.user_id=${alice}::uuid and r.tenant_id='aaa' and r.key='tenant_admin'`,
+        ),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withActorInTenant(alice, 'aaa', (tx) =>
+        tx.execute(sql`update tenant_memberships set status='active' where user_id=${alice}::uuid`),
+      ),
+    ).rejects.toThrow();
+    // The internal role-attach helper is not callable by the application — and
+    // for the RIGHT reason (permission denied), not an incidental FK error: it is
+    // an authority-free definer, so a stray EXECUTE would be a self-escalation.
+    await expect(
+      withActorInTenant(alice, 'aaa', (tx) =>
+        tx.execute(
+          sql`select auth_attach_role_internal(gen_random_uuid(), 'aaa', ${alice}::uuid, 'tenant_admin')`,
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
   });
 });
 
@@ -661,10 +696,9 @@ describe('membership by domain', () => {
 
   it('verifies an existing unverified membership rather than duplicating it', async () => {
     const actor = await findOrCreateUser({ subject: 'dom-5', email: 'late@aaa.edu' });
-    await withActorInTenant(actor.userId, 'aaa', (tx) =>
-      tx
-        .insert(tenantMemberships)
-        .values({ tenantId: 'aaa', userId: actor.userId, role: 'student' }),
+    await runAsMigrationRole(
+      `insert into "tenant_memberships" ("tenant_id","user_id","role")
+       values ('aaa', '${actor.userId}', 'student') on conflict do nothing`,
     );
     const membership = await ensureDomainMembership(actor, policy);
     expect(membership!.verificationMethod).toBe('domain');
@@ -865,7 +899,7 @@ describe('deciding requests', () => {
     const decided = await decideRequest(admin, 'aaa', request.id, 'approve');
     expect(decided).toEqual({
       ok: true,
-      value: { outcome: 'decided', decision: 'approve', membershipCreated: true },
+      value: { outcome: 'decided', decision: 'approve' },
     });
     const membership = await membershipFor(user.userId, 'aaa');
     expect(membership).toMatchObject({ role: 'student', status: 'active' });
@@ -881,14 +915,13 @@ describe('deciding requests', () => {
   it('approving someone with an unverified membership verifies it in place', async () => {
     const admin = await adminIn('aaa', 'adm-8');
     const { user, request } = await ask('dec-2');
-    await withActorInTenant(user.userId, 'aaa', (tx) =>
-      tx
-        .insert(tenantMemberships)
-        .values({ tenantId: 'aaa', userId: user.userId, role: 'student' }),
+    await runAsMigrationRole(
+      `insert into "tenant_memberships" ("tenant_id","user_id","role")
+       values ('aaa', '${user.userId}', 'student') on conflict do nothing`,
     );
 
     const decided = await decideRequest(admin, 'aaa', request.id, 'approve');
-    expect(decided).toMatchObject({ ok: true, value: { membershipCreated: false } });
+    expect(decided).toMatchObject({ ok: true, value: { outcome: 'decided', decision: 'approve' } });
     const rows = await withActor(user.userId, (tx) => tx.select().from(tenantMemberships));
     expect(rows).toHaveLength(1);
     expect(rows[0]!.verifiedAt).toBeInstanceOf(Date);
@@ -989,11 +1022,11 @@ describe('verifying by hand', () => {
 
     expect(await verifyMember(admin, 'aaa', user.userId)).toEqual({
       ok: true,
-      value: { created: true, alreadyVerified: false },
+      value: { alreadyVerified: false },
     });
     expect(await verifyMember(admin, 'aaa', user.userId)).toEqual({
       ok: true,
-      value: { created: false, alreadyVerified: true },
+      value: { alreadyVerified: true },
     });
     expect(await verifyMember(admin, 'aaa', admin.userId)).toEqual({ ok: false, error: 'self' });
 
@@ -1093,11 +1126,8 @@ describe('roles and permissions', () => {
   it('takes every permission from a suspended member without losing their roles', async () => {
     const a = await admin('rbac-susp-admin');
     const s = await member('rbac-susp');
-    await withActorInTenant(a.userId, 'aaa', (tx) =>
-      tx
-        .update(tenantMemberships)
-        .set({ status: 'suspended' })
-        .where(eq(tenantMemberships.userId, s.userId)),
+    await runAsMigrationRole(
+      `update "tenant_memberships" set status = 'suspended' where user_id = '${s.userId}' and tenant_id = 'aaa'`,
     );
     expect((await effectivePermissions(s.userId, 'aaa')).size).toBe(0);
     // The roles are still there, so lifting the suspension restores them.
@@ -1308,11 +1338,9 @@ describe('members, and the roles a tenant defines', () => {
 
     // An expiry in the past is no longer a standing, and the permissions return
     // without anybody running anything: the resolver compares against now().
-    await withActorInTenant(a.userId, 'aaa', (tx) =>
-      tx.execute(
-        sql`update tenant_memberships set standing_until = now() - interval '1 minute'
-            where tenant_id = 'aaa' and user_id = ${s.userId}::uuid`,
-      ),
+    await runAsMigrationRole(
+      `update "tenant_memberships" set standing_until = now() - interval '1 minute'
+       where tenant_id = 'aaa' and user_id = '${s.userId}'`,
     );
     expect(await standingFor(s.userId, 'aaa')).toMatchObject({ status: 'active' });
     expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
@@ -1823,43 +1851,39 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect((await effectivePermissions(p.userId, 'aaa')).size).toBe(0);
   });
 
-  it('refuses self-promotion under a grant, even when app.user_id is forged mid-transaction', async () => {
+  it('refuses a visitor every self-promotion path under a grant', async () => {
     const p = await platformActor('grant-self');
     await withPlatformGrant(p, 'aaa', 'entered to look at reports', async () => undefined);
 
-    // The attack the review found: open the grant, then re-set app.user_id to a
-    // decoy so a check against the GUC would pass, then self-insert. The policy
-    // keys on the unforgeable grant admin, so it stays refused.
+    // A raw write is impossible for anyone now (0019): the app cannot write the
+    // membership tables at all, so the escalation the review found cannot even be
+    // attempted by hand, forged app.user_id or not.
     await expect(
-      withGrantedTenant(p, async (tx) => {
-        await tx.execute(sql`select set_config('app.user_id', gen_random_uuid()::text, true)`);
-        await tx.execute(
+      withGrantedTenant(p, (tx) =>
+        tx.execute(
           sql`insert into tenant_memberships (tenant_id, user_id, role, status)
               values ('aaa', ${p.userId}::uuid, 'tenant_admin', 'active')`,
-        );
-      }),
+        ),
+      ),
     ).rejects.toThrow();
 
-    // And the role-assignment half of the same escalation.
+    // The definer paths are where the containment now lives, keyed on the
+    // unforgeable grant admin, not on app.user_id. Each refuses the visitor for
+    // themselves while a grant is live.
+    const roleCode = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_membership_role('aaa', ${p.userId}::uuid, 'tenant_admin', true) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(roleCode).toBe('not_allowed');
+
     await expect(
-      withGrantedTenant(p, async (tx) => {
-        const [r] = [
-          ...(await tx.execute(
-            sql`select id from roles where tenant_id = 'aaa' and key = 'tenant_admin'`,
-          )),
-        ] as { id: string }[];
-        const [m] = [
-          ...(await tx.execute(
-            sql`insert into tenant_memberships (tenant_id, user_id, role, status)
-                values ('aaa', ${p.userId}::uuid, 'student', 'active')
-                on conflict do nothing returning id`,
-          )),
-        ] as { id: string }[];
-        await tx.execute(
-          sql`insert into membership_roles (membership_id, role_id, tenant_id, user_id)
-              values (${m?.id ?? null}, ${r!.id}::uuid, 'aaa', ${p.userId}::uuid)`,
-        );
-      }),
+      withGrantedTenant(p, (tx) =>
+        tx.execute(sql`select auth_verify_member('aaa', ${p.userId}::uuid, 'admin')`),
+      ),
     ).rejects.toThrow();
 
     // Nothing stuck: they hold no membership in aaa.

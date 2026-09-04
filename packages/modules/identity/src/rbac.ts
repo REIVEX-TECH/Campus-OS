@@ -2,10 +2,8 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { PermissionSet, isCommunityRole, isPermission, type Permission } from '@campusos/core';
-import { recordAudit } from './audit';
-import { isPlatformAdmin } from './platform';
 import { syncTenantRoles } from './role-templates';
-import { membershipRoles, rolePermissions, roles, tenantMemberships } from './schema/identity';
+import { membershipRoles, rolePermissions, roles } from './schema/identity';
 
 /**
  * Roles and permissions, per tenant.
@@ -161,77 +159,52 @@ export type RoleGrantRefusal = 'not_allowed' | 'no_such_role' | 'no_such_member'
  * authorises it. Both directions are idempotent: granting a role twice, or
  * revoking one that is not held, changes nothing and says so.
  */
+/** Map the definer's outcome code to the Result the callers expect. */
+function roleOutcome(
+  code: string,
+): { ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal | 'last_admin' } {
+  switch (code) {
+    case 'changed':
+      return { ok: true, changed: true };
+    case 'unchanged':
+      return { ok: true, changed: false };
+    case 'not_allowed':
+    case 'no_such_role':
+    case 'no_such_member':
+    case 'above_own':
+    case 'last_admin':
+      return { ok: false, reason: code };
+    default:
+      return { ok: false, reason: 'not_allowed' };
+  }
+}
+
 export async function grantRole(
   actor: { userId: string },
   tenantId: string,
   memberUserId: string,
   roleKey: string,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal }> {
-  // A platform administrator is the one exemption, and it exists so the
-  // catalogue stays reachable: `communities.unmask` is held by nobody, so under
-  // the rule below nobody in a tenant could ever hand it out, and a permission
-  // no one can grant is a permission that does not exist. The grant is audited
-  // like any other.
-  const fromPlatform = await isPlatformAdmin(actor.userId);
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!fromPlatform && !(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
-      return { ok: false as const, reason: 'not_allowed' as const };
-    }
-    // Community roles attach per community, never to a tenant membership.
-    if (isCommunityRole(roleKey)) return { ok: false as const, reason: 'no_such_role' as const };
-    const [role] = await tx
-      .select()
-      .from(roles)
-      .where(and(eq(roles.tenantId, tenantId), eq(roles.key, roleKey)));
-    if (!role) return { ok: false as const, reason: 'no_such_role' as const };
-
-    // Nobody may grant a power they do not have. Without this a tenant
-    // administrator could hand out `communities.unmask`, which the catalogue
-    // gives to nobody, by granting a role that carries it.
-    const carried = (
-      await tx
-        .select({ permission: rolePermissions.permission })
-        .from(rolePermissions)
-        .where(eq(rolePermissions.roleId, role.id))
-    ).map((r) => r.permission);
-    if (!fromPlatform) {
-      const mine = await effectivePermissionsInTransaction(tx, actor.userId, tenantId);
-      if (carried.some((p) => !mine.has(p))) {
-        return { ok: false as const, reason: 'above_own' as const };
-      }
-    }
-
-    const [membership] = await tx
-      .select()
-      .from(tenantMemberships)
-      .where(
-        and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, memberUserId)),
-      );
-    if (!membership) return { ok: false as const, reason: 'no_such_member' as const };
-
-    const [inserted] = await tx
-      .insert(membershipRoles)
-      .values({
-        membershipId: membership.id,
-        roleId: role.id,
-        tenantId,
-        userId: memberUserId,
-        grantedBy: actor.userId,
-      })
-      .onConflictDoNothing({ target: [membershipRoles.membershipId, membershipRoles.roleId] })
-      .returning();
-    if (!inserted) return { ok: true as const, changed: false };
-
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: 'role.granted',
-      targetType: 'membership',
-      targetId: membership.id,
-      meta: { role: roleKey, targetUserId: memberUserId, viaPlatform: fromPlatform },
-    });
-    return { ok: true as const, changed: true };
+  // Community roles attach per community, never to a tenant membership, and are
+  // rejected here before the definer, which would otherwise find the synced row
+  // in `roles` and treat it as grantable.
+  if (isCommunityRole(roleKey)) return { ok: false, reason: 'no_such_role' };
+  // The write, and every check — manage-roles, no-power-above-your-own, the
+  // platform exemption that keeps communities.unmask grantable, and the "not
+  // yourself under a grant" containment — is `auth_set_membership_role` (0019);
+  // the application role can no longer write membership_roles directly.
+  const outcome = await withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, true) as code`,
+      )),
+    ] as { code: string }[];
+    return roleOutcome(row?.code ?? 'not_allowed');
   });
+  // grantRole cannot report last_admin (that is a revoke-only refusal).
+  return outcome.ok || outcome.reason !== 'last_admin'
+    ? (outcome as { ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal })
+    : { ok: false, reason: 'not_allowed' };
 }
 
 export async function revokeRole(
@@ -242,76 +215,15 @@ export async function revokeRole(
 ): Promise<
   { ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal | 'last_admin' }
 > {
+  if (isCommunityRole(roleKey)) return { ok: false, reason: 'no_such_role' };
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
-      return { ok: false as const, reason: 'not_allowed' as const };
-    }
-    // Community roles attach per community, never to a tenant membership.
-    if (isCommunityRole(roleKey)) return { ok: false as const, reason: 'no_such_role' as const };
-    const [role] = await tx
-      .select()
-      .from(roles)
-      .where(and(eq(roles.tenantId, tenantId), eq(roles.key, roleKey)));
-    if (!role) return { ok: false as const, reason: 'no_such_role' as const };
-
-    // A tenant must keep at least one person who can administer it, or it locks
-    // itself out and only a platform admin could put it right.
-    if (roleKey === 'tenant_admin') {
-      const [counted] = await tx
-        .select({ holders: sql<number>`count(*)::int` })
-        .from(membershipRoles)
-        .where(and(eq(membershipRoles.tenantId, tenantId), eq(membershipRoles.roleId, role.id)));
-      if ((counted?.holders ?? 0) <= 1)
-        return { ok: false as const, reason: 'last_admin' as const };
-    }
-
-    const deleted = await tx
-      .delete(membershipRoles)
-      .where(
-        and(
-          eq(membershipRoles.tenantId, tenantId),
-          eq(membershipRoles.userId, memberUserId),
-          eq(membershipRoles.roleId, role.id),
-        ),
-      )
-      .returning();
-    if (deleted.length === 0) return { ok: true as const, changed: false };
-
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: 'role.revoked',
-      targetType: 'membership',
-      targetId: deleted[0]!.membershipId,
-      meta: { role: roleKey, targetUserId: memberUserId },
-    });
-    return { ok: true as const, changed: true };
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, false) as code`,
+      )),
+    ] as { code: string }[];
+    return roleOutcome(row?.code ?? 'not_allowed');
   });
-}
-
-/**
- * Attach a role to a membership without an actor, for the paths that create a
- * membership in the first place: the domain check at sign in and the configured
- * admin list. Must run inside an existing tenant context.
- */
-export async function attachRole(
-  tx: TenantTransaction,
-  input: { membershipId: string; tenantId: string; userId: string; roleKey: string },
-): Promise<void> {
-  const [role] = await tx
-    .select({ id: roles.id })
-    .from(roles)
-    .where(and(eq(roles.tenantId, input.tenantId), eq(roles.key, input.roleKey)));
-  if (!role) return;
-  await tx
-    .insert(membershipRoles)
-    .values({
-      membershipId: input.membershipId,
-      roleId: role.id,
-      tenantId: input.tenantId,
-      userId: input.userId,
-    })
-    .onConflictDoNothing({ target: [membershipRoles.membershipId, membershipRoles.roleId] });
 }
 
 /** Every permission held by anyone, for a member list. Read as the member. */

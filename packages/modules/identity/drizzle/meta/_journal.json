@@ -134,6 +134,13 @@
       "when": 1756800018000,
       "tag": "0018_tenant_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1756800019000,
+      "tag": "0019_membership_writes",
+      "breakpoints": true
     }
   ]
 }

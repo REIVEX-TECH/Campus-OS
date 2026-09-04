@@ -4,7 +4,7 @@ import { withActor, withActorInTenant } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { err, ok, type Result } from '@campusos/core';
 import { recordAudit } from './audit';
-import { grantVerified, isVerified, membershipFor } from './membership';
+import { isVerified, membershipFor, supersedePending } from './membership';
 import { verificationRequests } from './schema/identity';
 import { canInTransaction } from './rbac';
 
@@ -226,7 +226,7 @@ export async function listPendingRequests(
 export type Decision = 'approve' | 'reject';
 export type DecisionRefusal = 'not_admin' | 'not_found' | 'self';
 export type DecisionOutcome =
-  | { outcome: 'decided'; decision: Decision; membershipCreated: boolean }
+  | { outcome: 'decided'; decision: Decision }
   | { outcome: 'already_decided'; status: RequestStatus };
 
 /**
@@ -259,17 +259,13 @@ export async function decideRequest(
       return ok({ outcome: 'already_decided', status: request.status as RequestStatus });
     }
 
-    let membershipCreated = false;
     if (decision === 'approve') {
-      const granted = await grantVerified(tx, {
-        tenantId,
-        userId: request.userId,
-        method: 'admin',
-        actorUserId: admin.userId,
-        // This request is the one being decided, below.
-        closePendingRequests: false,
-      });
-      membershipCreated = granted.created;
+      // The write is a definer (0019): it re-checks approve-verifications and
+      // verifies (or creates) the member's membership. This request is closed
+      // just below, so it does not supersede here.
+      await tx.execute(
+        sql`select auth_verify_member(${tenantId}, ${request.userId}::uuid, 'admin')`,
+      );
     }
 
     await tx
@@ -291,9 +287,9 @@ export async function decideRequest(
       action: decision === 'approve' ? 'verification.approved' : 'verification.rejected',
       targetType: 'verification_request',
       targetId: request.id,
-      meta: { targetUserId: request.userId, membershipCreated },
+      meta: { targetUserId: request.userId },
     });
-    return ok({ outcome: 'decided', decision, membershipCreated });
+    return ok({ outcome: 'decided', decision });
   });
 }
 
@@ -305,7 +301,7 @@ export async function verifyMember(
   admin: { userId: string },
   tenantId: string,
   targetUserId: string,
-): Promise<Result<{ created: boolean; alreadyVerified: boolean }, DecisionRefusal>> {
+): Promise<Result<{ alreadyVerified: boolean }, DecisionRefusal>> {
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
     if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
       return err('not_admin');
@@ -318,13 +314,16 @@ export async function verifyMember(
       )),
     ];
     if (exists.length === 0) return err('not_found');
-    const granted = await grantVerified(tx, {
+    const already = isVerified(await membershipFor(targetUserId, tenantId));
+    // The definer verifies (or creates) the membership after re-checking the
+    // permission; a pending request of theirs is then superseded, as before.
+    await tx.execute(sql`select auth_verify_member(${tenantId}, ${targetUserId}::uuid, 'admin')`);
+    await supersedePending(tx, {
       tenantId,
       userId: targetUserId,
-      method: 'admin',
       actorUserId: admin.userId,
     });
-    return ok({ created: granted.created, alreadyVerified: granted.alreadyVerified });
+    return ok({ alreadyVerified: already });
   });
 }
 
