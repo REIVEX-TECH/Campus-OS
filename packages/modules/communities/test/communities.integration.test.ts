@@ -31,6 +31,7 @@ import { listHeld, listModLog, listQueue } from '../src/queue';
 import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { pollFor, votePoll } from '../src/polls';
+import { searchCommunities, searchPosts } from '../src/search';
 import {
   approveItem,
   liftSanction,
@@ -1592,5 +1593,64 @@ describe('notifications', () => {
     expect(first.nextCursor).not.toBeNull();
     const second = await listNotifications(owner, 'aaa', { limit: 1, cursor: first.nextCursor! });
     expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+  });
+});
+
+describe('search and the directory', () => {
+  it('finds posts by title and text within what the viewer may see, and communities by name', async () => {
+    const owner = await member('se-owner');
+    const reader = await member('se-reader');
+    const open = await community(owner, 'Chess Society');
+    const made = await createCommunity(
+      owner,
+      'aaa',
+      { name: 'Quiet Chess Room', visibility: 'restricted', description: 'Endgames only' },
+      settings,
+    );
+    if (!made.ok) throw new Error(made.error);
+    const closed = made.value;
+    const post = async (c: string, title: string, body = '') => {
+      const r = await createPost(owner, 'aaa', c, { kind: 'text', title, body }, settings);
+      if (!r.ok) throw new Error(r.error);
+      return r.value.id;
+    };
+    const gambit = await post(open.id, 'Queen gambit night', 'Bring a board and a clock.');
+    const clocks = await post(open.id, 'Lost property', 'Someone left a chess clock behind');
+    const hidden = await post(closed.id, 'Gambit lines for members', '');
+    const gone = await post(open.id, 'Gambit spam', '');
+    expect((await removeItem(owner, 'aaa', 'post', gone, { reason: 'Spam' })).ok).toBe(true);
+
+    const ids = async (viewer: { userId: string } | null, q: string) =>
+      (await searchPosts(viewer, 'aaa', q)).map((p) => p.id);
+    // Title and body both count; a removed post never shows; short queries find nothing.
+    expect(await ids(null, 'gambit')).toEqual([gambit]);
+    expect((await searchPosts(null, 'aaa', 'clock')).map((p) => p.title).sort()).toEqual([
+      'Lost property',
+      'Queen gambit night',
+    ]);
+    expect(await ids(null, 'g')).toEqual([]);
+    expect(await ids(null, '"chess clock"')).toEqual([clocks]);
+    // A restricted community's posts are for its members: the owner is one, the reader is not.
+    expect(await ids(reader, 'gambit')).toEqual([gambit]);
+    expect(await ids(owner, 'gambit')).toEqual(expect.arrayContaining([gambit, hidden]));
+    expect(await ids(null, 'gambit')).toEqual([gambit]);
+    // A result names its community.
+    const found = await searchPosts(owner, 'aaa', 'gambit');
+    expect(found.map((p) => p.community.slug).sort()).toEqual([closed.slug, open.slug].sort());
+
+    // Communities: public and approved only, by name or description.
+    expect((await searchCommunities('aaa', 'chess')).map((c) => c.id)).toEqual([open.id]);
+    expect((await searchCommunities('aaa', 'endgames')).map((c) => c.id)).toEqual([]);
+    expect(await searchCommunities('aaa', 'c')).toEqual([]);
+
+    // The directory's orders.
+    const byMembers = await listCommunities('aaa', 100, 'members');
+    const byNew = await listCommunities('aaa', 100, 'new');
+    const byName = await listCommunities('aaa', 100, 'name');
+    expect(byNew[0]?.id).toBe(open.id);
+    const names = byName.map((c) => c.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    expect(byMembers.map((c) => c.id)).toEqual(expect.arrayContaining([open.id]));
+    expect(byMembers.map((c) => c.id)).not.toContain(closed.id);
   });
 });

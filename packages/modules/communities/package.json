@@ -27,7 +27,8 @@
     "./oversight": "./src/oversight.ts",
     "./automod": "./src/automod.ts",
     "./polls": "./src/polls.ts",
-    "./notifications": "./src/notifications.ts"
+    "./notifications": "./src/notifications.ts",
+    "./search": "./src/search.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -26,8 +26,14 @@ function summary(row: typeof communities.$inferSelect): CommunitySummary {
   };
 }
 
-/** Live, approved, public communities, biggest first then by name. */
-export async function listCommunities(tenantId: string, limit = 100): Promise<CommunitySummary[]> {
+export type DirectoryOrder = 'members' | 'new' | 'name';
+
+/** Live, approved, public communities: biggest first (then by name), newest first, or by name. */
+export async function listCommunities(
+  tenantId: string,
+  limit = 100,
+  order: DirectoryOrder = 'members',
+): Promise<CommunitySummary[]> {
   return withTenant(tenantId, async (tx) => {
     const rows = await tx
       .select()
@@ -40,7 +46,13 @@ export async function listCommunities(tenantId: string, limit = 100): Promise<Co
           isNull(communities.deletedAt),
         ),
       )
-      .orderBy(desc(communities.memberCount), asc(communities.name))
+      .orderBy(
+        ...(order === 'new'
+          ? [desc(communities.createdAt), asc(communities.name)]
+          : order === 'name'
+            ? [asc(communities.name)]
+            : [desc(communities.memberCount), asc(communities.name)]),
+      )
       .limit(limit);
     return rows.map(summary);
   });

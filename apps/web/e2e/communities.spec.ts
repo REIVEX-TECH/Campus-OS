@@ -135,3 +135,9 @@ test('the inbox asks a stranger to sign in, and the mark read route refuses them
   });
   expect(response.status()).toBe(401);
 });
+
+test('search reaches communities and the directory takes a query', async ({ page }) => {
+  expect((await page.goto('/u/lgu/search?q=freshers'))?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1, name: 'Search' })).toBeVisible();
+  expect((await page.goto('/u/lgu/c/browse?q=cs'))?.status()).toBe(200);
+});
