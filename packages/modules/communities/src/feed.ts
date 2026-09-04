@@ -152,7 +152,7 @@ function plan(sort: FeedSort, cursor: string | undefined) {
   }
 }
 
-function scopeWhere(
+export function scopeWhere(
   tx: TenantTransaction,
   tenantId: string,
   scope: FeedScope,
@@ -196,7 +196,7 @@ function scopeWhere(
   }
 }
 
-function selectPosts(tx: TenantTransaction) {
+export function selectPosts(tx: TenantTransaction) {
   return (
     tx
       .select({
@@ -221,7 +221,7 @@ function selectPosts(tx: TenantTransaction) {
 }
 
 /** What the viewer chose not to see: what they hid, and who they blocked (by public author). */
-function viewerFilters(viewer: { userId: string } | null): SQL[] {
+export function viewerFilters(viewer: { userId: string } | null): SQL[] {
   if (!viewer) return [];
   return [
     sql`not exists (select 1 from hidden_items h where h.item_type = 'post' and h.item_id = ${postsRead.id} and h.user_id = ${viewer.userId}::uuid)`,

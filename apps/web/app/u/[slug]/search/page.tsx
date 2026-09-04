@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import { SearchX } from 'lucide-react';
 import Link from 'next/link';
+import { searchCommunities, searchPosts } from '@campusos/module-communities/search';
+import { CommunityCard } from '@/app/_components/communities/community-card';
+import { PostCard } from '@/app/_components/communities/post-card';
+import { currentActor } from '@/lib/auth';
+import { communitiesEnabled, communitiesSettings } from '@/lib/communities';
 import { getTenantRegistry } from '@/lib/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
 import { translator } from '@/lib/i18n';
@@ -36,10 +41,25 @@ export default async function SearchPage({ params, searchParams }: Params) {
 
   const q = (sp.q ?? '').trim();
   const active = q.length >= 2;
-  const [teachers, courses] = active
-    ? await Promise.all([queries.searchTeachers(q), queries.searchCourses(q)])
-    : [[], []];
-  const empty = active && teachers.length === 0 && courses.length === 0;
+  // Communities join the search where the module is on; posts only for those who may read them.
+  const withCommunities = communitiesEnabled(tenant);
+  const actor = withCommunities ? await currentActor() : null;
+  const mayReadPosts =
+    withCommunities && (communitiesSettings(tenant).readAccess === 'public' || actor !== null);
+  const [teachers, courses, foundCommunities, foundPosts] = active
+    ? await Promise.all([
+        queries.searchTeachers(q),
+        queries.searchCourses(q),
+        withCommunities ? searchCommunities(slug, q) : Promise.resolve([]),
+        mayReadPosts ? searchPosts(actor, slug, q) : Promise.resolve([]),
+      ])
+    : [[], [], [], []];
+  const empty =
+    active &&
+    teachers.length === 0 &&
+    courses.length === 0 &&
+    foundCommunities.length === 0 &&
+    foundPosts.length === 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -89,6 +109,42 @@ export default async function SearchPage({ params, searchParams }: Params) {
                     >
                       <span className="font-semibold">{c.title}</span>
                     </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {foundCommunities.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('search.communities')}
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {foundCommunities.map((c) => (
+                  <CommunityCard key={c.id} community={c} href={`${base}/c/${c.slug}`} t={t} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {foundPosts.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('search.posts')}
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {foundPosts.map((post) => (
+                  <li key={post.id}>
+                    <PostCard
+                      post={post}
+                      community={post.community}
+                      base={base}
+                      tenant={slug}
+                      locale={tenant.locale}
+                      signedIn={actor !== null}
+                      canVote={actor !== null}
+                      t={t}
+                    />
                   </li>
                 ))}
               </ul>

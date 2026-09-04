@@ -14,8 +14,8 @@ Design: `docs/design-communities.md`.
 | A7   | Anti-abuse                                               | Done (#97)              |
 | A8   | UI and Playwright                                        | Done (#98)              |
 | B1   | Polls                                                    | Done (#99)              |
-| B2   | Notifications, unread count in the top bar               | **In review** (this PR) |
-| B3   | Search and the community directory                       | Not started             |
+| B2   | Notifications, unread count in the top bar               | Done                    |
+| B3   | Search and the community directory                       | **In review** (this PR) |
 | B4   | Flairs, pinned ordering, crosspost, share                | Not started             |
 | B5   | Profiles, karma toggle, saved and hidden, blocked list   | Not started             |
 | B6   | Polish: counts, rules acceptance, archive after N months | Not started             |
