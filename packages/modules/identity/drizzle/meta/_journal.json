@@ -141,6 +141,13 @@
       "when": 1756800019000,
       "tag": "0019_membership_writes",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1756800020000,
+      "tag": "0020_definer_grant_hygiene",
+      "breakpoints": true
     }
   ]
 }

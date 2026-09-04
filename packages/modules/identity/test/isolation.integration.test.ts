@@ -471,6 +471,92 @@ describe('handles', () => {
   });
 });
 
+describe('definer grant hygiene', () => {
+  // Every function the owner creates inherits EXECUTE for campusos_app from the
+  // default privileges (db-grants), so an owner-only SECURITY DEFINER that does
+  // not REVOKE from the app BY NAME silently stays callable by a request — the
+  // trap that bit communities_karma_recompute (PR #113) and, in review,
+  // auth_attach_role_internal (0019). Pinning the two known offenders is not
+  // enough: the IDIOM is the hazard. This asserts every definer's actual EXECUTE
+  // grant matches its DECLARED intent, so a new owner-only definer that inherits
+  // the grant, or a new app definer nobody granted, fails CI by construction.
+  //
+  // Intent is declared here on purpose: a new definer forces a deliberate choice
+  // (the test fails until it is listed), and 'owner' entries must be revoked from
+  // the app by name in their migration or the actual grant will not match.
+  const DEFINER_INTENT: Record<string, 'app' | 'owner'> = {
+    // App-callable: the application invokes these directly, or a RLS policy does
+    // (auth_under_tenant_grant / auth_grant_admin_for_txn run during the app's
+    // own queries), and each does its own checks inside.
+    auth_appeal_standing: 'app',
+    auth_assume_tenant_grant: 'app',
+    auth_effective_community_permissions: 'app',
+    auth_effective_permissions: 'app',
+    auth_grant_admin_for_txn: 'app',
+    auth_grant_configured_admin: 'app',
+    auth_grant_platform_admin: 'app',
+    auth_handle_is_reserved: 'app',
+    auth_join_as_student: 'app',
+    auth_open_tenant_grant: 'app',
+    auth_resolve_session: 'app',
+    auth_resolve_user_by_subject: 'app',
+    auth_revoke_tenant_grant: 'app',
+    auth_set_membership_role: 'app',
+    auth_sync_tenant_roles: 'app',
+    auth_tenant_activity_days: 'app',
+    auth_tenant_activity_totals: 'app',
+    auth_tenant_grants_for_tenant: 'app',
+    auth_tenant_member_activity: 'app',
+    auth_under_tenant_grant: 'app',
+    auth_verify_member: 'app',
+    auth_verify_self_by_domain: 'app',
+    auth_write_standing: 'app',
+    communities_karma_vote: 'app',
+    communities_notify: 'app',
+    communities_unmask: 'app',
+    // Owner-only: a maintenance script, an internal helper of other definers, or
+    // a trigger function. The application must NOT be able to call these; each is
+    // revoked from campusos_app BY NAME in its migration.
+    auth_attach_role_internal: 'owner',
+    audit_log_stamp_grant: 'owner',
+    communities_karma_recompute: 'owner',
+  };
+
+  it('grants each definer EXECUTE to the app exactly as its declared intent says', async () => {
+    const rows = [
+      ...(await getDb().execute(
+        sql`select p.proname,
+                   has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
+            from pg_proc p
+            where p.pronamespace = 'public'::regnamespace and p.prosecdef`,
+      )),
+    ] as { proname: string; app_can_execute: boolean }[];
+
+    // No definer may exist without a declared intent: a new one forces a choice.
+    const undeclared = rows.map((r) => r.proname).filter((n) => !(n in DEFINER_INTENT));
+    expect(
+      undeclared,
+      'undeclared SECURITY DEFINER functions — add them to DEFINER_INTENT',
+    ).toEqual([]);
+
+    // And the actual grant must match the declared intent, both directions: an
+    // owner-only definer must not be app-executable, an app one must be.
+    const mismatches = rows
+      .filter((r) => r.proname in DEFINER_INTENT)
+      .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
+      .map(
+        (r) =>
+          `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
+      );
+    expect(mismatches, 'a definer whose EXECUTE grant does not match its intent').toEqual([]);
+
+    // Guard against the map rotting: every declared name must exist.
+    const present = new Set(rows.map((r) => r.proname));
+    const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
+    expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
+  });
+});
+
 describe('platform_roles', () => {
   it('cannot be written directly by the application role, only read as oneself', async () => {
     // Hole closed (0016): the row policy is SELECT-only, so a signed-in request
