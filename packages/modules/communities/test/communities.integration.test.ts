@@ -32,6 +32,7 @@ import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
 import { listFlairs, setFlairs } from '../src/flairs';
 import { crosspost } from '../src/crosspost';
+import { commentsByAuthor, isBlocked, karmaOf, profileByHandle } from '../src/profiles';
 import { pollFor, votePoll } from '../src/polls';
 import { searchCommunities, searchPosts } from '../src/search';
 import {
@@ -60,7 +61,13 @@ import {
   postHistory,
   postsByAuthor,
 } from '../src/posts';
-import { hideItem, listSavedPosts, saveItem } from '../src/saved';
+import {
+  hideItem,
+  listHiddenPosts,
+  listSavedComments,
+  listSavedPosts,
+  saveItem,
+} from '../src/saved';
 import { postsRead } from '../src/schema/communities';
 import { voteComment, votePost } from '../src/votes';
 
@@ -1859,5 +1866,93 @@ describe('flairs, pins in order, crossposts', () => {
       true,
     );
     expect((await postById(null, 'aaa', made2.value.id))?.crosspost).toBeNull();
+  });
+});
+
+describe('profiles and private lists', () => {
+  it('shows a person by handle with only what they signed, a karma sum, and their own private lists', async () => {
+    const owner = await member('pr-owner');
+    const author = await member('pr-author');
+    const fan = await member('pr-fan');
+    const c = await community(owner, 'Profile Hall');
+    await joinCommunity(author, 'aaa', c.id);
+    await joinCommunity(fan, 'aaa', c.id);
+    const me = await profileByHandle('aaa', 'nobody-like-this');
+    expect(me).toBeNull();
+    const signed = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Signed words', body: '' },
+      settings,
+    );
+    const anon = await createPost(
+      author,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Unsigned words', body: '', isAnonymous: true },
+      settings,
+    );
+    if (!signed.ok || !anon.ok) throw new Error('setup');
+    const cm = await createComment(
+      author,
+      'aaa',
+      signed.value.id,
+      null,
+      { body: 'a signed comment' },
+      settings,
+    );
+    const anonCm = await createComment(
+      author,
+      'aaa',
+      signed.value.id,
+      null,
+      { body: 'an unsigned comment', isAnonymous: true },
+      settings,
+    );
+    if (!cm.ok || !anonCm.ok) throw new Error('setup');
+    await votePost(fan, 'aaa', signed.value.id, 1);
+    await votePost(fan, 'aaa', anon.value.id, 1);
+    await voteComment(fan, 'aaa', cm.value.id, 1);
+
+    // The handle resolves whatever the case; the profile carries nothing anonymous.
+    const handle = (await postById(null, 'aaa', signed.value.id))!.author!.handle;
+    const profile = await profileByHandle('aaa', handle.toUpperCase());
+    expect(profile).toMatchObject({ userId: author.userId, handle });
+    expect((await postsByAuthor('aaa', author.userId)).map((p) => p.title)).toEqual([
+      'Signed words',
+    ]);
+    expect((await commentsByAuthor('aaa', author.userId)).map((x) => x.body)).toEqual([
+      'a signed comment',
+    ]);
+    // Karma counts the signed post and comment, not the anonymous post.
+    expect(await karmaOf('aaa', author.userId)).toEqual({ posts: 1, comments: 1, total: 2 });
+    // The private anonymous list is the author's alone.
+    expect((await myAnonymousPosts(author, 'aaa')).map((p) => p.title)).toEqual(['Unsigned words']);
+    expect(await myAnonymousPosts(fan, 'aaa')).toEqual([]);
+
+    // Blocking shows on the profile for the blocker only.
+    expect(await isBlocked(fan, 'aaa', author.userId)).toBe(false);
+    await blockUser(fan, 'aaa', author.userId);
+    expect(await isBlocked(fan, 'aaa', author.userId)).toBe(true);
+    expect(await isBlocked(owner, 'aaa', author.userId)).toBe(false);
+
+    // Saved comments and hidden posts are the person's own lists; unhide brings a post back.
+    await saveItem(fan, 'aaa', 'comment', cm.value.id, true);
+    expect((await listSavedComments(fan, 'aaa')).map((x) => [x.body, x.postTitle])).toEqual([
+      ['a signed comment', 'Signed words'],
+    ]);
+    expect(await listSavedComments(owner, 'aaa')).toEqual([]);
+    // The owner, who blocked nobody, so hiding alone decides what their feed shows.
+    await hideItem(owner, 'aaa', 'post', signed.value.id, true);
+    expect((await listHiddenPosts(owner, 'aaa')).map((p) => p.id)).toEqual([signed.value.id]);
+    expect((await listCommunityPosts(owner, 'aaa', c.id)).items.map((p) => p.id)).not.toContain(
+      signed.value.id,
+    );
+    await hideItem(owner, 'aaa', 'post', signed.value.id, false);
+    expect(await listHiddenPosts(owner, 'aaa')).toEqual([]);
+    expect((await listCommunityPosts(owner, 'aaa', c.id)).items.map((p) => p.id)).toContain(
+      signed.value.id,
+    );
   });
 });

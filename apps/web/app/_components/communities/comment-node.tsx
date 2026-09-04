@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
@@ -11,6 +12,7 @@ export type CommentData = {
   id: string;
   body: string;
   author: { handle: string; avatarSeed: string } | null;
+  authorHref: string | null;
   isAnonymous: boolean;
   isOwn: boolean;
   myVote: -1 | 0 | 1;
@@ -168,7 +170,17 @@ export function CommentNode({
             <IdentityAvatar seed={comment.author.avatarSeed} label={name} size={18} />
           ) : null}
           <span className={gone ? '' : 'font-medium text-foreground'}>
-            {comment.blocked ? labels.blocked : gone ? labels.deleted : name}
+            {comment.blocked ? (
+              labels.blocked
+            ) : gone ? (
+              labels.deleted
+            ) : comment.authorHref ? (
+              <Link href={comment.authorHref} className="hover:underline">
+                {name}
+              </Link>
+            ) : (
+              name
+            )}
           </span>
           {!gone && op ? (
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">

@@ -20,6 +20,7 @@ export function CommentThread({
   postId,
   communityId,
   canModerate,
+  base,
   postAuthorId,
   moderatorIds,
   comments,
@@ -38,6 +39,8 @@ export function CommentThread({
   postId: string;
   communityId: string;
   canModerate: boolean;
+  /** The tenant base, for links to profiles. */
+  base: string;
   postAuthorId: string | null;
   moderatorIds: ReadonlySet<string>;
   comments: CommentView[];
@@ -145,6 +148,7 @@ export function CommentThread({
           id: c.id,
           body: c.body,
           author: c.author,
+          authorHref: c.author ? `${base}/people/${c.author.handle}` : null,
           isAnonymous: c.isAnonymous,
           isOwn: c.isOwn,
           myVote: c.myVote,

@@ -161,3 +161,11 @@ test('the flairs route and the crosspost action refuse a stranger', async ({ req
   });
   expect(cross.status()).toBe(401);
 });
+
+test('an unknown profile is not found, and the hidden list asks for a sign in', async ({
+  page,
+}) => {
+  expect((await page.goto('/u/lgu/people/No_Such_Person_0000'))?.status()).toBe(404);
+  await page.goto('/u/lgu/hidden');
+  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+});
