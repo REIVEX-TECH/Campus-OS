@@ -86,8 +86,9 @@ column, and the anonymity model is untouched.
   `pnpm --filter @campusos/module-communities test:integration`: 24 passed, 1
   skipped (the column privilege test, split database only). `pnpm --filter web
 build` clean, one new route.
-- e2e (one new case): the automod route is 401 to a stranger. `pnpm --filter web test:e2e`: 73 passed against a
-  production build.
+- e2e (one new case): the automod route is 401 to a stranger. `pnpm --filter web test:e2e`: 74 passed against a
+  production build (three runs: 74, then 73 on the known cold start flake in
+  the timetable recents case, then 74).
 - Browser (local dev server, as a community owner): the settings page shows
   the Filters editor; a keyword rule "crypto" set to hold saves ("Filters
   saved.") and is there after a reload; a new post whose title contains the
