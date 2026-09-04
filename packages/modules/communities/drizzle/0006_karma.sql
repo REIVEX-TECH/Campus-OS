@@ -29,7 +29,9 @@ CREATE TABLE "community_karma" (
 );
 --> statement-breakpoint
 
--- How much one account has moved another's karma today, already capped. The
+-- How much one account has moved another's karma today, already capped. "Today"
+-- is a UTC date, so the boundary does not move with the server's timezone and
+-- the running total and a rebuild always agree about which day a vote fell in. The
 -- application never reads this table and has no policy that would let it: a row
 -- names a voter and an author side by side, and the voter knows what they voted
 -- on, so reading it would unmask every anonymous author they ever voted for.
@@ -144,11 +146,11 @@ BEGIN
 	v_cap := coalesce(v_cap, 10);
 
 	INSERT INTO karma_ledger (tenant_id, voter_id, author_id, day, points)
-	VALUES (v_tenant, v_voter, v_author, current_date, 0)
+	VALUES (v_tenant, v_voter, v_author, timezone('UTC', now())::date, 0)
 	ON CONFLICT (tenant_id, voter_id, author_id, day) DO NOTHING;
 	SELECT points INTO v_points FROM karma_ledger
 	 WHERE tenant_id = v_tenant AND voter_id = v_voter
-	   AND author_id = v_author AND day = current_date
+	   AND author_id = v_author AND day = timezone('UTC', now())::date
 	 FOR UPDATE;
 
 	v_applied := greatest(least(v_points + (p_next - p_previous), v_cap), -v_cap) - v_points;
@@ -157,7 +159,7 @@ BEGIN
 	END IF;
 	UPDATE karma_ledger SET points = v_points + v_applied
 	 WHERE tenant_id = v_tenant AND voter_id = v_voter
-	   AND author_id = v_author AND day = current_date;
+	   AND author_id = v_author AND day = timezone('UTC', now())::date;
 
 	INSERT INTO community_karma (tenant_id, user_id) VALUES (v_tenant, v_author)
 	ON CONFLICT (tenant_id, user_id) DO NOTHING;
@@ -246,16 +248,16 @@ BEGIN
 		) replay ORDER BY created_at
 	LOOP
 		INSERT INTO karma_ledger (tenant_id, voter_id, author_id, day, points)
-		VALUES (p_tenant_id, v_row.voter, v_row.author_id, v_row.created_at::date, 0)
+		VALUES (p_tenant_id, v_row.voter, v_row.author_id, timezone('UTC', v_row.created_at)::date, 0)
 		ON CONFLICT (tenant_id, voter_id, author_id, day) DO NOTHING;
 		SELECT points INTO v_points FROM karma_ledger
 		 WHERE tenant_id = p_tenant_id AND voter_id = v_row.voter
-		   AND author_id = v_row.author_id AND day = v_row.created_at::date;
+		   AND author_id = v_row.author_id AND day = timezone('UTC', v_row.created_at)::date;
 		v_applied := greatest(least(v_points + v_row.value, v_cap), -v_cap) - v_points;
 		CONTINUE WHEN v_applied = 0;
 		UPDATE karma_ledger SET points = v_points + v_applied
 		 WHERE tenant_id = p_tenant_id AND voter_id = v_row.voter
-		   AND author_id = v_row.author_id AND day = v_row.created_at::date;
+		   AND author_id = v_row.author_id AND day = timezone('UTC', v_row.created_at)::date;
 
 		INSERT INTO community_karma (tenant_id, user_id) VALUES (p_tenant_id, v_row.author_id)
 		ON CONFLICT (tenant_id, user_id) DO NOTHING;

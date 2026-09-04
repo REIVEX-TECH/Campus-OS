@@ -53,7 +53,9 @@ done anything.
 
 ### The cap
 
-On the net a voter may give an author in a day, not on each vote. Changing a
+On the net a voter may give an author in a day, not on each vote. "A day" is a
+UTC date, so the boundary does not move with the server's timezone and the
+running total and a rebuild always agree about which day a vote fell in. Changing a
 vote and changing it back therefore costs nothing and gains nothing, and a
 reader whose votes are ordinary never notices it. The tenant sets it:
 `karmaVotePerDayCap`, default 10, read inside the definer so the database
