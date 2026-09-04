@@ -33,14 +33,18 @@ import {
   effectivePermissions,
   grantRole,
   listRoles,
-  createRole,
   revokeRole,
   rolesForMember,
-  setRolePermissions,
 } from '../src/rbac';
 import { listMembers, setMemberStatus } from '../src/members';
 import { tenantActivity } from '../src/analytics';
 import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
+import {
+  createRoleTemplate,
+  deleteRoleTemplate,
+  listRoleTemplates,
+  setRoleTemplatePermissions,
+} from '../src/role-templates';
 import { createTenant, listTenantConfigs, updateTenantConfig } from '../src/tenants';
 import {
   decideRequest,
@@ -633,6 +637,13 @@ describe('user_recents', () => {
 const details = { fullName: 'Ayesha Khan', rollNumber: 'FA21-042', note: undefined };
 
 /** A tenant admin, the only way the role is granted: the configured list. */
+/** A platform administrator, for the definitions only they may write. */
+async function platform(subject: string) {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+  await ensurePlatformAdmin(actor, [`${subject}@gmail.com`]);
+  return actor;
+}
+
 async function adminIn(tenant: string, subject: string) {
   const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
   const membership = await ensureConfiguredAdmin(actor, {
@@ -935,10 +946,23 @@ describe('roles and permissions', () => {
     return actor;
   }
 
-  it('gives every tenant the three system roles', async () => {
+  it('gives every tenant every system definition', async () => {
     const a = await admin('rbac-seed');
     const list = await listRoles(a.userId, 'aaa');
-    expect(list.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    // Six, not three: the community roles are definitions like any other since
+    // the definitions moved to the platform, so a tenant materialises them all.
+    // A role nobody holds grants nothing, so a tenant without the communities
+    // module carries three inert rows.
+    expect(list.map((r) => r.key).sort()).toEqual(
+      expect.arrayContaining([
+        'community_member',
+        'community_moderator',
+        'community_owner',
+        'student',
+        'teacher',
+        'tenant_admin',
+      ]),
+    );
     expect(list.every((r) => r.isSystem)).toBe(true);
     expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
     expect(list.find((r) => r.key === 'student')!.permissions.sort()).toEqual([
@@ -1154,7 +1178,8 @@ describe('members, and the roles a tenant defines', () => {
       error: 'not_allowed',
     });
     // A member manager who is not an administrator cannot remove the last one.
-    const created = await createRole(a, 'aaa', {
+    const p = await platform('sus-platform');
+    const created = await createRoleTemplate(p, {
       name: 'Member Manager',
       permissions: ['manage-members'],
     });
@@ -1169,34 +1194,36 @@ describe('members, and the roles a tenant defines', () => {
     ).toEqual({ ok: false, error: 'not_found' });
   });
 
-  it("creates a role of the tenant's own and changes what it may do", async () => {
-    const a = await admin('role-admin');
-    const s = await member('role-student');
-    const created = await createRole(a, 'aaa', {
+  it('lets the platform define a role, and every tenant receives it', async () => {
+    const p = await platform('tpl-platform');
+    const a = await admin('tpl-admin');
+    const s = await member('tpl-student');
+
+    const created = await createRoleTemplate(p, {
       name: 'Course Rep',
       permissions: ['post', 'moderate', 'moderate'],
     });
     expect(created).toMatchObject({
       ok: true,
-      role: {
-        key: 'course-rep',
-        name: 'Course Rep',
-        isSystem: false,
-        permissions: ['post', 'moderate'],
-      },
+      template: { key: 'course-rep', name: 'Course Rep', permissions: ['moderate', 'post'] },
     });
-    expect(await createRole(a, 'aaa', { name: 'course rep', permissions: [] })).toEqual({
+    expect(await createRoleTemplate(p, { name: 'course rep', permissions: [] })).toEqual({
       ok: false,
       reason: 'exists',
     });
-    expect(await createRole(a, 'aaa', { name: '!!!', permissions: [] })).toEqual({
+    expect(await createRoleTemplate(p, { name: '!!!', permissions: [] })).toEqual({
       ok: false,
       reason: 'bad_name',
     });
+    // The definition reached both tenants, not only the one anybody was looking at.
+    for (const tenant of ['aaa', 'bbb']) {
+      expect((await listRoles(p.userId, tenant)).map((r) => r.key)).toContain('course-rep');
+    }
 
     await grantRole(a, 'aaa', s.userId, 'course-rep');
     expect((await effectivePermissions(s.userId, 'aaa')).hasAll('post', 'moderate')).toBe(true);
-    expect(await setRolePermissions(a, 'aaa', 'course-rep', ['view-analytics'])).toEqual({
+    // Changing the definition changes what the holder may do, everywhere at once.
+    expect(await setRoleTemplatePermissions(p, 'course-rep', ['view-analytics'])).toEqual({
       ok: true,
       changed: true,
     });
@@ -1205,7 +1232,7 @@ describe('members, and the roles a tenant defines', () => {
       'post',
       'view-analytics',
     ]);
-    expect(await setRolePermissions(a, 'aaa', 'course-rep', ['view-analytics'])).toEqual({
+    expect(await setRoleTemplatePermissions(p, 'course-rep', ['view-analytics'])).toEqual({
       ok: true,
       changed: false,
     });
@@ -1213,41 +1240,68 @@ describe('members, and the roles a tenant defines', () => {
     expect(listed?.permissions).toEqual(['view-analytics']);
   });
 
-  it('never changes a system role, and never lets a student define roles', async () => {
-    const a = await admin('role-sys');
-    const s = await member('role-sys-student');
-    expect(await setRolePermissions(a, 'aaa', 'tenant_admin', ['post'])).toEqual({
-      ok: false,
-      reason: 'system_role',
-    });
-    expect(await setRolePermissions(a, 'aaa', 'nope', ['post'])).toEqual({
-      ok: false,
-      reason: 'no_such_role',
-    });
-    // A name that derives a built in key is refused at the unique index.
-    expect(await createRole(a, 'aaa', { name: 'Student', permissions: [] })).toEqual({
-      ok: false,
-      reason: 'exists',
-    });
-    expect(await createRole(s, 'aaa', { name: 'Sneaky', permissions: ['manage-roles'] })).toEqual({
+  it('refuses a tenant administrator every definition, and every grant above their own head', async () => {
+    const p = await platform('def-platform');
+    const a = await admin('def-admin');
+    const s = await member('def-student');
+
+    // Definitions are not a tenant's to write, whatever permission they hold.
+    expect(await createRoleTemplate(a, { name: 'Sneaky', permissions: ['manage-roles'] })).toEqual({
       ok: false,
       reason: 'not_allowed',
     });
-    expect(await setRolePermissions(s, 'aaa', 'student', ['manage-roles'])).toEqual({
+    expect(await setRoleTemplatePermissions(a, 'student', ['manage-roles'])).toEqual({
       ok: false,
       reason: 'not_allowed',
     });
-    expect((await effectivePermissions(a.userId, 'aaa')).has('manage-roles')).toBe(true);
+    expect(await deleteRoleTemplate(a, 'student')).toEqual({ ok: false, reason: 'not_allowed' });
+    expect(await createRoleTemplate(s, { name: 'Sneakier', permissions: [] })).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    // And a system definition is refused even to the platform: every university
+    // relies on tenant_admin, so retiring it would lock all of them out at once.
+    expect(await deleteRoleTemplate(p, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'system_template',
+    });
+    expect(await deleteRoleTemplate(p, 'nope')).toEqual({ ok: false, reason: 'no_such_template' });
+
+    // Nobody may grant a power they do not have. `communities.unmask` is held by
+    // nobody by default, so a tenant administrator cannot hand it out.
+    const made = await createRoleTemplate(p, {
+      name: 'Trust Office',
+      permissions: ['communities.unmask'],
+    });
+    expect(made.ok).toBe(true);
+    expect(await grantRole(a, 'aaa', s.userId, 'trust-office')).toEqual({
+      ok: false,
+      reason: 'above_own',
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(false);
+    // The platform administrator who defined it may grant it, or it would be a
+    // permission nobody could ever hold.
+    expect(await grantRole(p, 'aaa', s.userId, 'trust-office')).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(true);
+    // A role carrying only what the administrator already holds still grants.
+    expect(await grantRole(a, 'aaa', s.userId, 'teacher')).toEqual({ ok: true, changed: true });
   });
 
-  it("keeps one tenant's roles out of another", async () => {
-    const a = await admin('role-iso-a', 'aaa');
+  it("keeps one tenant's grants out of another, and the definitions shared", async () => {
+    const p = await platform('iso-platform');
     const b = await admin('role-iso-b', 'bbb');
-    await createRole(a, 'aaa', { name: 'Only Here', permissions: ['post'] });
-    expect((await listRoles(b.userId, 'bbb')).map((r) => r.key)).not.toContain('only-here');
-    expect(await setRolePermissions(b, 'bbb', 'only-here', [])).toEqual({
+    await createRoleTemplate(p, { name: 'Only Once', permissions: ['post'] });
+    // A definition is platform wide, so both tenants have it...
+    expect((await listRoles(b.userId, 'bbb')).map((r) => r.key)).toContain('only-once');
+    expect((await listRoleTemplates()).map((t) => t.key)).toContain('only-once');
+    // ...but a grant in one tenant is not a grant in the other.
+    const s = await member('role-iso-student', 'aaa');
+    expect(await grantRole(b, 'bbb', s.userId, 'only-once')).toEqual({
       ok: false,
-      reason: 'no_such_role',
+      reason: 'no_such_member',
     });
   });
 
@@ -1266,7 +1320,8 @@ describe('members, and the roles a tenant defines', () => {
       error: 'not_admin',
     });
 
-    await createRole(a, 'aaa', { name: 'Registrar', permissions: ['approve-verifications'] });
+    const p = await platform('appr-platform');
+    await createRoleTemplate(p, { name: 'Registrar', permissions: ['approve-verifications'] });
     await grantRole(a, 'aaa', approver.userId, 'registrar');
     const pending = await listPendingRequests(approver, 'aaa');
     expect(pending.ok && pending.value.some((r) => r.id === asked.value.id)).toBe(true);
@@ -1429,8 +1484,19 @@ describe('platform administration', () => {
     });
     const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'ccc'));
     expect(u).toMatchObject({ name: 'CCC University', timezone: 'Asia/Karachi' });
+    // Every definition, including any another test added: a new tenant
+    // materialises the catalogue as it stands.
     const seeded = await listRoles(root.userId, 'ccc');
-    expect(seeded.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    expect(seeded.map((r) => r.key).sort()).toEqual(
+      expect.arrayContaining([
+        'community_member',
+        'community_moderator',
+        'community_owner',
+        'student',
+        'teacher',
+        'tenant_admin',
+      ]),
+    );
     const trail = await withActorInTenant(root.userId, 'ccc', (tx) =>
       tx.select().from(auditLog).where(eq(auditLog.tenantId, 'ccc')),
     );

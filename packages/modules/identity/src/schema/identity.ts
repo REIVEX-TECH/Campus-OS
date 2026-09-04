@@ -236,6 +236,30 @@ export const verificationRequests = pgTable(
  * every tenant and cannot be deleted, so a tenant cannot remove the role that
  * lets it administer itself.
  */
+/**
+ * Role definitions, platform level. No `tenant_id`, because which roles exist
+ * and what each carries is not a tenant's to own: a tenant's `roles` rows are
+ * materialisations of these, written by `auth_sync_tenant_roles`.
+ */
+export const roleTemplates = pgTable('role_templates', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(),
+  isSystem: boolean('is_system').notNull().default(false),
+  createdAt,
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const roleTemplatePermissions = pgTable(
+  'role_template_permissions',
+  {
+    templateKey: text('template_key')
+      .notNull()
+      .references(() => roleTemplates.key, { onDelete: 'cascade' }),
+    permission: text('permission').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.templateKey, t.permission] })],
+);
+
 export const roles = pgTable(
   'roles',
   {

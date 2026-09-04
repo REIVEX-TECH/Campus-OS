@@ -4,7 +4,7 @@ import { PERMISSIONS } from '@campusos/core';
 import { getTenantRegistry } from '@/lib/tenants';
 import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
-import { RoleEditor } from '@/app/_components/admin/role-editor';
+import { RoleList } from '@/app/_components/admin/role-list';
 import { PageShell } from '@/app/_components/page-shell';
 import { requirePermission } from '@/lib/auth';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -30,10 +30,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 /**
- * What each role in this university may do, and a place to add one.
+ * What each role in this university may do.
  *
- * Gated by `manage-roles`, resolved on this request; anyone without it gets a
- * 404. Every save is re-checked on the server inside its own transaction.
+ * Read only: which roles exist and what they carry is a platform level
+ * definition, and `manage-roles` here means granting them on the members
+ * page. Gated on that permission all the same, so the page and the control it
+ * explains open together, and 404 to anyone without it.
  */
 export default async function AdminRolesPage({ params }: Params) {
   const { slug } = await params;
@@ -62,31 +64,19 @@ export default async function AdminRolesPage({ params }: Params) {
 
         <AdminNav base={base} permissions={permissions} current="roles" t={t} />
 
-        <RoleEditor
-          tenant={slug}
+        <RoleList
           roles={ordered.map((r) => ({
             key: r.key,
             name: roleDisplayName(r, t),
             isSystem: r.isSystem,
             permissions: r.permissions,
           }))}
-          permissions={[...PERMISSIONS]}
           permissionLabels={permissionLabels}
           labels={{
             builtIn: t('admin.roles.builtIn'),
-            builtInNote: t('admin.roles.builtInNote'),
             permissions: t('admin.roles.permissions'),
             none: t('admin.roles.none'),
-            save: t('admin.roles.save'),
-            saved: t('admin.roles.saved'),
-            newRole: t('admin.roles.new'),
-            name: t('admin.roles.name'),
-            create: t('admin.roles.create'),
-            created: t('admin.roles.created', { name: '{name}' }),
-            exists: t('admin.roles.exists'),
-            badName: t('admin.roles.badName'),
-            working: t('admin.roles.working'),
-            failed: t('admin.roles.failed'),
+            definitionNote: t('admin.roles.definitionNote'),
           }}
         />
 

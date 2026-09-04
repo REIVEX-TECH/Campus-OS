@@ -5,60 +5,62 @@ import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
 
 /**
- * A tenant's roles and what each may do.
+ * The role definitions, for a platform administrator.
  *
- * The three built in roles are shown and never edited: `tenant_admin` holding
- * everything is what keeps a tenant able to administer itself. A role of the
- * tenant's own is a name and a set of permissions, saved as a whole; the
- * server re-checks `manage-roles` inside the transaction each time.
+ * Which roles exist and what each one carries, for every university at once. A
+ * system definition is shown and never edited: `tenant_admin` holding
+ * everything is what keeps a university able to administer itself, and deleting
+ * it would lock every one of them out together. Saving a change rewrites every
+ * tenant's copy in the same transaction.
  */
 
-export type RoleItem = { key: string; name: string; isSystem: boolean; permissions: string[] };
+export type TemplateItem = {
+  key: string;
+  name: string;
+  isSystem: boolean;
+  permissions: string[];
+};
 
-export type RoleLabels = {
+export type TemplateLabels = {
   builtIn: string;
   builtInNote: string;
   permissions: string;
   none: string;
   save: string;
   saved: string;
-  newRole: string;
+  newTemplate: string;
   name: string;
   create: string;
-  /** "{name}" is replaced with the new role's name. */
+  /** "{name}" is replaced with the new definition's name. */
   created: string;
+  remove: string;
+  removeConfirm: string;
+  removed: string;
   exists: string;
   badName: string;
   working: string;
   failed: string;
 };
 
-type Props = {
-  tenant: string;
-  roles: RoleItem[];
+type Shared = {
   permissions: string[];
   permissionLabels: Record<string, string>;
-  labels: RoleLabels;
+  labels: TemplateLabels;
 };
 
 type Status = { kind: 'idle' | 'working' } | { kind: 'done' | 'error'; message: string };
 
-async function define(
-  body: Record<string, unknown>,
-): Promise<{ ok: boolean; error?: string; role?: { name: string } }> {
-  const response = await fetch('/api/admin/roles/define', {
+async function send(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const response = await fetch('/api/platform/roles', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const result = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    role?: { name: string };
-  };
+  const result = (await response.json().catch(() => ({}))) as { error?: string };
   return { ok: response.ok, ...result };
 }
 
-function failureMessage(error: string | undefined, labels: RoleLabels): string {
+function failureMessage(error: string | undefined, labels: TemplateLabels): string {
   if (error === 'exists') return labels.exists;
   if (error === 'bad_name') return labels.badName;
   return labels.failed;
@@ -80,12 +82,10 @@ function PermissionGrid({
   disabled,
 }: {
   idPrefix: string;
-  permissions: string[];
-  permissionLabels: Record<string, string>;
   chosen: ReadonlySet<string>;
   onToggle: (permission: string, on: boolean) => void;
   disabled: boolean;
-}) {
+} & Omit<Shared, 'labels'>) {
   return (
     <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
       {permissions.map((p) => (
@@ -123,115 +123,119 @@ function StatusLine({ status }: { status: Status }) {
   );
 }
 
-function RoleCard({
-  tenant,
-  role,
+function TemplateCard({
+  template,
   permissions,
   permissionLabels,
   labels,
-}: { role: RoleItem } & Omit<Props, 'roles'>) {
+}: { template: TemplateItem } & Shared) {
   const router = useRouter();
-  const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(role.permissions));
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(template.permissions));
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
-  const saved = new Set(role.permissions);
+  const saved = new Set(template.permissions);
   const changed = chosen.size !== saved.size || [...chosen].some((p) => !saved.has(p));
   const working = status.kind === 'working';
 
-  async function save(): Promise<void> {
+  async function act(body: Record<string, unknown>, done: string): Promise<void> {
     setStatus({ kind: 'working' });
-    const result = await define({ tenant, roleKey: role.key, permissions: [...chosen] });
+    const result = await send(body);
     if (!result.ok) {
       setStatus({ kind: 'error', message: failureMessage(result.error, labels) });
       return;
     }
-    setStatus({ kind: 'done', message: labels.saved });
+    setStatus({ kind: 'done', message: done });
     router.refresh();
   }
 
   return (
     <article className="ios-card flex flex-col gap-3 rounded-2xl p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-base font-semibold">{role.name}</h3>
-        {role.isSystem ? (
+        <h3 className="text-base font-semibold">{template.name}</h3>
+        {template.isSystem ? (
           <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
             {labels.builtIn}
           </span>
         ) : (
-          <code className="text-xs text-muted-foreground">{role.key}</code>
+          <code className="text-xs text-muted-foreground">{template.key}</code>
         )}
       </div>
-      {role.isSystem ? (
-        <>
-          <ul className="flex flex-wrap gap-1.5" aria-label={labels.permissions}>
-            {role.permissions.length === 0 ? (
-              <li className="text-xs text-muted-foreground">{labels.none}</li>
-            ) : null}
-            {role.permissions.map((p) => (
-              <li key={p} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
-                {permissionLabels[p] ?? p}
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-muted-foreground">{labels.builtInNote}</p>
-        </>
-      ) : (
-        <>
-          <PermissionGrid
-            idPrefix={`role-${role.key}`}
-            permissions={permissions}
-            permissionLabels={permissionLabels}
-            chosen={chosen}
-            disabled={working}
-            onToggle={(p, on) => {
-              setChosen((prev) => toggled(prev, p, on));
-              setStatus({ kind: 'idle' });
+      <PermissionGrid
+        idPrefix={`template-${template.key}`}
+        permissions={permissions}
+        permissionLabels={permissionLabels}
+        chosen={chosen}
+        disabled={working}
+        onToggle={(p, on) => {
+          setChosen((prev) => toggled(prev, p, on));
+          setStatus({ kind: 'idle' });
+        }}
+      />
+      {template.isSystem ? (
+        <p className="text-xs text-muted-foreground">{labels.builtInNote}</p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() =>
+            act(
+              { action: 'permissions', key: template.key, permissions: [...chosen] },
+              labels.saved,
+            )
+          }
+          disabled={!changed || working}
+          aria-busy={working || undefined}
+          className={buttonVariants({ size: 'sm' })}
+        >
+          {working ? labels.working : labels.save}
+        </button>
+        {template.isSystem ? null : (
+          <button
+            type="button"
+            onClick={() => {
+              if (!window.confirm(labels.removeConfirm)) return;
+              void act({ action: 'delete', key: template.key }, labels.removed);
             }}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={save}
-              disabled={!changed || working}
-              aria-busy={working || undefined}
-              className={buttonVariants({ size: 'sm' })}
-            >
-              {working ? labels.working : labels.save}
-            </button>
-            <StatusLine status={status} />
-          </div>
-        </>
-      )}
+            disabled={working}
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+          >
+            {labels.remove}
+          </button>
+        )}
+        <StatusLine status={status} />
+      </div>
     </article>
   );
 }
 
-function NewRole({ tenant, permissions, permissionLabels, labels }: Omit<Props, 'roles'>) {
+function NewTemplate({ permissions, permissionLabels, labels }: Shared) {
   const router = useRouter();
   const [name, setName] = useState('');
   const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set());
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const working = status.kind === 'working';
 
-  async function create(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    setStatus({ kind: 'working' });
-    const result = await define({ tenant, name: name.trim(), permissions: [...chosen] });
-    if (!result.ok) {
-      setStatus({ kind: 'error', message: failureMessage(result.error, labels) });
-      return;
-    }
-    setStatus({
-      kind: 'done',
-      message: labels.created.replace('{name}', result.role?.name ?? name.trim()),
-    });
-    setName('');
-    setChosen(new Set());
-    router.refresh();
-  }
-
   return (
-    <form onSubmit={create} className="ios-card flex flex-col gap-3 rounded-2xl p-4">
-      <h3 className="text-base font-semibold">{labels.newRole}</h3>
+    <form
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setStatus({ kind: 'working' });
+        const result = await send({
+          action: 'create',
+          name: name.trim(),
+          permissions: [...chosen],
+        });
+        if (!result.ok) {
+          setStatus({ kind: 'error', message: failureMessage(result.error, labels) });
+          return;
+        }
+        setStatus({ kind: 'done', message: labels.created.replace('{name}', name.trim()) });
+        setName('');
+        setChosen(new Set());
+        router.refresh();
+      }}
+      className="ios-card flex flex-col gap-3 rounded-2xl p-4"
+    >
+      <h3 className="text-base font-semibold">{labels.newTemplate}</h3>
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">{labels.name}</span>
         <input
@@ -248,7 +252,7 @@ function NewRole({ tenant, permissions, permissionLabels, labels }: Omit<Props, 
         />
       </label>
       <PermissionGrid
-        idPrefix="new-role"
+        idPrefix="new-template"
         permissions={permissions}
         permissionLabels={permissionLabels}
         chosen={chosen}
@@ -270,14 +274,19 @@ function NewRole({ tenant, permissions, permissionLabels, labels }: Omit<Props, 
   );
 }
 
-export function RoleEditor({ tenant, roles, permissions, permissionLabels, labels }: Props) {
-  const shared = { tenant, permissions, permissionLabels, labels };
+export function RoleDefinitions({
+  templates,
+  permissions,
+  permissionLabels,
+  labels,
+}: { templates: TemplateItem[] } & Shared) {
+  const shared = { permissions, permissionLabels, labels };
   return (
     <div className="flex flex-col gap-3">
-      {roles.map((role) => (
-        <RoleCard key={role.key} role={role} {...shared} />
+      {templates.map((template) => (
+        <TemplateCard key={template.key} template={template} {...shared} />
       ))}
-      <NewRole {...shared} />
+      <NewTemplate {...shared} />
     </div>
   );
 }

@@ -32,6 +32,12 @@ export default async function PlatformAdmin() {
           {t('platform.admin.tenantsIntro')}
         </p>
       </header>
+
+      <nav className="flex flex-wrap gap-3 text-sm">
+        <Link href="/admin/roles" className="font-medium text-primary hover:underline">
+          {t('platform.roles.heading')}
+        </Link>
+      </nav>
       <div className="flex flex-wrap items-center gap-3">
         <Link href="/admin/tenants/new" className={buttonVariants({ size: 'sm' })}>
           {t('platform.admin.newTenant')}

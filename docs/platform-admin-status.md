@@ -10,7 +10,7 @@ Design: `docs/design-platform-admin.md`.
 | 3     | Analytics with activity timing                            | Merged, `9769360`                    |
 | 4     | Tenant config file to database, super-admin tenant CRUD   | Merged, `548b0ca`                    |
 | 5     | Cross-tenant god-mode                                     | **Gate: plan only, awaiting review** |
-| 6     | Role definitions to platform templates; no upward grant   | Designed, not started                |
+| 6     | Role definitions to platform templates; no upward grant   | **In review** (this PR)              |
 | 7     | Membership for everyone; restriction and suspension       | Designed, not started                |
 
 The Communities module (`docs/design-communities.md`) is built: phases A and B

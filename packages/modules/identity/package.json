@@ -20,7 +20,8 @@
     "./members": "./src/members.ts",
     "./analytics": "./src/analytics.ts",
     "./platform": "./src/platform.ts",
-    "./tenants": "./src/tenants.ts"
+    "./tenants": "./src/tenants.ts",
+    "./role-templates": "./src/role-templates.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
