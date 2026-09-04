@@ -181,6 +181,13 @@ and zero queries.
 - CI must pass before merge: typecheck, lint, format, unit, integration, build.
 - Performance budget for public pages: LCP under 2.5s on a 3G profile,
   no client bundle over 200KB gzipped per route.
+- **Security SQL is reviewed against the concrete SQL, not the design.** RLS
+  policies, `SECURITY DEFINER` functions, and anything that gates a privileged
+  write get an adversarial pass over the migration as written, not over the
+  plan. This is not optional caution: in Phase 5 two distinct escalations
+  (keying containment on `app.grant_use`, then on `app.user_id`) both passed a
+  design review and were only caught reviewing the implementation. A design
+  review of security SQL is necessary but never sufficient.
 
 ---
 
@@ -210,6 +217,22 @@ and zero queries.
 - University email verification uses time-limited, single-use, hashed OTPs.
 - Authorisation is checked server-side on every request. Hiding a UI element
   is not access control.
+- **An authorisation decision keyed on a value the application can write is not
+  an authorisation decision.** `app.user_id`, `app.tenant_id`, and every other
+  `current_setting('app.*')` GUC are set by the application and can be re-set
+  mid-transaction, so a policy or `SECURITY DEFINER` that compares against one
+  is forgeable. Tenant ISOLATION may key on `app.tenant_id` (that is its job);
+  any decision about PRIVILEGE — who may write this row, whether this action is
+  permitted — must key on a row the application cannot forge (e.g. a use-row
+  stamped with `pg_current_xact_id()`, read through a definer over a table the
+  app has no write on), never on a GUC. This constrains every module. The Phase
+  5 grant core (`packages/modules/identity/drizzle/0018_tenant_grants.sql`) is
+  the worked example; two successive designs were broken on exactly this.
+- A table that must not be written by the application gets its writes revoked
+  from the app role by name and routed through an audited definer — a bare
+  `REVOKE ... FROM PUBLIC` does not remove the EXECUTE the owner's default
+  privileges grant, and RLS with a permissive tenant policy still admits a
+  self-write. See `platform_roles` (0016) and the membership tables.
 - No PII in URLs, logs, or analytics events.
 - Threat-model any user-to-user feature (marketplace, ride-sharing, messaging)
   before building it: reporting, blocking, and a moderation queue ship in the
