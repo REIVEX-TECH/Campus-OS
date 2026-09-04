@@ -20,6 +20,7 @@ const BLANK: TenantConfig = {
   joinMode: 'domain',
   adminEmails: [],
   enabledModules: ['timetable'],
+  moduleSettings: {},
   seo: { titleTemplate: '%s · CampusOS', description: '', keywords: [], aliases: [] },
 };
 
