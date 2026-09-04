@@ -26,6 +26,7 @@ import {
   setCommunityRole,
 } from '../src/communities';
 import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
+import { listCommunityPosts } from '../src/feed';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
 import { listRules, setRules } from '../src/rules';
@@ -37,8 +38,10 @@ import {
   editPost,
   myAnonymousPosts,
   postById,
+  postHistory,
   postsByAuthor,
 } from '../src/posts';
+import { hideItem, listSavedPosts, saveItem } from '../src/saved';
 import { postsRead } from '../src/schema/communities';
 import { voteComment, votePost } from '../src/votes';
 
@@ -648,5 +651,95 @@ describe('directory, settings, rules and members', () => {
     await leaveCommunity(plain, 'aaa', c.id);
     expect(await membershipState(plain, 'aaa', c.id)).toEqual({ joined: false, roles: [] });
     expect(JSON.stringify(members)).not.toContain('@');
+  });
+});
+
+describe('post lists, saved and hidden, history', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+
+  it('pages a community newest first by cursor, and hides what the viewer hid', async () => {
+    const owner = await member('feed-owner');
+    const c = await community(owner);
+    const ids: string[] = [];
+    for (const title of ['One', 'Two', 'Three']) {
+      const p = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
+      if (!p.ok) throw new Error(p.error);
+      ids.push(p.value.id);
+      await tick();
+    }
+    const first = await listCommunityPosts(owner, 'aaa', c.id, { limit: 2 });
+    expect(first.items.map((p) => p.title)).toEqual(['Three', 'Two']);
+    expect(first.nextCursor).not.toBeNull();
+    expect(first.items[0]!.community).toEqual({ slug: c.slug, name: c.name });
+    const second = await listCommunityPosts(owner, 'aaa', c.id, {
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items.map((p) => p.title)).toEqual(['One']);
+    expect(second.nextCursor).toBeNull();
+
+    expect(await hideItem(owner, 'aaa', 'post', ids[1]!, true)).toEqual({
+      ok: true,
+      value: { hidden: true },
+    });
+    expect((await listCommunityPosts(owner, 'aaa', c.id)).items.map((p) => p.title)).toEqual([
+      'Three',
+      'One',
+    ]);
+    // Hiding is the viewer's own: everyone else still sees all three.
+    expect((await listCommunityPosts(null, 'aaa', c.id)).items).toHaveLength(3);
+    expect(
+      await hideItem(owner, 'aaa', 'post', '00000000-0000-0000-0000-000000000000', true),
+    ).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+  });
+
+  it("remembers the viewer's vote and saved posts, and keeps edit history without an author", async () => {
+    const owner = await member('sv-owner');
+    const voter = await member('sv-voter');
+    const c = await community(owner);
+    await joinCommunity(voter, 'aaa', c.id);
+    const p = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Keep me', body: 'v1' },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+
+    await votePost(voter, 'aaa', p.value.id, 1);
+    expect(await saveItem(voter, 'aaa', 'post', p.value.id, true)).toEqual({
+      ok: true,
+      value: { saved: true },
+    });
+    expect(await postById(voter, 'aaa', p.value.id)).toMatchObject({
+      myVote: 1,
+      saved: true,
+      score: 1,
+    });
+    expect(await postById(owner, 'aaa', p.value.id)).toMatchObject({
+      myVote: 0,
+      saved: false,
+      score: 1,
+    });
+    expect(await postById(null, 'aaa', p.value.id)).toMatchObject({ myVote: 0, saved: false });
+    expect((await listSavedPosts(voter, 'aaa')).map((x) => x.id)).toEqual([p.value.id]);
+    expect((await listSavedPosts(owner, 'aaa')).length).toBe(0);
+    await saveItem(voter, 'aaa', 'post', p.value.id, false);
+    expect(await listSavedPosts(voter, 'aaa')).toEqual([]);
+
+    expect(
+      await editPost(owner, 'aaa', p.value.id, { title: 'Keep me, edited', body: 'v2' }),
+    ).toEqual({
+      ok: true,
+      value: { edited: true },
+    });
+    const history = await postHistory('aaa', p.value.id);
+    expect(history.map((h) => [h.previousTitle, h.previousBody])).toEqual([['Keep me', 'v1']]);
+    expect(JSON.stringify(history)).not.toContain(owner.userId);
+    expect((await postById(null, 'aaa', p.value.id))?.editedAt).toBeInstanceOf(Date);
   });
 });

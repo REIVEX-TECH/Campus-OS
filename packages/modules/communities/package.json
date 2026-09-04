@@ -18,7 +18,9 @@
     "./directory": "./src/directory.ts",
     "./settings": "./src/settings.ts",
     "./rules": "./src/rules.ts",
-    "./members": "./src/members.ts"
+    "./members": "./src/members.ts",
+    "./feed": "./src/feed.ts",
+    "./saved": "./src/saved.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -3,9 +3,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { membershipState } from '@campusos/module-communities/directory';
+import { listCommunityPosts } from '@campusos/module-communities/feed';
 import { listModerators } from '@campusos/module-communities/members';
 import { listRules } from '@campusos/module-communities/rules';
+import { buttonVariants } from '@campusos/ui';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
+import { PostCard } from '@/app/_components/communities/post-card';
 import { CommunityBanner, CommunityIcon } from '@/app/_components/communities/community-visuals';
 import { JoinButton } from '@/app/_components/communities/join-button';
 import { EmptyState } from '@/app/_components/empty-state';
@@ -22,6 +25,7 @@ import { tenantBase } from '@/lib/tenant-url';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string; community: string }> };
+type PageProps = Params & { searchParams: Promise<{ after?: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, community } = await params;
@@ -42,7 +46,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  * An unknown slug is 404 whoever asks; reading a known one needs a sign in by
  * default, a tenant setting.
  */
-export default async function CommunityPage({ params }: Params) {
+export default async function CommunityPage({ params, searchParams }: PageProps) {
   const { slug, community: communitySlug } = await params;
   const tenant = await requireTenant(slug);
   requireCommunities(tenant);
@@ -76,6 +80,9 @@ export default async function CommunityPage({ params }: Params) {
     actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
   ]);
   const canManage = perms?.hasAny('communities.manage', 'communities.oversee') ?? false;
+  const { after } = await searchParams;
+  const feed = await listCommunityPosts(actor, slug, community.id, { cursor: after });
+  const canPost = perms?.has('communities.post') ?? false;
   const canJoin = actor !== null && (community.visibility === 'public' || state?.joined);
 
   return (
@@ -142,15 +149,52 @@ export default async function CommunityPage({ params }: Params) {
         ) : null}
 
         <section aria-labelledby="community-posts" className="flex flex-col gap-2">
-          <h2
-            id="community-posts"
-            className="px-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            {t('communities.posts')}
-          </h2>
-          <EmptyState title={t('communities.noPostsYet')}>
-            {t('communities.postingSoon')}
-          </EmptyState>
+          <div className="flex items-center justify-between gap-3 px-1">
+            <h2
+              id="community-posts"
+              className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              {t('communities.posts')}
+            </h2>
+            {canPost ? (
+              <Link
+                href={`${base}/c/${community.slug}/submit`}
+                className={buttonVariants({ size: 'sm' })}
+              >
+                {t('posts.new')}
+              </Link>
+            ) : null}
+          </div>
+          {feed.items.length === 0 ? (
+            <EmptyState title={t('posts.none')}>{canPost ? t('posts.beFirst') : null}</EmptyState>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {feed.items.map((post) => (
+                <li key={post.id}>
+                  <PostCard
+                    post={post}
+                    community={{ slug: community.slug, name: community.name }}
+                    base={base}
+                    tenant={slug}
+                    locale={tenant.locale}
+                    signedIn={actor !== null}
+                    canVote={perms?.has('communities.vote') ?? false}
+                    t={t}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          {feed.nextCursor ? (
+            <div className="px-1">
+              <Link
+                href={`${base}/c/${community.slug}?after=${encodeURIComponent(feed.nextCursor)}`}
+                className={buttonVariants({ size: 'sm', variant: 'outline' })}
+              >
+                {t('posts.more')}
+              </Link>
+            </div>
+          ) : null}
         </section>
 
         <p className="px-1 text-sm">
