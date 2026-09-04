@@ -14,7 +14,9 @@ import {
   ensureConfiguredAdmin,
   ensureDomainMembership,
 } from '@campusos/module-identity/membership';
-import { createRole, grantRole } from '@campusos/module-identity/rbac';
+import { grantRole } from '@campusos/module-identity/rbac';
+import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
+import { createRoleTemplate } from '@campusos/module-identity/role-templates';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { communityPermissions, tenantPermissions } from '../src/access';
 import { commentsForPost, createComment } from '../src/comments';
@@ -498,12 +500,24 @@ describe('the anonymity model', () => {
       ),
     ).toEqual({ ok: false, error: 'not_allowed' });
 
-    const role = await createRole(tenantAdmin, 'aaa', {
+    // The definition is the platform's, and so is the grant: a tenant
+    // administrator does not hold `communities.unmask` and therefore cannot
+    // hand it to anyone, themselves included.
+    const superAdmin = await findOrCreateUser({
+      subject: 'unmask-platform',
+      email: 'unmask-platform@gmail.com',
+    });
+    await ensurePlatformAdmin(superAdmin, ['unmask-platform@gmail.com']);
+    const role = await createRoleTemplate(superAdmin, {
       name: 'Trust and Safety',
       permissions: ['communities.unmask'],
     });
     expect(role.ok).toBe(true);
     expect(await grantRole(tenantAdmin, 'aaa', tenantAdmin.userId, 'trust-and-safety')).toEqual({
+      ok: false,
+      reason: 'above_own',
+    });
+    expect(await grantRole(superAdmin, 'aaa', tenantAdmin.userId, 'trust-and-safety')).toEqual({
       ok: true,
       changed: true,
     });

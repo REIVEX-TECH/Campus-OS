@@ -249,6 +249,29 @@ export const en = {
   'admin.nav.members': 'Members',
   'admin.nav.roles': 'Roles',
   'admin.nav.communities': 'Communities',
+  'admin.roles.permission.communities.create': 'Create a community',
+  'admin.roles.permission.communities.oversee': 'Oversee every community',
+  'admin.roles.permission.communities.unmask': 'Reveal an anonymous author',
+  'admin.roles.permission.communities.post': 'Post in a community',
+  'admin.roles.permission.communities.comment': 'Comment in a community',
+  'admin.roles.permission.communities.vote': 'Vote in a community',
+  'admin.roles.permission.communities.moderate': 'Moderate a community',
+  'admin.roles.permission.communities.flairs': 'Manage flairs',
+  'admin.roles.permission.communities.manage': 'Manage a community',
+  'admin.roles.permission.communities.transfer': 'Transfer a community',
+  'admin.roles.definitionNote':
+    'What a role may do is set for every university at once. Grant these to members from the members page.',
+  'platform.roles.heading': 'Role definitions',
+  'platform.roles.intro':
+    'Which roles exist and what each one may do, for every university. A university grants them; only here do they change.',
+  'platform.roles.builtInNote':
+    'Built in. Every university relies on this one, so it cannot be removed.',
+  'platform.roles.new': 'New definition',
+  'platform.roles.remove': 'Retire',
+  'platform.roles.removeConfirm':
+    'Retire this definition? Universities keep the copies they already have; nobody can be granted it again.',
+  'platform.roles.removed': 'Retired.',
+  'platform.roles.back': 'Back to the universities',
 
   'admin.analytics.heading': 'Analytics',
   'admin.analytics.intro':

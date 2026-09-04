@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
-import { COMMUNITY_ROLES, COMMUNITY_ROLE_KEYS, err, ok, type Result } from '@campusos/core';
+import { syncTenantRoles } from '@campusos/module-identity/role-templates';
+import { err, ok, type Result } from '@campusos/core';
 import type { PermissionSet } from '@campusos/core';
 import {
   canInTenant,
@@ -57,26 +58,15 @@ function summary(row: typeof communities.$inferSelect): CommunitySummary {
 }
 
 /**
- * The three community roles for this tenant, created if missing. Idempotent,
- * and run before any community is created so the owner role exists to attach.
- * Roles live in the identity module's tables; this writes them by name, as the
- * migration does for tenants that already existed.
+ * Give this tenant the community roles the definitions say it has.
+ *
+ * They are definitions like any other since the role definitions moved to the
+ * platform, so this is the same sync the identity module runs, through the
+ * same definer function: creating a community is not an administrative act and
+ * carries no administrator.
  */
 export async function ensureCommunityRoles(tx: TenantTransaction, tenantId: string): Promise<void> {
-  for (const key of COMMUNITY_ROLE_KEYS) {
-    const definition = COMMUNITY_ROLES[key];
-    await tx.execute(sql`
-      insert into roles (tenant_id, key, name, is_system)
-      values (${tenantId}, ${key}, ${definition.name}, true)
-      on conflict (tenant_id, key) do nothing`);
-    for (const permission of definition.permissions) {
-      await tx.execute(sql`
-        insert into role_permissions (role_id, tenant_id, permission)
-        select r.id, r.tenant_id, ${permission} from roles r
-        where r.tenant_id = ${tenantId} and r.key = ${key}
-        on conflict (role_id, permission) do nothing`);
-    }
-  }
+  await syncTenantRoles(tx, tenantId);
 }
 
 async function roleId(

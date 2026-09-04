@@ -37,3 +37,21 @@ test('the platform sign in page exists on the platform host', async ({ request }
   expect(res.status()).toBe(200);
   expect(await res.text()).toContain('Sign in');
 });
+
+test('role definitions are the platform page, and closed to everyone else', async ({
+  page,
+  request,
+}) => {
+  expect((await page.goto('/admin/roles'))?.status()).toBe(404);
+  const write = await request.post('/api/platform/roles', {
+    headers: { origin: String(test.info().project.use.baseURL) },
+    data: { action: 'create', name: 'Sneaky', permissions: ['manage-roles'] },
+  });
+  expect(write.status()).toBe(404);
+  // The tenant surface that used to define roles is gone, not merely hidden.
+  const gone = await request.post('/api/admin/roles/define', {
+    headers: { origin: String(test.info().project.use.baseURL) },
+    data: { tenant: 'lgu', name: 'Sneaky', permissions: ['manage-roles'] },
+  });
+  expect(gone.status()).toBe(404);
+});

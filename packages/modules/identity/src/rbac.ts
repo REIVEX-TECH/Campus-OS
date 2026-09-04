@@ -1,15 +1,10 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
-import {
-  PermissionSet,
-  SYSTEM_ROLES,
-  SYSTEM_ROLE_KEYS,
-  isCommunityRole,
-  isPermission,
-  type Permission,
-} from '@campusos/core';
+import { PermissionSet, isCommunityRole, isPermission, type Permission } from '@campusos/core';
 import { recordAudit } from './audit';
+import { isPlatformAdmin } from './platform';
+import { syncTenantRoles } from './role-templates';
 import { membershipRoles, rolePermissions, roles, tenantMemberships } from './schema/identity';
 
 /**
@@ -19,8 +14,11 @@ import { membershipRoles, rolePermissions, roles, tenantMemberships } from './sc
  * are the union. Reading those permissions goes through a definer function
  * because the alternative, letting anyone holding a tenant context read the
  * role tables, would turn every permission check into a way to read everyone
- * else's roles. Writing them needs a tenant context, which only server code
- * sets, and the application checks `manage-roles` before it does.
+ * else's roles.
+ *
+ * Which roles exist and what each carries is a platform level definition
+ * (`role-templates.ts`); a tenant's rows are materialisations of it, and
+ * `manage-roles` here means assigning and revoking, never defining.
  */
 
 export interface Role {
@@ -81,6 +79,20 @@ export async function canInTransaction(
   return rows.some((r) => r.permission === permission);
 }
 
+/** The whole set, inside a transaction, for the checks that compare sets rather than ask about one. */
+export async function effectivePermissionsInTransaction(
+  tx: TenantTransaction,
+  userId: string,
+  tenantId: string,
+): Promise<Set<string>> {
+  const rows = [
+    ...(await tx.execute(
+      sql`select permission from auth_effective_permissions(${userId}::uuid, ${tenantId})`,
+    )),
+  ] as { permission?: string }[];
+  return new Set(rows.map((r) => r.permission).filter((p): p is string => typeof p === 'string'));
+}
+
 /** Every role a tenant has, with what each one can do. Needs a tenant context. */
 export async function listRoles(actorUserId: string, tenantId: string): Promise<Role[]> {
   return withActorInTenant(actorUserId, tenantId, async (tx) => {
@@ -127,39 +139,19 @@ export async function rolesForMember(
 }
 
 /**
- * Create a tenant's system roles if they are missing.
+ * Give a tenant the roles the definitions say it has.
  *
- * Called when a tenant is created, and safe to call again: a tenant that already
- * has them is left alone. This is what lets a new tenant administer itself from
- * the first moment.
+ * Called when a tenant is created and again whenever a membership is made, and
+ * safe to call any number of times. The write goes through a definer function
+ * because the tenant role tables are writable only by a platform administrator
+ * now, and none of these paths has one: a person signing in is not an
+ * administrator of anything.
  */
 export async function ensureSystemRoles(tx: TenantTransaction, tenantId: string): Promise<void> {
-  for (const key of SYSTEM_ROLE_KEYS) {
-    const definition = SYSTEM_ROLES[key];
-    const [role] = await tx
-      .insert(roles)
-      .values({ tenantId, key, name: definition.name, isSystem: true })
-      .onConflictDoNothing({ target: [roles.tenantId, roles.key] })
-      .returning();
-    const roleId =
-      role?.id ??
-      (
-        await tx
-          .select({ id: roles.id })
-          .from(roles)
-          .where(and(eq(roles.tenantId, tenantId), eq(roles.key, key)))
-      )[0]?.id;
-    if (!roleId) throw new Error(`system role ${key} vanished for ${tenantId}`);
-    for (const permission of definition.permissions) {
-      await tx
-        .insert(rolePermissions)
-        .values({ roleId, tenantId, permission })
-        .onConflictDoNothing({ target: [rolePermissions.roleId, rolePermissions.permission] });
-    }
-  }
+  await syncTenantRoles(tx, tenantId);
 }
 
-export type RoleGrantRefusal = 'not_allowed' | 'no_such_role' | 'no_such_member';
+export type RoleGrantRefusal = 'not_allowed' | 'no_such_role' | 'no_such_member' | 'above_own';
 
 /**
  * Give a member a role, or take one away.
@@ -175,8 +167,14 @@ export async function grantRole(
   memberUserId: string,
   roleKey: string,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal }> {
+  // A platform administrator is the one exemption, and it exists so the
+  // catalogue stays reachable: `communities.unmask` is held by nobody, so under
+  // the rule below nobody in a tenant could ever hand it out, and a permission
+  // no one can grant is a permission that does not exist. The grant is audited
+  // like any other.
+  const fromPlatform = await isPlatformAdmin(actor.userId);
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
+    if (!fromPlatform && !(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
       return { ok: false as const, reason: 'not_allowed' as const };
     }
     // Community roles attach per community, never to a tenant membership.
@@ -186,6 +184,22 @@ export async function grantRole(
       .from(roles)
       .where(and(eq(roles.tenantId, tenantId), eq(roles.key, roleKey)));
     if (!role) return { ok: false as const, reason: 'no_such_role' as const };
+
+    // Nobody may grant a power they do not have. Without this a tenant
+    // administrator could hand out `communities.unmask`, which the catalogue
+    // gives to nobody, by granting a role that carries it.
+    const carried = (
+      await tx
+        .select({ permission: rolePermissions.permission })
+        .from(rolePermissions)
+        .where(eq(rolePermissions.roleId, role.id))
+    ).map((r) => r.permission);
+    if (!fromPlatform) {
+      const mine = await effectivePermissionsInTransaction(tx, actor.userId, tenantId);
+      if (carried.some((p) => !mine.has(p))) {
+        return { ok: false as const, reason: 'above_own' as const };
+      }
+    }
 
     const [membership] = await tx
       .select()
@@ -214,7 +228,7 @@ export async function grantRole(
       action: 'role.granted',
       targetType: 'membership',
       targetId: membership.id,
-      meta: { role: roleKey, targetUserId: memberUserId },
+      meta: { role: roleKey, targetUserId: memberUserId, viaPlatform: fromPlatform },
     });
     return { ok: true as const, changed: true };
   });
@@ -303,135 +317,4 @@ export async function attachRole(
 /** Every permission held by anyone, for a member list. Read as the member. */
 export async function ownPermissions(userId: string, tenantId: string): Promise<PermissionSet> {
   return withActor(userId, async () => effectivePermissions(userId, tenantId));
-}
-
-/** The shape of a key a tenant's own role gets: lower case words joined by hyphens. */
-export const ROLE_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** The key a new role takes from its name: "Course Rep" becomes "course-rep". */
-export function roleKeyFromName(name: string): string | null {
-  const key = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '');
-  return ROLE_KEY_PATTERN.test(key) ? key : null;
-}
-
-export type RoleDefineRefusal =
-  'not_allowed' | 'bad_name' | 'exists' | 'no_such_role' | 'system_role';
-
-function unique<T>(items: Iterable<T>): T[] {
-  return Array.from(new Set(items));
-}
-
-/**
- * Create a role of the tenant's own, with the permissions it starts with.
- *
- * The key comes from the name and can never collide with a system role's,
- * which use underscores. `manage-roles` is re-checked inside the transaction.
- * The insert is a no-op on conflict rather than an error, so two admins
- * creating the same role at once produce one role and one refusal instead of
- * an aborted transaction.
- */
-export async function createRole(
-  actor: { userId: string },
-  tenantId: string,
-  input: { name: string; permissions: readonly string[] },
-): Promise<{ ok: true; role: Role } | { ok: false; reason: RoleDefineRefusal }> {
-  const name = input.name.trim();
-  const key = roleKeyFromName(name);
-  if (!key || name.length > 60) return { ok: false, reason: 'bad_name' };
-  const permissions = unique(input.permissions.filter(isPermission));
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
-      return { ok: false as const, reason: 'not_allowed' as const };
-    }
-    const [inserted] = await tx
-      .insert(roles)
-      .values({ tenantId, key, name })
-      .onConflictDoNothing({ target: [roles.tenantId, roles.key] })
-      .returning();
-    if (!inserted) return { ok: false as const, reason: 'exists' as const };
-    for (const permission of permissions) {
-      await tx
-        .insert(rolePermissions)
-        .values({ roleId: inserted.id, tenantId, permission })
-        .onConflictDoNothing({ target: [rolePermissions.roleId, rolePermissions.permission] });
-    }
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: 'role.created',
-      targetType: 'role',
-      targetId: inserted.id,
-      meta: { key, permissions: permissions.join(',') },
-    });
-    return {
-      ok: true as const,
-      role: { id: inserted.id, key, name, isSystem: false, permissions },
-    };
-  });
-}
-
-/**
- * Replace what one of the tenant's own roles may do. System roles are refused:
- * `tenant_admin` holding every permission is what keeps a tenant able to
- * administer itself. Idempotent when nothing would change.
- */
-export async function setRolePermissions(
-  actor: { userId: string },
-  tenantId: string,
-  roleKey: string,
-  permissions: readonly string[],
-): Promise<{ ok: true; changed: boolean } | { ok: false; reason: RoleDefineRefusal }> {
-  const wanted = unique(permissions.filter(isPermission));
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'manage-roles'))) {
-      return { ok: false as const, reason: 'not_allowed' as const };
-    }
-    const [role] = await tx
-      .select()
-      .from(roles)
-      .where(and(eq(roles.tenantId, tenantId), eq(roles.key, roleKey)));
-    if (!role) return { ok: false as const, reason: 'no_such_role' as const };
-    if (role.isSystem) return { ok: false as const, reason: 'system_role' as const };
-
-    const current = (
-      await tx
-        .select({ permission: rolePermissions.permission })
-        .from(rolePermissions)
-        .where(eq(rolePermissions.roleId, role.id))
-    ).map((r) => r.permission);
-    const toAdd = wanted.filter((p) => !current.includes(p));
-    const toRemove = current.filter((p) => !(wanted as string[]).includes(p));
-    if (toAdd.length === 0 && toRemove.length === 0) {
-      return { ok: true as const, changed: false };
-    }
-
-    for (const permission of toAdd) {
-      await tx
-        .insert(rolePermissions)
-        .values({ roleId: role.id, tenantId, permission })
-        .onConflictDoNothing({ target: [rolePermissions.roleId, rolePermissions.permission] });
-    }
-    if (toRemove.length > 0) {
-      await tx
-        .delete(rolePermissions)
-        .where(
-          and(eq(rolePermissions.roleId, role.id), inArray(rolePermissions.permission, toRemove)),
-        );
-    }
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: 'role.changed',
-      targetType: 'role',
-      targetId: role.id,
-      meta: { key: roleKey, permissions: wanted.join(',') },
-    });
-    return { ok: true as const, changed: true };
-  });
 }
