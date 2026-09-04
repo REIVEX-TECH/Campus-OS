@@ -1,7 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { recordAudit } from './audit';
-import { attachRole, ensureSystemRoles } from './rbac';
 import { tenantMemberships, verificationRequests } from './schema/identity';
 
 /**
@@ -82,102 +81,8 @@ function toMembership(row: Row): Membership {
   };
 }
 
-/**
- * Create a verified membership, or verify the one that exists. The one writer.
- *
- * Must run in a tenant context. A membership already verified is left exactly
- * as it is; status is never touched, because verifying says who someone is,
- * not whether they are welcome, and a suspension outranks it either way. Two
- * callers racing on a first sign in resolve to the one row the unique index
- * allows. Every change is audited in the caller's transaction.
- */
-export async function grantVerified(
-  tx: TenantTransaction,
-  input: {
-    tenantId: string;
-    userId: string;
-    method: VerificationMethod;
-    /** Who caused it: the person themselves at sign in, or an admin. */
-    actorUserId: string;
-    /** Only for a membership created here. An existing role is never changed. */
-    role?: string;
-    /**
-     * A request still waiting when the person is verified another way is
-     * superseded and purged here, so its details never outlive their purpose.
-     * A decision on that very request turns this off and closes it itself.
-     */
-    closePendingRequests?: boolean;
-  },
-): Promise<{ membership: Membership; created: boolean; alreadyVerified: boolean }> {
-  const role = input.role ?? 'student';
-  const close = input.closePendingRequests ?? true;
-  // A tenant that predates the role model, or one just created, may not have its
-  // system roles yet; without them the link below would find nothing to attach.
-  await ensureSystemRoles(tx, input.tenantId);
-  const [inserted] = await tx
-    .insert(tenantMemberships)
-    .values({
-      tenantId: input.tenantId,
-      userId: input.userId,
-      role,
-      status: 'active',
-      verifiedAt: new Date(),
-      verificationMethod: input.method,
-    })
-    .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
-    .returning();
-  if (inserted) {
-    await attachRole(tx, {
-      membershipId: inserted.id,
-      tenantId: input.tenantId,
-      userId: input.userId,
-      roleKey: role,
-    });
-    await recordAudit(tx, {
-      actorUserId: input.actorUserId,
-      tenantId: input.tenantId,
-      action: 'membership.joined',
-      targetType: 'membership',
-      targetId: inserted.id,
-      meta: { method: input.method, role, targetUserId: input.userId },
-    });
-    if (close) await supersedePending(tx, input);
-    return { membership: toMembership(inserted), created: true, alreadyVerified: false };
-  }
-
-  const [existing] = await tx
-    .select()
-    .from(tenantMemberships)
-    .where(
-      and(
-        eq(tenantMemberships.tenantId, input.tenantId),
-        eq(tenantMemberships.userId, input.userId),
-      ),
-    );
-  if (!existing) throw new Error('membership vanished between insert and read');
-  if (existing.verifiedAt) {
-    return { membership: toMembership(existing), created: false, alreadyVerified: true };
-  }
-
-  const [updated] = await tx
-    .update(tenantMemberships)
-    .set({ verifiedAt: new Date(), verificationMethod: input.method })
-    .where(eq(tenantMemberships.id, existing.id))
-    .returning();
-  await recordAudit(tx, {
-    actorUserId: input.actorUserId,
-    tenantId: input.tenantId,
-    action: 'membership.verified',
-    targetType: 'membership',
-    targetId: existing.id,
-    meta: { method: input.method, targetUserId: input.userId },
-  });
-  if (close) await supersedePending(tx, input);
-  return { membership: toMembership(updated!), created: false, alreadyVerified: false };
-}
-
 /** Close, and purge, any request of theirs still waiting in this tenant. */
-async function supersedePending(
+export async function supersedePending(
   tx: TenantTransaction,
   input: { tenantId: string; userId: string; actorUserId: string },
 ): Promise<void> {
@@ -228,72 +133,40 @@ export async function ensureDomainMembership(
   actor: { userId: string; email: string },
   tenant: JoinPolicy,
 ): Promise<Membership | null> {
-  const verifies =
-    tenant.joinMode === 'domain' && domainAllowed(actor.email, tenant.allowedEmailDomains);
   return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
-    if (verifies) {
-      const granted = await grantVerified(tx, {
+    // Every write to tenant_memberships now goes through a definer (0019); the
+    // application role cannot write the table directly. Domain self-verification
+    // and the student floor are two such definers. Calling both is safe: if the
+    // address is on the domain the first verifies and the second is a no-op; if
+    // not, the first does nothing and the second creates the unverified student.
+    if (tenant.joinMode === 'domain' && tenant.allowedEmailDomains.length > 0) {
+      await tx.execute(
+        sql`select auth_verify_self_by_domain(${tenant.slug}, ${pgTextArray(tenant.allowedEmailDomains)})`,
+      );
+    }
+    await tx.execute(sql`select auth_join_as_student(${tenant.slug})`);
+    const membership = await readMembership(tx, tenant.slug, actor.userId);
+    // A domain sign-in that verified the person supersedes any request they had
+    // pending; verification_requests is not locked, so this stays in code.
+    if (membership && isVerified(membership) && membership.verificationMethod === 'domain') {
+      await supersedePending(tx, {
         tenantId: tenant.slug,
         userId: actor.userId,
-        method: 'domain',
         actorUserId: actor.userId,
       });
-      return granted.membership;
     }
-    return joinUnverified(tx, tenant.slug, actor.userId);
+    return membership;
   });
-}
-
-/**
- * A membership with the `student` role and no verification.
- *
- * The floor everyone stands on: they can read what the tenant makes readable
- * and ask to be verified. An existing membership is left exactly as it is,
- * verification and standing included.
- */
-async function joinUnverified(
-  tx: TenantTransaction,
-  tenantId: string,
-  userId: string,
-): Promise<Membership | null> {
-  await ensureSystemRoles(tx, tenantId);
-  const [inserted] = await tx
-    .insert(tenantMemberships)
-    .values({ tenantId, userId, role: 'student', status: 'active' })
-    .onConflictDoNothing({ target: [tenantMemberships.tenantId, tenantMemberships.userId] })
-    .returning();
-  if (inserted) {
-    await attachRole(tx, {
-      membershipId: inserted.id,
-      tenantId,
-      userId,
-      roleKey: 'student',
-    });
-    await recordAudit(tx, {
-      actorUserId: userId,
-      tenantId,
-      action: 'membership.joined',
-      targetType: 'membership',
-      targetId: inserted.id,
-      meta: { role: 'student', verified: false },
-    });
-    return toMembership(inserted);
-  }
-  const [existing] = await tx
-    .select()
-    .from(tenantMemberships)
-    .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, userId)));
-  return existing ? toMembership(existing) : null;
 }
 
 /**
  * Give a configured administrator their role, on sign in.
  *
  * The list lives in the tenant's config, in code, so granting the role is a
- * reviewed change with a history. This only ever upgrades: a listed address
- * becomes a verified tenant_admin, and an address later removed from the list
- * keeps the role until someone removes it by hand. Anyone not listed is
- * untouched and null is returned.
+ * reviewed change with a history. Only ever an upgrade. The write is done by
+ * `auth_grant_configured_admin` (0019), which checks the actor's OWN email
+ * against the list it is handed, so it can only promote the caller — the same
+ * shape as the platform bootstrap. Anyone not listed is untouched.
  */
 export async function ensureConfiguredAdmin(
   actor: { userId: string; email: string },
@@ -301,36 +174,34 @@ export async function ensureConfiguredAdmin(
 ): Promise<Membership | null> {
   if (!isConfiguredAdmin(actor.email, tenant.adminEmails)) return null;
   return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
-    const granted = await grantVerified(tx, {
-      tenantId: tenant.slug,
-      userId: actor.userId,
-      method: 'config',
-      actorUserId: actor.userId,
-      role: 'tenant_admin',
-    });
-    if (granted.membership.role === 'tenant_admin') return granted.membership;
-
-    const [updated] = await tx
-      .update(tenantMemberships)
-      .set({ role: 'tenant_admin' })
-      .where(eq(tenantMemberships.id, granted.membership.id))
-      .returning();
-    await attachRole(tx, {
-      membershipId: granted.membership.id,
-      tenantId: tenant.slug,
-      userId: actor.userId,
-      roleKey: 'tenant_admin',
-    });
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId: tenant.slug,
-      action: 'membership.role_granted',
-      targetType: 'membership',
-      targetId: granted.membership.id,
-      meta: { role: 'tenant_admin', source: 'config' },
-    });
-    return toMembership(updated!);
+    await tx.execute(
+      sql`select auth_grant_configured_admin(${tenant.slug}, ${pgTextArray(tenant.adminEmails)})`,
+    );
+    return readMembership(tx, tenant.slug, actor.userId);
   });
+}
+
+/** A Postgres `text[]` literal built from a JS array, for a definer argument. */
+function pgTextArray(values: readonly string[]) {
+  return values.length === 0
+    ? sql`array[]::text[]`
+    : sql`array[${sql.join(
+        values.map((v) => sql`${v}`),
+        sql`, `,
+      )}]::text[]`;
+}
+
+/** The caller's own membership row inside an open transaction. */
+async function readMembership(
+  tx: TenantTransaction,
+  tenantId: string,
+  userId: string,
+): Promise<Membership | null> {
+  const [row] = await tx
+    .select()
+    .from(tenantMemberships)
+    .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, userId)));
+  return row ? toMembership(row) : null;
 }
 
 /** A person's own membership in one tenant, or null. Read as themselves. */

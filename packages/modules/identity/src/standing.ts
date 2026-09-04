@@ -1,7 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
-import { recordAudit } from './audit';
 import { canInTransaction } from './rbac';
 import { tenantMemberships } from './schema/identity';
 
@@ -95,21 +94,6 @@ export async function standingInTransaction(
   return row ? effective(row) : GOOD_STANDING;
 }
 
-async function isLastActiveAdmin(
-  tx: TenantTransaction,
-  tenantId: string,
-  memberUserId: string,
-): Promise<boolean> {
-  const rows = [
-    ...(await tx.execute(sql`
-      select m.user_id from tenant_memberships m
-      join membership_roles mr on mr.membership_id = m.id
-      join roles r on r.id = mr.role_id
-      where m.tenant_id = ${tenantId} and m.status = 'active' and r.key = 'tenant_admin'`)),
-  ] as { user_id: string }[];
-  return rows.length <= 1 && rows.some((r) => r.user_id === memberUserId);
-}
-
 export interface StandingInput {
   status: Exclude<Standing, 'active'>;
   reason: string;
@@ -136,48 +120,21 @@ export async function setStanding(
     return err('invalid');
   }
   if (memberUserId === actor.userId) return err('self');
+  const until = input.minutes ? new Date(Date.now() + input.minutes * 60_000) : null;
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'restrict-members'))) {
-      return err('not_allowed');
-    }
-    const [membership] = await tx
-      .select()
-      .from(tenantMemberships)
-      .where(
-        and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, memberUserId)),
-      );
-    if (!membership) return err('not_found');
-    if (await isLastActiveAdmin(tx, tenantId, memberUserId)) return err('last_admin');
-
-    const now = new Date();
-    const until = input.minutes ? new Date(now.getTime() + input.minutes * 60_000) : null;
-    const [updated] = await tx
-      .update(tenantMemberships)
-      .set({
-        status: input.status,
-        standingReason: reason,
-        standingUntil: until,
-        standingBy: actor.userId,
-        standingAt: now,
-        // A new decision clears the answer to the old one.
-        appealNote: null,
-        appealAt: null,
-      })
-      .where(eq(tenantMemberships.id, membership.id))
-      .returning();
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: input.status === 'suspended' ? 'member.suspended' : 'member.restricted',
-      targetType: 'membership',
-      targetId: membership.id,
-      meta: {
-        targetUserId: memberUserId,
-        reason,
-        until: until?.toISOString() ?? null,
-      },
-    });
-    return ok({ standing: effective(updated!) });
+    // The write is a definer (0019): the application role can no longer write
+    // tenant_memberships. It re-checks restrict-members, refuses self and the
+    // last active administrator, and audits. We map its code and read the row
+    // back for the record.
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_write_standing(${tenantId}, ${memberUserId}::uuid, ${input.status},
+              ${reason}, ${until ? until.toISOString() : null}::timestamptz) as code`,
+      )),
+    ] as { code: string }[];
+    const code = row?.code ?? 'not_allowed';
+    if (code !== 'ok') return err(code as StandingRefusal);
+    return ok({ standing: await standingInTransaction(tx, memberUserId, tenantId) });
   });
 }
 
@@ -188,37 +145,24 @@ export async function liftStanding(
   memberUserId: string,
 ): Promise<Result<{ changed: boolean }, StandingRefusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    if (!(await canInTransaction(tx, actor.userId, tenantId, 'restrict-members'))) {
-      return err('not_allowed');
-    }
+    const current = await standingInTransaction(tx, memberUserId, tenantId);
+    // A stranger's row is good standing too; distinguish "no membership" so the
+    // caller still gets not_found, matching the previous behaviour.
     const [membership] = await tx
-      .select()
+      .select({ id: tenantMemberships.id, status: tenantMemberships.status })
       .from(tenantMemberships)
       .where(
         and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, memberUserId)),
       );
     if (!membership) return err('not_found');
-    if (membership.status === 'active') return ok({ changed: false });
-    await tx
-      .update(tenantMemberships)
-      .set({
-        status: 'active',
-        standingReason: null,
-        standingUntil: null,
-        standingBy: actor.userId,
-        standingAt: new Date(),
-        appealNote: null,
-        appealAt: null,
-      })
-      .where(eq(tenantMemberships.id, membership.id));
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      tenantId,
-      action: 'member.reinstated',
-      targetType: 'membership',
-      targetId: membership.id,
-      meta: { targetUserId: memberUserId },
-    });
+    if (current.status === 'active') return ok({ changed: false });
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_write_standing(${tenantId}, ${memberUserId}::uuid, 'active', '', null) as code`,
+      )),
+    ] as { code: string }[];
+    const code = row?.code ?? 'not_allowed';
+    if (code !== 'ok') return err(code as StandingRefusal);
     return ok({ changed: true });
   });
 }
