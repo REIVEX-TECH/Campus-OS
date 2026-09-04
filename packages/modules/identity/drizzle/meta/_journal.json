@@ -120,6 +120,13 @@
       "when": 1756800016000,
       "tag": "0016_platform_roles_definer",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1756800017000,
+      "tag": "0017_universities_rls",
+      "breakpoints": true
     }
   ]
 }

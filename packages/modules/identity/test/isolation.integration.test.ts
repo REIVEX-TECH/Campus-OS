@@ -122,13 +122,13 @@ beforeEach(async () => {
   // another run added would still be here and would make a create report
   // `exists`. The six system ones are seeded by the migration and stay.
   await runAsMigrationRole(`delete from "role_templates" where "is_system" = false`);
-  await getDb()
-    .insert(universities)
-    .values([
-      { slug: 'aaa', name: 'Alpha U', timezone: 'Asia/Karachi' },
-      { slug: 'bbb', name: 'Beta U', timezone: 'Asia/Karachi' },
-    ])
-    .onConflictDoNothing();
+  // universities is platform-admin-write under RLS (0017), so the app role the
+  // suite runs as cannot insert it; the owner seeds it, as with the truncate.
+  await runAsMigrationRole(
+    `insert into "universities" ("slug","name","timezone") values
+       ('aaa','Alpha U','Asia/Karachi'), ('bbb','Beta U','Asia/Karachi')
+     on conflict ("slug") do nothing`,
+  );
   alice = await createUser('alice@aaa.edu', 'Brave_Otter_1234');
   bob = await createUser('bob@bbb.edu', 'Calm_Heron_5678');
 });
@@ -1625,6 +1625,19 @@ describe('platform administration', () => {
     expect(trail.filter((r) => r.action === 'platform.admin_granted')).toHaveLength(1);
   });
 
+  it('has row security on universities, without FORCE so the definers can read it', async () => {
+    const [row] = [
+      ...(await getDb().execute(
+        sql`select relrowsecurity, relforcerowsecurity from pg_class
+            where relname = 'universities' and relkind = 'r'`,
+      )),
+    ] as { relrowsecurity: boolean; relforcerowsecurity: boolean }[];
+    expect(row?.relrowsecurity).toBe(true);
+    // FORCE off: the karma rebuild and the role-template sync read every tenant
+    // as the owner, and FORCE would filter the owner out.
+    expect(row?.relforcerowsecurity).toBe(false);
+  });
+
   it('creates a tenant with its system roles and one audit line, in one transaction', async () => {
     const root = await platformAdmin('root-create');
     const created = await createTenant(root, config('ccc'));
@@ -1675,6 +1688,37 @@ describe('platform administration', () => {
       ),
     ).rejects.toThrow();
     expect((await listTenantConfigs()).find((r) => r.slug === 'aaa')).toBeUndefined();
+
+    // The same holds for universities (0017), the table whose deletes cascade to
+    // every tenant-scoped row: a non-platform-admin cannot insert, rename, or
+    // delete one, at the row, whatever context they set.
+    await expect(
+      withActorInTenant(s.userId, 'fff', (tx) =>
+        tx.insert(universities).values({ slug: 'fff', name: 'Rogue U', timezone: 'UTC' }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      withActorInTenant(s.userId, 'aaa', (tx) =>
+        tx
+          .update(universities)
+          .set({ name: 'Renamed by nobody' })
+          .where(eq(universities.slug, 'aaa'))
+          .returning(),
+      ),
+    ).resolves.toHaveLength(0); // UPDATE matches no row under the policy: no error, no change
+    await expect(
+      withActorInTenant(s.userId, 'aaa', (tx) =>
+        tx.delete(universities).where(eq(universities.slug, 'aaa')).returning(),
+      ),
+    ).resolves.toHaveLength(0); // DELETE has no policy at all: nothing deleted
+    const [stillThere] = await getDb()
+      .select()
+      .from(universities)
+      .where(eq(universities.slug, 'aaa'));
+    expect(stillThere?.name).toBe('Alpha U');
+    expect(
+      await getDb().select().from(universities).where(eq(universities.slug, 'fff')),
+    ).toHaveLength(0);
   });
 
   it('updates a tenant at the next version and keeps the slug immutable', async () => {

@@ -8,7 +8,6 @@ import {
   runAsMigrationRole,
   runBaseMigrations,
 } from '@campusos/db/migrate';
-import { universities } from '@campusos/db/schema';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import {
   ensureConfiguredAdmin,
@@ -124,13 +123,13 @@ beforeEach(async () => {
     // the migration and stay.
     'delete from "role_templates" where "is_system" = false',
   );
-  await getDb()
-    .insert(universities)
-    .values([
-      { slug: 'aaa', name: 'Alpha U', timezone: 'Asia/Karachi' },
-      { slug: 'bbb', name: 'Beta U', timezone: 'Asia/Karachi' },
-    ])
-    .onConflictDoNothing();
+  // universities is platform-admin-write under RLS (0017), so the app role the
+  // suite runs as cannot insert it; the owner seeds it, as with the truncate.
+  await runAsMigrationRole(
+    `insert into "universities" ("slug","name","timezone") values
+       ('aaa','Alpha U','Asia/Karachi'), ('bbb','Beta U','Asia/Karachi')
+     on conflict ("slug") do nothing`,
+  );
 });
 
 const domain = (slug: string) => ({
