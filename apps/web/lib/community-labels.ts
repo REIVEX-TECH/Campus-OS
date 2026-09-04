@@ -11,6 +11,9 @@ export function communityErrors(t: Translate): Record<string, string> {
     rate_limited: t('communities.error.rate_limited'),
     invalid: t('communities.error.invalid'),
     last_owner: t('communities.error.last_owner'),
+    muted: t('communities.error.muted'),
+    pin_cap: t('communities.error.pin_cap'),
+    self: t('communities.error.self'),
     failed: t('communities.error.failed'),
   };
 }

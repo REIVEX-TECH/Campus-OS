@@ -29,6 +29,7 @@ export function CommunityRail({
   base,
   locale,
   canManage,
+  canModerate = false,
   t,
 }: {
   community: CommunitySummary;
@@ -37,6 +38,7 @@ export function CommunityRail({
   base: string;
   locale: string;
   canManage: boolean;
+  canModerate?: boolean;
   t: Translate;
 }) {
   const created = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(
@@ -68,6 +70,14 @@ export function CommunityRail({
               className="font-medium text-primary hover:underline"
             >
               {t('communities.settings')}
+            </Link>
+          ) : null}
+          {canModerate ? (
+            <Link
+              href={`${base}/c/${community.slug}/mod`}
+              className="font-medium text-primary hover:underline"
+            >
+              {t('mod.tools')}
             </Link>
           ) : null}
         </div>

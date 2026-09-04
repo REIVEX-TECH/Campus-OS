@@ -6,6 +6,7 @@ import { err, ok, type Result } from '@campusos/core';
 import {
   canInCommunity,
   isBanned,
+  isMuted,
   isVerifiedMember,
   LIMITS,
   ownCommentsLastHour,
@@ -58,6 +59,8 @@ export interface CommentView {
   createdAt: Date;
   editedAt: Date | null;
   removedAt: Date | null;
+  /** The viewer blocked the author: the body and the name are withheld. */
+  blocked: boolean;
   deletedAt: Date | null;
 }
 
@@ -88,6 +91,7 @@ function toView(
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     removedAt: row.removedAt,
+    blocked: false,
     deletedAt: row.deletedAt,
   };
 }
@@ -129,6 +133,7 @@ export async function createComment(
     }
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (await isBanned(tx, actor.userId, tenantId, post.communityId)) return err('banned');
+    if (await isMuted(tx, actor.userId, tenantId, post.communityId)) return err('muted');
     if (
       !(await canInCommunity(tx, actor.userId, tenantId, post.communityId, 'communities.comment'))
     ) {
@@ -237,6 +242,7 @@ async function readTree(
   tx: TenantTransaction,
   postId: string,
   sort: CommentSort,
+  viewer: { userId: string } | null,
 ): Promise<CommentView[]> {
   const rows = await tx
     .select({
@@ -245,6 +251,9 @@ async function readTree(
       avatarSeed: publicProfiles.avatarSeed,
       myVote: commentVotes.value,
       saved: savedItems.itemId,
+      blocked: viewer
+        ? sql<boolean>`exists (select 1 from user_blocks b where b.blocker_id = ${viewer.userId}::uuid and b.blocked_id = ${commentsRead.publicAuthorId})`
+        : sql<boolean>`false`,
     })
     .from(commentsRead)
     .leftJoin(publicProfiles, eq(publicProfiles.userId, commentsRead.publicAuthorId))
@@ -270,12 +279,11 @@ async function readTree(
     const children = byParent.get(parentId) ?? [];
     children.sort((a, b) => key(a.comment) - key(b.comment));
     for (const child of children) {
-      out.push(
-        toView(child.comment, child.handle, child.avatarSeed, {
-          myVote: child.myVote,
-          saved: child.saved !== null,
-        }),
-      );
+      const view = toView(child.comment, child.handle, child.avatarSeed, {
+        myVote: child.myVote,
+        saved: child.saved !== null,
+      });
+      out.push(child.blocked ? { ...view, body: '', author: null, blocked: true } : view);
       walk(child.comment.id);
     }
   };
@@ -291,6 +299,6 @@ export async function commentsForPost(
   sort: CommentSort = 'best',
 ): Promise<CommentView[]> {
   return viewer
-    ? withActorInTenant(viewer.userId, tenantId, (tx) => readTree(tx, postId, sort))
-    : withTenant(tenantId, (tx) => readTree(tx, postId, sort));
+    ? withActorInTenant(viewer.userId, tenantId, (tx) => readTree(tx, postId, sort, viewer))
+    : withTenant(tenantId, (tx) => readTree(tx, postId, sort, null));
 }

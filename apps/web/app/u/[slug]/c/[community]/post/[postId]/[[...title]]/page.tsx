@@ -8,12 +8,14 @@ import { postById } from '@campusos/module-communities/posts';
 import { listRules } from '@campusos/module-communities/rules';
 import { CommentThread } from '@/app/_components/communities/comment-thread';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
+import { ModControls } from '@/app/_components/communities/mod-controls';
 import { PostCard } from '@/app/_components/communities/post-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { postPath } from '@/lib/community-constants';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { communitiesSettings, requireCommunities } from '@/lib/communities';
+import { communityErrors } from '@/lib/community-labels';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -84,6 +86,8 @@ export default async function PostPage({ params, searchParams }: PageProps) {
     commentsForPost(actor, slug, post.id, sort),
   ]);
   const canComment = perms?.has('communities.comment') ?? false;
+  const canModerate = perms?.hasAny('communities.moderate', 'communities.oversee') ?? false;
+  const withheld = post.removedAt !== null && !post.isOwn && !canModerate;
   const hint = !actor
     ? t('comments.signInToComment')
     : canComment
@@ -100,6 +104,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           base={base}
           locale={tenant.locale}
           canManage={perms?.hasAny('communities.manage', 'communities.oversee') ?? false}
+          canModerate={canModerate}
           t={t}
         />
       }
@@ -113,17 +118,62 @@ export default async function PostPage({ params, searchParams }: PageProps) {
             {community.name}
           </Link>
         </p>
-        <PostCard
-          post={post}
-          community={{ slug: community.slug, name: community.name }}
-          base={base}
-          tenant={slug}
-          locale={tenant.locale}
-          signedIn={actor !== null}
-          canVote={perms?.has('communities.vote') ?? false}
-          full
-          t={t}
-        />
+        {withheld ? (
+          <article className="ios-card flex flex-col gap-1 rounded-2xl p-4">
+            <h1 className="text-xl font-bold tracking-tight">{post.title}</h1>
+            <p className="text-sm text-muted-foreground">{t('posts.removedNotice')}</p>
+          </article>
+        ) : (
+          <PostCard
+            post={post}
+            community={{ slug: community.slug, name: community.name }}
+            base={base}
+            tenant={slug}
+            locale={tenant.locale}
+            signedIn={actor !== null}
+            canVote={perms?.has('communities.vote') ?? false}
+            full
+            t={t}
+          />
+        )}
+        {post.removedAt && !withheld ? (
+          <p className="px-1 text-sm text-muted-foreground">
+            {t('posts.removedNotice')}
+            {post.removalReason
+              ? ` · ${t('posts.removedReason', { reason: post.removalReason })}`
+              : ''}
+          </p>
+        ) : null}
+        {canModerate ? (
+          <ModControls
+            tenant={slug}
+            communityId={community.id}
+            postId={post.id}
+            removed={post.removedAt !== null}
+            locked={post.lockedAt !== null}
+            pinned={post.pinnedAt !== null}
+            labels={{
+              remove: t('mod.remove'),
+              removeReason: t('mod.removeReason'),
+              removed: t('mod.removed'),
+              restore: t('mod.restore'),
+              restored: t('mod.restored'),
+              approve: t('mod.approve'),
+              approved: t('mod.approved'),
+              lock: t('mod.lock'),
+              unlock: t('mod.unlock'),
+              locked: t('mod.locked'),
+              unlocked: t('mod.unlocked'),
+              pin: t('mod.pin'),
+              unpin: t('mod.unpin'),
+              pinned: t('mod.pinned'),
+              unpinned: t('mod.unpinned'),
+              confirm: t('mod.confirm'),
+              cancel: t('mod.cancel'),
+              errors: communityErrors(t),
+            }}
+          />
+        ) : null}
         <CommentThread
           tenant={slug}
           postId={post.id}
@@ -134,7 +184,9 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           sortHref={postPath(base, community.slug, post.id, post.title)}
           locale={tenant.locale}
           signedIn={actor !== null}
-          canComment={canComment && !post.lockedAt}
+          communityId={community.id}
+          canModerate={canModerate}
+          canComment={canComment && !post.lockedAt && !post.removedAt}
           canVote={perms?.has('communities.vote') ?? false}
           anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}
           depthCap={settings.commentDepth}

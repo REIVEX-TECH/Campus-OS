@@ -9,8 +9,8 @@ Design: `docs/design-communities.md`.
 | A2    | Communities: create, settings, join, rules, rail        | Merged, `a2d49c6`       |
 | A3    | Posts                                                   | Merged, `2218e04`       |
 | A4    | Comments                                                | Done (#94)              |
-| A5    | Voting, ranking, feeds, pagination                      | **In review** (this PR) |
-| A6    | Moderation, oversight, audited unmask                   | Not started             |
+| A5    | Voting, ranking, feeds, pagination                      | Done (#95)              |
+| A6    | Moderation, oversight, audited unmask                   | **In review** (this PR) |
 | A7    | Anti-abuse                                              | Not started             |
 | A8    | UI and Playwright                                       | Not started             |
 | B1–B6 | Polls, notifications, search, flairs, profiles, polish  | Not started             |

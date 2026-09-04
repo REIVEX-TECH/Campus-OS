@@ -21,6 +21,7 @@ export type CommentData = {
   edited: boolean;
   deleted: boolean;
   removed: boolean;
+  blocked: boolean;
   depth: number;
   replyCount: number;
 };
@@ -31,6 +32,9 @@ export type CommentLabels = {
   mod: string;
   deleted: string;
   removed: string;
+  blocked: string;
+  remove: string;
+  removeReason: string;
   edited: string;
   collapse: string;
   /** "{count}" is replaced. */
@@ -70,6 +74,8 @@ const action =
 export function CommentNode({
   tenant,
   postId,
+  communityId,
+  canModerate,
   comment,
   op,
   mod,
@@ -82,6 +88,8 @@ export function CommentNode({
 }: {
   tenant: string;
   postId: string;
+  communityId: string;
+  canModerate: boolean;
   comment: CommentData;
   op: boolean;
   mod: boolean;
@@ -132,7 +140,7 @@ export function CommentNode({
     if (!(await post({ action: 'vote', value }))) setVote(before);
   }
 
-  const gone = comment.deleted || comment.removed;
+  const gone = comment.deleted || comment.removed || comment.blocked;
   const name = comment.author?.handle ?? labels.anonymous;
 
   return (
@@ -158,7 +166,7 @@ export function CommentNode({
             <IdentityAvatar seed={comment.author.avatarSeed} label={name} size={18} />
           ) : null}
           <span className={gone ? '' : 'font-medium text-foreground'}>
-            {gone ? labels.deleted : name}
+            {comment.blocked ? labels.blocked : gone ? labels.deleted : name}
           </span>
           {!gone && op ? (
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
@@ -181,7 +189,11 @@ export function CommentNode({
           <>
             {gone ? (
               <p className="text-sm italic text-muted-foreground">
-                {comment.removed ? labels.removed : labels.deleted}
+                {comment.blocked
+                  ? labels.blocked
+                  : comment.removed
+                    ? labels.removed
+                    : labels.deleted}
               </p>
             ) : editing ? (
               <form
@@ -279,6 +291,34 @@ export function CommentNode({
                       {labels.report}
                     </button>
                   </>
+                ) : null}
+                {canModerate && !gone ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className={`${action} hover:text-destructive`}
+                    onClick={async () => {
+                      const reason = window.prompt(labels.removeReason)?.trim() ?? '';
+                      if (reason.length < 3) return;
+                      setBusy(true);
+                      const response = await fetch(`/api/communities/${communityId}/mod`, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                          tenant,
+                          action: 'remove',
+                          itemType: 'comment',
+                          itemId: comment.id,
+                          reason,
+                        }),
+                      });
+                      setBusy(false);
+                      if (response.ok) router.refresh();
+                      else setMessage({ text: labels.errors.failed ?? '', error: true });
+                    }}
+                  >
+                    {labels.remove}
+                  </button>
                 ) : null}
                 {comment.isOwn ? (
                   <>

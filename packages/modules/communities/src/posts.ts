@@ -5,6 +5,7 @@ import { err, ok, type Result } from '@campusos/core';
 import {
   canInCommunity,
   isBanned,
+  isMuted,
   isVerifiedMember,
   LIMITS,
   ownPostsLastHour,
@@ -80,6 +81,7 @@ export interface PostView {
   pinnedAt: Date | null;
   lockedAt: Date | null;
   removedAt: Date | null;
+  removalReason: string | null;
   deletedAt: Date | null;
   /** The viewer's own vote, 0 when none or when there is no viewer. */
   myVote: -1 | 0 | 1;
@@ -122,6 +124,7 @@ export function toPostView(
     pinnedAt: row.pinnedAt,
     lockedAt: row.lockedAt,
     removedAt: row.removedAt,
+    removalReason: row.removalReason,
     deletedAt: row.deletedAt,
     myVote: viewer.myVote === 1 ? 1 : viewer.myVote === -1 ? -1 : 0,
     saved: viewer.saved === true,
@@ -160,6 +163,7 @@ export async function createPost(
     }
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
+    if (await isMuted(tx, actor.userId, tenantId, communityId)) return err('muted');
     if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
       return err('not_allowed');
     }

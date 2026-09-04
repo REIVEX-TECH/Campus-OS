@@ -77,3 +77,26 @@ test('the feeds and the directory are pages, and ask for a sign in to read', asy
   expect(browse?.status()).toBe(200);
   await expect(page.getByText('Sign in to read and join communities.')).toBeVisible();
 });
+
+test('the moderation surfaces are not there for a stranger', async ({ page, request }) => {
+  expect((await page.goto('/u/lgu/c/cs-freshers/mod'))?.status()).toBe(404);
+  expect((await page.goto('/u/lgu/admin/communities'))?.status()).toBe(404);
+  await page.goto('/u/lgu/blocked');
+  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+  const mod = await request.post('/api/communities/00000000-0000-0000-0000-000000000000/mod', {
+    headers: fromOurPage(),
+    data: {
+      tenant: 'lgu',
+      action: 'remove',
+      itemType: 'post',
+      itemId: '00000000-0000-0000-0000-000000000000',
+      reason: 'because',
+    },
+  });
+  expect(mod.status()).toBe(401);
+  const block = await request.post('/api/communities/blocks', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', userId: '00000000-0000-0000-0000-000000000000', on: true },
+  });
+  expect(block.status()).toBe(401);
+});

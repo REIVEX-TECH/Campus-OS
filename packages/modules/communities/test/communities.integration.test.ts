@@ -27,6 +27,18 @@ import {
 } from '../src/communities';
 import { listCommunities, listPendingCommunities, membershipState } from '../src/directory';
 import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
+import { listModLog, listQueue } from '../src/queue';
+import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
+import {
+  approveItem,
+  liftSanction,
+  listSanctions,
+  muteMember,
+  removeItem,
+  setLocked,
+  setPinned,
+} from '../src/mod-actions';
+import { blockUser, listBlocked, unblockUser } from '../src/blocks';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
 import { listRules, setRules } from '../src/rules';
@@ -908,5 +920,328 @@ describe('sorts and feeds', () => {
     expect(
       (await listPosts(other, 'bbb', { kind: 'all' }, { sort: 'new' })).items.map((p) => p.title),
     ).not.toContain('Open post');
+  });
+});
+
+describe('moderation', () => {
+  it('removes and restores with a reason, resolves the reports, and logs every step', async () => {
+    const owner = await member('md-owner');
+    const writer = await member('md-writer');
+    const reporter = await member('md-reporter');
+    const c = await community(owner, 'Moderated');
+    await joinCommunity(writer, 'aaa', c.id);
+    await joinCommunity(reporter, 'aaa', c.id);
+    const p = await createPost(
+      writer,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Reported', body: 'hm' },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+    const cm = await createComment(writer, 'aaa', p.value.id, null, { body: 'rude' }, settings);
+    if (!cm.ok) throw new Error(cm.error);
+    const report = await reportItem(reporter, 'aaa', {
+      itemType: 'post',
+      itemId: p.value.id,
+      reason: 'spam',
+    });
+    expect(report.ok).toBe(true);
+
+    // A member is not a moderator.
+    expect(await removeItem(writer, 'aaa', 'post', p.value.id, { reason: 'Nope' })).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await removeItem(owner, 'aaa', 'post', p.value.id, { reason: 'x' })).toEqual({
+      ok: false,
+      error: 'invalid',
+    });
+    const queueBefore = await listQueue(owner, 'aaa', c.id);
+    expect(queueBefore.ok && queueBefore.value.map((q) => q.itemId)).toEqual([p.value.id]);
+    expect(queueBefore.ok && queueBefore.value[0]).toMatchObject({
+      itemType: 'post',
+      reportCount: 1,
+      reasons: ['spam'],
+      title: 'Reported',
+      isAnonymous: false,
+    });
+    expect(await listQueue(writer, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
+
+    expect(
+      await removeItem(owner, 'aaa', 'post', p.value.id, { reason: 'Off topic here' }),
+    ).toEqual({ ok: true, value: { removed: true } });
+    expect(await postById(null, 'aaa', p.value.id)).toMatchObject({
+      removalReason: 'Off topic here',
+    });
+    expect((await postById(null, 'aaa', p.value.id))?.removedAt).toBeInstanceOf(Date);
+    expect((await listCommunityPosts(null, 'aaa', c.id)).items.map((x) => x.id)).not.toContain(
+      p.value.id,
+    );
+    const queueAfter = await listQueue(owner, 'aaa', c.id);
+    expect(queueAfter.ok && queueAfter.value).toEqual([]);
+
+    expect(await approveItem(owner, 'aaa', 'post', p.value.id)).toEqual({
+      ok: true,
+      value: { approved: true },
+    });
+    expect((await postById(null, 'aaa', p.value.id))?.removedAt).toBeNull();
+    expect(await removeItem(owner, 'aaa', 'comment', cm.value.id, { reason: 'Rude' })).toEqual({
+      ok: true,
+      value: { removed: true },
+    });
+    expect((await commentsForPost(null, 'aaa', p.value.id))[0]?.removedAt).toBeInstanceOf(Date);
+
+    // The log: newest first, private by default, public when the community says so.
+    const log = await listModLog(owner, 'aaa', c.id);
+    expect(log.ok && log.value.items.map((e) => e.action)).toEqual([
+      'remove_comment',
+      'approve_post',
+      'remove_post',
+    ]);
+    expect(log.ok && log.value.items[2]?.reason).toBe('Off topic here');
+    expect(await listModLog(null, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
+    const open = await updateCommunitySettings(owner, 'aaa', c.id, {
+      name: 'Moderated',
+      description: '',
+      allowAnonymous: true,
+      visibility: 'public',
+      allowedKinds: ['text', 'link'],
+      modLogPublic: true,
+    });
+    expect(open.ok).toBe(true);
+    // The settings change logged itself, so the public log is one line longer.
+    const publicLog = await listModLog(null, 'aaa', c.id);
+    expect(publicLog.ok && publicLog.value.items.map((e) => e.action)).toEqual([
+      'settings.updated',
+      'remove_comment',
+      'approve_post',
+      'remove_post',
+    ]);
+  });
+
+  it('locks, pins within the cap, and leads a community with its pins', async () => {
+    const owner = await member('pin-owner');
+    const m = await member('pin-member');
+    const c = await community(owner, 'Pinned Hall');
+    await joinCommunity(m, 'aaa', c.id);
+    const ids: string[] = [];
+    for (const title of ['P1', 'P2', 'P3', 'P4']) {
+      const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
+      if (!r.ok) throw new Error(r.error);
+      ids.push(r.value.id);
+    }
+    const [p1, p2, p3, p4] = ids as [string, string, string, string];
+
+    expect(await setLocked(owner, 'aaa', p1, true)).toEqual({ ok: true, value: { locked: true } });
+    expect(await createComment(m, 'aaa', p1, null, { body: 'late' }, settings)).toEqual({
+      ok: false,
+      error: 'locked',
+    });
+    expect(await setLocked(m, 'aaa', p1, false)).toEqual({ ok: false, error: 'not_allowed' });
+    await setLocked(owner, 'aaa', p1, false);
+    expect((await createComment(m, 'aaa', p1, null, { body: 'in time' }, settings)).ok).toBe(true);
+
+    for (const id of [p1, p2, p3]) {
+      expect(await setPinned(owner, 'aaa', id, true, settings)).toEqual({
+        ok: true,
+        value: { pinned: true },
+      });
+    }
+    expect(await setPinned(owner, 'aaa', p4, true, settings)).toEqual({
+      ok: false,
+      error: 'pin_cap',
+    });
+    // Pins lead the first page in every sort, outside the cursor; the rest follow.
+    const page = await listCommunityPosts(null, 'aaa', c.id, { sort: 'new', limit: 1 });
+    expect(page.items.map((p) => p.id)).toEqual([p3, p2, p1, p4]);
+    expect(page.items.slice(0, 3).every((p) => p.pinnedAt !== null)).toBe(true);
+    expect(page.nextCursor).toBeNull();
+    expect(await setPinned(owner, 'aaa', p1, false, settings)).toEqual({
+      ok: true,
+      value: { pinned: false },
+    });
+    expect((await setPinned(owner, 'aaa', p4, true, settings)).ok).toBe(true);
+    const log = await listModLog(owner, 'aaa', c.id, { limit: 2 });
+    expect(log.ok && log.value.items.map((e) => e.action)).toEqual(['pin', 'unpin']);
+    expect(log.ok && log.value.nextCursor).not.toBeNull();
+  });
+
+  it('mutes, bans and lifts, naming the member only to moderators', async () => {
+    const owner = await member('mu-owner');
+    const m = await member('mu-member');
+    const c = await community(owner, 'Quiet Room');
+    await joinCommunity(m, 'aaa', c.id);
+    const post = () =>
+      createPost(m, 'aaa', c.id, { kind: 'text', title: 'Hello there', body: '' }, settings);
+
+    expect(await muteMember(owner, 'aaa', c.id, owner.userId, { reason: 'Myself' })).toEqual({
+      ok: false,
+      error: 'self',
+    });
+    const mute = await muteMember(owner, 'aaa', c.id, m.userId, {
+      reason: 'Cool off',
+      minutes: 60,
+    });
+    if (!mute.ok) throw new Error(mute.error);
+    expect(await post()).toEqual({ ok: false, error: 'muted' });
+    const active = await listSanctions(owner, 'aaa', c.id);
+    expect(active.ok && active.value.map((s) => [s.kind, s.reason])).toEqual([
+      ['mute', 'Cool off'],
+    ]);
+    expect(active.ok && active.value[0]?.handle).not.toBe('');
+    expect(await listSanctions(m, 'aaa', c.id)).toEqual({ ok: false, error: 'not_allowed' });
+    expect(await liftSanction(m, 'aaa', 'mute', mute.value.id)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await liftSanction(owner, 'aaa', 'mute', mute.value.id)).toEqual({
+      ok: true,
+      value: { lifted: true },
+    });
+    expect((await post()).ok).toBe(true);
+
+    const ban = await banMember(owner, 'aaa', c.id, m.userId, { reason: 'Kept at it' });
+    if (!ban.ok) throw new Error(ban.error);
+    expect(await post()).toEqual({ ok: false, error: 'banned' });
+    expect(await liftSanction(owner, 'aaa', 'ban', ban.value.id)).toEqual({
+      ok: true,
+      value: { lifted: true },
+    });
+    expect((await post()).ok).toBe(true);
+
+    const log = await listModLog(owner, 'aaa', c.id, { limit: 4 });
+    expect(log.ok && log.value.items.map((e) => e.action)).toEqual([
+      'unban',
+      'ban',
+      'unmute',
+      'mute',
+    ]);
+    expect(log.ok && log.value.items.every((e) => e.targetHandle !== null)).toBe(true);
+    const opened = await updateCommunitySettings(owner, 'aaa', c.id, {
+      name: 'Quiet Room',
+      description: '',
+      allowAnonymous: true,
+      visibility: 'public',
+      allowedKinds: ['text'],
+      modLogPublic: true,
+    });
+    if (!opened.ok) throw new Error(opened.error);
+    const publicLog = await listModLog(null, 'aaa', c.id, { limit: 4 });
+    if (!publicLog.ok) throw new Error(publicLog.error);
+    // The newest line is the settings change itself; the member lines carry no handle and no id.
+    const aboutMembers = publicLog.value.items.filter((e) => e.targetType === 'user');
+    expect(aboutMembers.length).toBeGreaterThanOrEqual(3);
+    expect(aboutMembers.every((e) => e.targetHandle === null && e.targetId === '')).toBe(true);
+  });
+
+  it("blocking hides a person's signed posts and comments from the blocker alone", async () => {
+    const owner = await member('bl-owner');
+    const blocker = await member('bl-blocker');
+    const other = await member('bl-other');
+    const c = await community(owner, 'Blocks');
+    await joinCommunity(blocker, 'aaa', c.id);
+    await joinCommunity(other, 'aaa', c.id);
+    const signed = await createPost(
+      other,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Signed post', body: '' },
+      settings,
+    );
+    const anon = await createPost(
+      other,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Anonymous post', body: '', isAnonymous: true },
+      settings,
+    );
+    const mine = await createPost(
+      blocker,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Mine', body: '' },
+      settings,
+    );
+    if (!signed.ok || !anon.ok || !mine.ok) throw new Error('setup');
+    const reply = await createComment(other, 'aaa', mine.value.id, null, { body: 'hey' }, settings);
+    if (!reply.ok) throw new Error(reply.error);
+
+    expect(await blockUser(blocker, 'aaa', blocker.userId)).toEqual({ ok: false, error: 'self' });
+    expect(await blockUser(blocker, 'aaa', other.userId)).toEqual({
+      ok: true,
+      value: { blocked: true },
+    });
+    const titles = async (viewer: { userId: string } | null) =>
+      (await listCommunityPosts(viewer, 'aaa', c.id, { sort: 'new' })).items.map((p) => p.title);
+    expect(await titles(blocker)).toEqual(['Mine', 'Anonymous post']);
+    expect(await titles(owner)).toEqual(['Mine', 'Anonymous post', 'Signed post']);
+    expect(await titles(null)).toContain('Signed post');
+    const thread = await commentsForPost(blocker, 'aaa', mine.value.id);
+    expect(thread[0]).toMatchObject({ blocked: true, body: '', author: null });
+    expect((await commentsForPost(owner, 'aaa', mine.value.id))[0]).toMatchObject({
+      blocked: false,
+      body: 'hey',
+    });
+    expect((await listBlocked(blocker, 'aaa')).map((b) => b.userId)).toEqual([other.userId]);
+    expect(await listBlocked(other, 'aaa')).toEqual([]);
+    expect(await unblockUser(blocker, 'aaa', other.userId)).toEqual({
+      ok: true,
+      value: { blocked: false },
+    });
+    expect(await titles(blocker)).toContain('Signed post');
+  });
+
+  it('lets the tenant oversee every community and dissolve one, and nobody else', async () => {
+    const overseer = await admin('ov-admin');
+    const o1 = await member('ov-o1');
+    const o2 = await member('ov-o2');
+    const reporter = await member('ov-reporter');
+    const c1 = await community(o1, 'Overseen One');
+    const c2 = await community(o2, 'Overseen Two');
+    await joinCommunity(reporter, 'aaa', c1.id);
+    await joinCommunity(reporter, 'aaa', c2.id);
+    for (const [who, c] of [
+      [o1, c1],
+      [o2, c2],
+    ] as const) {
+      const p = await createPost(
+        who,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Seen', body: '' },
+        settings,
+      );
+      if (!p.ok) throw new Error(p.error);
+      await reportItem(reporter, 'aaa', { itemType: 'post', itemId: p.value.id, reason: 'other' });
+    }
+
+    expect(await listQueue(o1, 'aaa', null)).toEqual({ ok: false, error: 'not_allowed' });
+    const queue = await listQueue(overseer, 'aaa', null);
+    expect(queue.ok && queue.value.map((q) => q.communityId).sort()).toEqual([c1.id, c2.id].sort());
+    const list = await listCommunitiesForOversight(overseer, 'aaa');
+    expect(list.ok && list.value.find((c) => c.id === c2.id)).toMatchObject({ openReports: 1 });
+    expect(await listCommunitiesForOversight(o1, 'aaa')).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+
+    expect(await dissolveCommunity(o1, 'aaa', c2.id, { reason: 'I want it gone' })).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(await dissolveCommunity(overseer, 'aaa', c2.id, { reason: 'Duplicate of One' })).toEqual(
+      {
+        ok: true,
+        value: { dissolved: true },
+      },
+    );
+    expect(await communityBySlug('aaa', c2.slug)).toBeNull();
+    expect(await dissolveCommunity(overseer, 'aaa', c2.id, { reason: 'Again' })).toEqual({
+      ok: true,
+      value: { dissolved: false },
+    });
+    const after = await listCommunitiesForOversight(overseer, 'aaa');
+    expect(after.ok && after.value.some((c) => c.id === c2.id)).toBe(false);
   });
 });

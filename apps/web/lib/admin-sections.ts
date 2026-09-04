@@ -10,7 +10,8 @@ import type { MessageKey } from './i18n';
  * permissions has no admin area at all, and nothing here says otherwise.
  */
 
-export type AdminSectionKey = 'verification' | 'members' | 'roles' | 'rooms' | 'analytics';
+export type AdminSectionKey =
+  'verification' | 'members' | 'roles' | 'rooms' | 'analytics' | 'communities';
 
 export interface AdminSection {
   key: AdminSectionKey;
@@ -40,6 +41,12 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     permission: 'view-analytics',
     path: '/admin/analytics',
     label: 'admin.nav.analytics',
+  },
+  {
+    key: 'communities',
+    permission: 'communities.oversee',
+    path: '/admin/communities',
+    label: 'admin.nav.communities',
   },
 ];
 

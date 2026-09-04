@@ -67,6 +67,8 @@ const STATUS: Record<Refusal, number> = {
   depth: 400,
   self: 409,
   last_owner: 409,
+  muted: 403,
+  pin_cap: 409,
 };
 
 /** A module refusal as a response: the reason by name, a status the client can branch on. */

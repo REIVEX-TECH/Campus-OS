@@ -101,6 +101,21 @@ export function PostCard({
               {t('posts.edited')}
             </Link>
           ) : null}
+          {post.pinnedAt ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+              {t('posts.pinned')}
+            </span>
+          ) : null}
+          {post.lockedAt ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
+              {t('posts.locked')}
+            </span>
+          ) : null}
+          {post.removedAt ? (
+            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+              {t('posts.removed')}
+            </span>
+          ) : null}
           {post.spoiler ? (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
               {t('posts.spoiler')}
@@ -165,6 +180,7 @@ export function PostCard({
           editHref={`${permalink.replace(/\/[^/]*$/, '')}/edit`}
           saved={post.saved}
           isOwn={post.isOwn}
+          authorId={post.publicAuthorId}
           signedIn={signedIn}
           afterDelete={full ? `${base}/c/${community.slug}` : undefined}
           labels={{
@@ -187,6 +203,8 @@ export function PostCard({
             delete: t('posts.delete'),
             deleteConfirm: t('posts.deleteConfirm'),
             deleted: t('posts.deleted'),
+            block: t('posts.block', { handle: post.author?.handle ?? '' }),
+            blocked: t('posts.blocked'),
             errors,
           }}
         />
