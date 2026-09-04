@@ -11,7 +11,7 @@ Design: `docs/design-platform-admin.md`.
 | 4     | Tenant config file to database, super-admin tenant CRUD   | Merged, `548b0ca`                    |
 | 5     | Cross-tenant god-mode                                     | **Gate: plan only, awaiting review** |
 | 6     | Role definitions to platform templates; no upward grant   | Merged, `9afc010`                    |
-| 7     | Membership for everyone; restriction and suspension       | **In review** (this PR)              |
+| 7     | Membership for everyone; restriction and suspension       | Merged, `e385281`                    |
 
 The Communities module (`docs/design-communities.md`) is built: phases A and B
 are merged, and its governance phase C leans on 6 and 7 above.
