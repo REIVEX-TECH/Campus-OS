@@ -411,12 +411,12 @@ BEGIN
 				RETURN 'last_admin';
 			END IF;
 		END IF;
-		WITH removed AS (
-			DELETE FROM membership_roles
-			WHERE tenant_id = p_tenant_id AND user_id = p_target AND role_id = v_role_id
-			RETURNING membership_id
-		)
-		SELECT count(*)::int, min(membership_id) INTO v_deleted, v_membership_id FROM removed;
+		-- (membership_id, role_id) is the PK, and a member has one membership per
+		-- tenant, so this deletes at most one row: RETURNING ... INTO is safe.
+		DELETE FROM membership_roles
+		WHERE tenant_id = p_tenant_id AND user_id = p_target AND role_id = v_role_id
+		RETURNING membership_id INTO v_membership_id;
+		GET DIAGNOSTICS v_deleted = ROW_COUNT;
 		IF v_deleted = 0 THEN
 			RETURN 'unchanged';
 		END IF;
