@@ -3,10 +3,14 @@ import { z } from 'zod';
 import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { canInCommunity, canInTenant, isVerifiedMember, LIMITS, type Refusal } from './access';
+import { HIDDEN_BY_REPORTS, SYSTEM_ACTOR } from './automod';
+import type { CommunitiesSettings } from './manifest';
 import {
+  comments,
   commentsRead,
   communityBans,
   moderationActions,
+  posts,
   postsRead,
   reports,
 } from './schema/communities';
@@ -39,12 +43,17 @@ export const reportInputSchema = z.object({
 
 export type ReportInput = z.input<typeof reportInputSchema>;
 
-/** Report a post or comment. Verified members, one report per person per item, ten an hour. */
+/**
+ * Report a post or comment. Verified members, one report per person per item,
+ * ten an hour. At the tenant's threshold of open reports the item hides itself
+ * (stored removed with a reason code) until a moderator approves or removes it.
+ */
 export async function reportItem(
   actor: { userId: string },
   tenantId: string,
   input: ReportInput,
-): Promise<Result<{ id: string }, Refusal>> {
+  settings?: Pick<CommunitiesSettings, 'reportThreshold'>,
+): Promise<Result<{ id: string; hidden: boolean }, Refusal>> {
   const parsed = reportInputSchema.safeParse(input);
   if (!parsed.success) return err('invalid');
   const r = parsed.data;
@@ -63,21 +72,31 @@ export async function reportItem(
     if ((recent?.n ?? 0) >= LIMITS.reportsPerHour) return err('rate_limited');
 
     let communityId: string | null = null;
+    let postId: string | null = null;
+    let removed = false;
     if (r.itemType === 'post') {
       const [post] = await tx
-        .select({ communityId: postsRead.communityId })
+        .select({ communityId: postsRead.communityId, removedAt: postsRead.removedAt })
         .from(postsRead)
         .where(eq(postsRead.id, r.itemId));
       communityId = post?.communityId ?? null;
+      postId = r.itemId;
+      removed = post?.removedAt !== null;
     } else {
       const [comment] = await tx
-        .select({ communityId: postsRead.communityId })
+        .select({
+          communityId: postsRead.communityId,
+          postId: commentsRead.postId,
+          removedAt: commentsRead.removedAt,
+        })
         .from(commentsRead)
         .innerJoin(postsRead, eq(postsRead.id, commentsRead.postId))
         .where(eq(commentsRead.id, r.itemId));
       communityId = comment?.communityId ?? null;
+      postId = comment?.postId ?? null;
+      removed = comment?.removedAt !== null;
     }
-    if (!communityId) return err('not_found');
+    if (!communityId || !postId) return err('not_found');
 
     const [inserted] = await tx
       .insert(reports)
@@ -93,7 +112,32 @@ export async function reportItem(
       .onConflictDoNothing({ target: [reports.itemType, reports.itemId, reports.reporterId] })
       .returning({ id: reports.id });
     if (!inserted) return err('exists');
-    return ok({ id: inserted.id });
+
+    const [open] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(reports)
+      .where(
+        and(
+          eq(reports.itemType, r.itemType),
+          eq(reports.itemId, r.itemId),
+          eq(reports.status, 'open'),
+        ),
+      );
+    const threshold = settings?.reportThreshold ?? 3;
+    if (removed || (open?.n ?? 0) < threshold) return ok({ id: inserted.id, hidden: false });
+    const change = { removedAt: new Date(), removalReason: HIDDEN_BY_REPORTS };
+    if (r.itemType === 'post') await tx.update(posts).set(change).where(eq(posts.id, r.itemId));
+    else await tx.update(comments).set(change).where(eq(comments.id, r.itemId));
+    await tx.insert(moderationActions).values({
+      tenantId,
+      communityId,
+      actorId: SYSTEM_ACTOR,
+      action: 'auto_hide',
+      targetType: r.itemType,
+      targetId: r.itemId,
+      meta: { postId, reports: open?.n ?? 0 },
+    });
+    return ok({ id: inserted.id, hidden: true });
   });
 }
 

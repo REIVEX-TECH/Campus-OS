@@ -19,6 +19,8 @@ export const settingsSchema = z.object({
   anonymousPosting: z.enum(['on', 'off']).default('on'),
   commentDepth: z.number().int().min(2).max(12).default(8),
   pinnedPerCommunity: z.number().int().min(0).max(10).default(3),
+  /** Open reports on one item before it is hidden pending a moderator. */
+  reportThreshold: z.number().int().min(2).max(20).default(3),
   karmaVisible: z.boolean().default(false),
   archiveAfterMonths: z.number().int().min(1).nullable().default(null),
 });

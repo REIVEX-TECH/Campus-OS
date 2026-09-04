@@ -18,6 +18,10 @@ const KNOWN = new Set([
   'mute',
   'unmute',
   'settings.updated',
+  'automod.updated',
+  'automod_hold',
+  'automod_remove',
+  'auto_hide',
   'rules.updated',
   'grant',
   'revoke',
@@ -66,7 +70,9 @@ export function ModLog({
           return (
             <li key={e.id} className="flex flex-col gap-0.5 rounded-xl px-2 py-2 text-sm">
               <p>
-                <span className="font-medium">{e.actorHandle ?? t('mod.someone')}</span>{' '}
+                <span className="font-medium">
+                  {e.system ? t('mod.system') : (e.actorHandle ?? t('mod.someone'))}
+                </span>{' '}
                 {postId ? (
                   <Link
                     href={`${base}/c/${communitySlug}/post/${postId}`}

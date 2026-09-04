@@ -62,13 +62,18 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       return result.ok ? Response.json(result.value) : refusalResponse(result.error);
     }
     case 'report': {
-      const result = await reportItem(actor, tenant, {
-        itemType: 'post',
-        itemId: id,
-        // Validated by the module against its own reason list.
-        reason: data.reason as Parameters<typeof reportItem>[2]['reason'],
-        note: data.note,
-      });
+      const result = await reportItem(
+        actor,
+        tenant,
+        {
+          itemType: 'post',
+          itemId: id,
+          // Validated by the module against its own reason list.
+          reason: data.reason as Parameters<typeof reportItem>[2]['reason'],
+          note: data.note,
+        },
+        gate.settings,
+      );
       return result.ok ? Response.json(result.value) : refusalResponse(result.error);
     }
     case 'edit': {

@@ -24,7 +24,8 @@
     "./blocks": "./src/blocks.ts",
     "./mod-actions": "./src/mod-actions.ts",
     "./queue": "./src/queue.ts",
-    "./oversight": "./src/oversight.ts"
+    "./oversight": "./src/oversight.ts",
+    "./automod": "./src/automod.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -127,13 +127,15 @@ function QueueRow({
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{item.communityName}</span>
         <span>{kind}</span>
-        <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
-          {item.reportCount === 1
-            ? labels.reportsOne
-            : labels.reports.replace('{count}', String(item.reportCount))}
-        </span>
+        {item.reportCount > 0 ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
+            {item.reportCount === 1
+              ? labels.reportsOne
+              : labels.reports.replace('{count}', String(item.reportCount))}
+          </span>
+        ) : null}
         {item.isAnonymous ? <span>{labels.anonymousAuthor}</span> : null}
-        {item.removed ? <span>{labels.alreadyRemoved}</span> : null}
+        {item.removed && labels.alreadyRemoved ? <span>{labels.alreadyRemoved}</span> : null}
         <span>{item.when}</span>
       </p>
       {item.title ? <p className="text-sm font-semibold leading-snug">{item.title}</p> : null}

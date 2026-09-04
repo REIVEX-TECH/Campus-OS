@@ -12,6 +12,7 @@ import {
   ownCommentsLastHour,
   type Refusal,
 } from './access';
+import { applyVerdict, screen } from './automod';
 import { canReplyAt, childPath } from './domain/paths';
 import type { CommunitiesSettings } from './manifest';
 import {
@@ -157,6 +158,8 @@ export async function createComment(
     }
 
     const id = randomUUID();
+    const verdict = await screen(tx, post.communityId, { text: c.body, domain: null });
+    const now = new Date();
     await tx.insert(comments).values({
       id,
       tenantId,
@@ -167,6 +170,16 @@ export async function createComment(
       authorId: actor.userId,
       isAnonymous: c.isAnonymous,
       body: c.body,
+      removedAt: verdict ? now : null,
+      removalReason: verdict
+        ? await applyVerdict(
+            tx,
+            tenantId,
+            post.communityId,
+            { type: 'comment', id, postId },
+            verdict,
+          )
+        : null,
     });
     await tx
       .update(posts)

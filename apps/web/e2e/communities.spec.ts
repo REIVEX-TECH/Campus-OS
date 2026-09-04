@@ -100,3 +100,14 @@ test('the moderation surfaces are not there for a stranger', async ({ page, requ
   });
   expect(block.status()).toBe(401);
 });
+
+test('the automod rules route refuses a stranger', async ({ request }) => {
+  const response = await request.post(
+    '/api/communities/00000000-0000-0000-0000-000000000000/automod',
+    {
+      headers: fromOurPage(),
+      data: { tenant: 'lgu', rules: [{ kind: 'keyword', pattern: 'nope', action: 'queue' }] },
+    },
+  );
+  expect(response.status()).toBe(401);
+});

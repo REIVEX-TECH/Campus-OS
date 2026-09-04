@@ -48,12 +48,17 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       return result.ok ? Response.json(result.value) : refusalResponse(result.error);
     }
     case 'report': {
-      const result = await reportItem(actor, slug, {
-        itemType: 'comment',
-        itemId: id,
-        reason: data.reason as Parameters<typeof reportItem>[2]['reason'],
-        note: data.note,
-      });
+      const result = await reportItem(
+        actor,
+        slug,
+        {
+          itemType: 'comment',
+          itemId: id,
+          reason: data.reason as Parameters<typeof reportItem>[2]['reason'],
+          note: data.note,
+        },
+        gate.settings,
+      );
       return result.ok ? Response.json(result.value) : refusalResponse(result.error);
     }
     case 'edit': {

@@ -11,6 +11,7 @@ import {
   ownPostsLastHour,
   type Refusal,
 } from './access';
+import { applyVerdict, screen } from './automod';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
 import {
@@ -143,7 +144,7 @@ export async function createPost(
   communityId: string,
   input: PostInput,
   settings: CommunitiesSettings,
-): Promise<Result<{ id: string }, Refusal>> {
+): Promise<Result<{ id: string; held: boolean }, Refusal>> {
   const parsed = postInputSchema.safeParse(input);
   if (!parsed.success) return err('invalid');
   const p = parsed.data;
@@ -189,6 +190,25 @@ export async function createPost(
         .limit(1);
       if (dup.length > 0) return err('exists');
     }
+    // The same title from the same person in the same day is a repeat too.
+    const again = await tx
+      .select({ id: postsRead.id })
+      .from(postsRead)
+      .where(
+        and(
+          eq(postsRead.communityId, communityId),
+          eq(postsRead.isOwn, true),
+          eq(postsRead.title, p.title),
+          isNull(postsRead.deletedAt),
+          sql`${postsRead.createdAt} > now() - interval '1 day'`,
+        ),
+      )
+      .limit(1);
+    if (again.length > 0) return err('exists');
+    const verdict = await screen(tx, communityId, {
+      text: `${p.title}\n${p.body ?? ''}`,
+      domain: urlDomain,
+    });
 
     const now = new Date();
     const [row] = await tx
@@ -206,9 +226,21 @@ export async function createPost(
         spoiler: p.spoiler,
         hotScore: hotScore(0, 0, now).toFixed(7),
         createdAt: now,
+        removedAt: verdict ? now : null,
       })
       .returning({ id: posts.id });
-    return ok({ id: row!.id });
+    if (verdict) {
+      const reason = await applyVerdict(
+        tx,
+        tenantId,
+        communityId,
+        { type: 'post', id: row!.id, postId: row!.id },
+        verdict,
+      );
+      await tx.update(posts).set({ removalReason: reason }).where(eq(posts.id, row!.id));
+      return ok({ id: row!.id, held: true });
+    }
+    return ok({ id: row!.id, held: false });
   });
 }
 
