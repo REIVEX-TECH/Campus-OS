@@ -12,3 +12,15 @@ export function communitySlugFromName(name: string): string | null {
     .replace(/-+$/g, '');
   return COMMUNITY_SLUG_PATTERN.test(slug) ? slug : null;
 }
+
+/** The readable tail of a post's permalink: never used to look the post up. */
+export function titleSlug(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60)
+      .replace(/-+$/g, '') || 'post'
+  );
+}

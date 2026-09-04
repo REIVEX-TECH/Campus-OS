@@ -46,3 +46,12 @@ test('the mutation routes refuse a stranger', async ({ request }) => {
   });
   expect(foreign.status()).toBe(403);
 });
+
+test('posting needs a community and a sign in', async ({ page, request }) => {
+  expect((await page.goto('/u/lgu/c/no-such-community/submit'))?.status()).toBe(404);
+  const act = await request.post('/api/communities/posts/00000000-0000-0000-0000-000000000000', {
+    headers: fromOurPage(),
+    data: { tenant: 'lgu', action: 'vote', value: 1 },
+  });
+  expect(act.status()).toBe(401);
+});

@@ -12,7 +12,15 @@ import {
 } from './access';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
-import { communities, postEdits, posts, postsRead, publicProfiles } from './schema/communities';
+import {
+  communities,
+  postEdits,
+  posts,
+  postsRead,
+  postVotes,
+  publicProfiles,
+  savedItems,
+} from './schema/communities';
 
 /**
  * Posts: text and link. Written to `posts`, always read from `posts_read`, so
@@ -71,13 +79,25 @@ export interface PostView {
   lockedAt: Date | null;
   removedAt: Date | null;
   deletedAt: Date | null;
+  /** The viewer's own vote, 0 when none or when there is no viewer. */
+  myVote: -1 | 0 | 1;
+  /** Whether the viewer saved it. */
+  saved: boolean;
+  /** Where it lives, for a card shown outside its community. */
+  community: { slug: string; name: string };
 }
 
-type ReadRow = typeof postsRead.$inferSelect;
+export type ReadRow = typeof postsRead.$inferSelect;
 /** The view's columns as a selectable map: a view cannot be nested in a select the way a table can. */
-const POST = getViewSelectedFields(postsRead);
+export const POST = getViewSelectedFields(postsRead);
 
-function toView(row: ReadRow, handle: string | null, avatarSeed: string | null): PostView {
+export function toPostView(
+  row: ReadRow,
+  handle: string | null,
+  avatarSeed: string | null,
+  viewer: { myVote?: number | null; saved?: boolean } = {},
+  community: { slug: string | null; name: string | null } = { slug: null, name: null },
+): PostView {
   return {
     id: row.id,
     communityId: row.communityId,
@@ -100,6 +120,9 @@ function toView(row: ReadRow, handle: string | null, avatarSeed: string | null):
     lockedAt: row.lockedAt,
     removedAt: row.removedAt,
     deletedAt: row.deletedAt,
+    myVote: viewer.myVote === 1 ? 1 : viewer.myVote === -1 ? -1 : 0,
+    saved: viewer.saved === true,
+    community: { slug: community.slug ?? '', name: community.name ?? '' },
   };
 }
 
@@ -238,11 +261,49 @@ async function readOne(tx: TenantTransaction, postId: string): Promise<PostView 
       post: POST,
       handle: publicProfiles.handle,
       avatarSeed: publicProfiles.avatarSeed,
+      myVote: postVotes.value,
+      saved: savedItems.itemId,
+      communitySlug: communities.slug,
+      communityName: communities.name,
     })
     .from(postsRead)
+    .leftJoin(communities, eq(communities.id, postsRead.communityId))
     .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
+    // Own-row tables: the joins yield the viewer's rows and nobody else's.
+    .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
+    .leftJoin(savedItems, and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)))
     .where(eq(postsRead.id, postId));
-  return row ? toView(row.post, row.handle, row.avatarSeed) : null;
+  return row
+    ? toPostView(
+        row.post,
+        row.handle,
+        row.avatarSeed,
+        { myVote: row.myVote, saved: row.saved !== null },
+        { slug: row.communitySlug, name: row.communityName },
+      )
+    : null;
+}
+
+export interface PostEdit {
+  editedAt: Date;
+  previousTitle: string;
+  previousBody: string | null;
+}
+
+/** What a post said before each edit, newest first. Carries no author. */
+export async function postHistory(tenantId: string, postId: string): Promise<PostEdit[]> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(postEdits)
+      .where(eq(postEdits.postId, postId))
+      .orderBy(desc(postEdits.editedAt));
+    return rows.map((r) => ({
+      editedAt: r.editedAt,
+      previousTitle: r.previousTitle,
+      previousBody: r.previousBody,
+    }));
+  });
 }
 
 /** One post as this viewer sees it, or as a stranger sees it when there is no viewer. */
@@ -272,8 +333,11 @@ export async function postsByAuthor(
         post: POST,
         handle: publicProfiles.handle,
         avatarSeed: publicProfiles.avatarSeed,
+        communitySlug: communities.slug,
+        communityName: communities.name,
       })
       .from(postsRead)
+      .leftJoin(communities, eq(communities.id, postsRead.communityId))
       .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
       .where(
         and(
@@ -285,7 +349,15 @@ export async function postsByAuthor(
       )
       .orderBy(desc(postsRead.createdAt))
       .limit(limit);
-    return rows.map((r) => toView(r.post, r.handle, r.avatarSeed));
+    return rows.map((r) =>
+      toPostView(
+        r.post,
+        r.handle,
+        r.avatarSeed,
+        {},
+        { slug: r.communitySlug, name: r.communityName },
+      ),
+    );
   });
 }
 
@@ -297,8 +369,9 @@ export async function myAnonymousPosts(
 ): Promise<PostView[]> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const rows = await tx
-      .select({ post: POST })
+      .select({ post: POST, communitySlug: communities.slug, communityName: communities.name })
       .from(postsRead)
+      .leftJoin(communities, eq(communities.id, postsRead.communityId))
       .where(
         and(
           eq(postsRead.tenantId, tenantId),
@@ -309,6 +382,8 @@ export async function myAnonymousPosts(
       )
       .orderBy(desc(postsRead.createdAt))
       .limit(limit);
-    return rows.map((r) => toView(r.post, null, null));
+    return rows.map((r) =>
+      toPostView(r.post, null, null, {}, { slug: r.communitySlug, name: r.communityName }),
+    );
   });
 }

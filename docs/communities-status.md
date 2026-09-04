@@ -6,8 +6,8 @@ Design: `docs/design-communities.md`.
 | ----- | ------------------------------------------------------- | ----------------------- |
 | Doc   | Design                                                  | In review               |
 | A1    | Schema, RLS, RBAC wiring, anonymity views, module shell | Merged, `de2e2a0`       |
-| A2    | Communities: create, settings, join, rules, rail        | **In review** (this PR) |
-| A3    | Posts                                                   | Not started             |
+| A2    | Communities: create, settings, join, rules, rail        | Merged, `a2d49c6`       |
+| A3    | Posts                                                   | **In review** (this PR) |
 | A4    | Comments                                                | Not started             |
 | A5    | Voting, ranking, feeds, pagination                      | Not started             |
 | A6    | Moderation, oversight, audited unmask                   | Not started             |
