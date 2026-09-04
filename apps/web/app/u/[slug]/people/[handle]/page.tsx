@@ -3,9 +3,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { myAnonymousPosts, postsByAuthor } from '@campusos/module-communities/posts';
 import {
+  ownKarma,
+  publicKarma,
+  type Karma,
+  type OwnKarma,
+} from '@campusos/module-communities/karma';
+import {
   commentsByAuthor,
   isBlocked,
-  karmaOf,
   profileByHandle,
 } from '@campusos/module-communities/profiles';
 import { BlockButton } from '@/app/_components/communities/block-button';
@@ -74,10 +79,17 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
   const { tab: tabParam } = await searchParams;
   const tab =
     tabParam === 'comments' ? 'comments' : tabParam === 'anonymous' && self ? 'anonymous' : 'posts';
+  // Their own page shows what they wrote anonymously too; anyone else's shows
+  // only the signed half, which is the whole point of keeping two.
+  const karmaPromise: Promise<Karma | OwnKarma | null> = !settings.karmaVisible
+    ? Promise.resolve(null)
+    : self && actor
+      ? ownKarma(actor, slug)
+      : publicKarma(slug, profile.userId);
   const [posts, comments, karma, blocked, anonymous] = await Promise.all([
     tab === 'posts' ? postsByAuthor(slug, profile.userId) : Promise.resolve([]),
     tab === 'comments' ? commentsByAuthor(slug, profile.userId) : Promise.resolve([]),
-    settings.karmaVisible ? karmaOf(slug, profile.userId) : Promise.resolve(null),
+    karmaPromise,
     actor && !self ? isBlocked(actor, slug, profile.userId) : Promise.resolve(false),
     tab === 'anonymous' && actor ? myAnonymousPosts(actor, slug) : Promise.resolve([]),
   ]);
@@ -95,6 +107,11 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
             {karma ? (
               <p className="text-sm text-muted-foreground">
                 {t('profile.karma', { count: karma.total })}
+              </p>
+            ) : null}
+            {karma && 'publicTotal' in karma && karma.total !== karma.publicTotal ? (
+              <p className="text-xs text-muted-foreground">
+                {t('profile.karmaPrivate', { count: karma.total - karma.publicTotal })}
               </p>
             ) : null}
           </div>

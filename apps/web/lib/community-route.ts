@@ -66,6 +66,7 @@ const STATUS: Record<Refusal, number> = {
   exists: 409,
   depth: 400,
   self: 409,
+  self_vote: 409,
   last_owner: 409,
   muted: 403,
   pin_cap: 409,

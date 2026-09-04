@@ -44,3 +44,15 @@ merged or in review. Left for later, by choice: user flairs, search over
 comments, karma decay, comment paging on profiles, and email digests (design
 §14). Live-database steps for each migration are in the PR bodies and
 `docs/runbooks/`.
+
+## Phase C: karma (C1) in review
+
+Karma (C1) replaces the live sum of item scores with a materialised pair of
+totals, moved by the vote that causes them and rebuilt from the votes by
+`pnpm communities:karma`. An author's vote on their own item is now refused
+rather than counted, one account may move another's karma only so far in a day,
+and the number an anonymous item earns stays out of the public total by the
+column it is keyed on. Display is unchanged in effect: `karmaVisible` is still
+off by default, so no tenant shows a number until it turns one on.
+
+Still to come in Phase C: participation gates (C2) and reporting a person (C3).

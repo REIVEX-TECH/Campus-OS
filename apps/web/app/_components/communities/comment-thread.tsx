@@ -23,6 +23,7 @@ export function CommentThread({
   base,
   postAuthorId,
   moderatorIds,
+  karma,
   comments,
   sort,
   sortHref,
@@ -43,6 +44,8 @@ export function CommentThread({
   base: string;
   postAuthorId: string | null;
   moderatorIds: ReadonlySet<string>;
+  /** Public karma by author id, when the tenant shows it. Null when it does not. */
+  karma: ReadonlyMap<string, number> | null;
   comments: CommentView[];
   sort: CommentSort;
   /** The page's path without the sort, for the tabs. */
@@ -94,6 +97,7 @@ export function CommentThread({
     anonymous: t('posts.anonymous'),
     op: t('comments.op'),
     mod: t('comments.mod'),
+    karma: t('profile.karma'),
     deleted: t('comments.deleted'),
     removed: t('comments.removed'),
     blocked: t('comments.blocked'),
@@ -149,6 +153,9 @@ export function CommentThread({
           body: c.body,
           author: c.author,
           authorHref: c.author ? `${base}/people/${c.author.handle}` : null,
+          // Anonymous comments carry no number, which is why the map is keyed
+          // on the public author id: there is nothing to look them up by.
+          karma: karma && c.publicAuthorId ? (karma.get(c.publicAuthorId) ?? 0) : null,
           isAnonymous: c.isAnonymous,
           isOwn: c.isOwn,
           myVote: c.myVote,

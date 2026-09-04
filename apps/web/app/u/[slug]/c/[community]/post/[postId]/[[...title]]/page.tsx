@@ -9,6 +9,7 @@ import {
 } from '@campusos/module-communities/communities';
 import { listModerators } from '@campusos/module-communities/members';
 import { listFlairs } from '@campusos/module-communities/flairs';
+import { publicKarmaFor } from '@campusos/module-communities/karma';
 import { pollFor } from '@campusos/module-communities/polls';
 import { postById } from '@campusos/module-communities/posts';
 import { listRules } from '@campusos/module-communities/rules';
@@ -100,6 +101,15 @@ export default async function PostPage({ params, searchParams }: PageProps) {
     listFlairs(slug, community.id),
     actor ? myCommunities(actor, slug) : Promise.resolve([]),
   ]);
+  // A thread is one of the two places karma is shown at all. One query for
+  // every author on the page, keyed on the public author id, so an anonymous
+  // item has nothing to look up and cannot contribute a number to watch.
+  const karma = settings.karmaVisible
+    ? await publicKarmaFor(slug, [
+        ...(post.publicAuthorId ? [post.publicAuthorId] : []),
+        ...comments.flatMap((c) => (c.publicAuthorId ? [c.publicAuthorId] : [])),
+      ]).then((m) => new Map([...m].map(([id, k]) => [id, k.total])))
+    : null;
   const targets = mine
     .filter((c) => c.id !== community.id && c.allowedKinds.includes('text'))
     .map((c) => ({ id: c.id, name: c.name, href: `${base}/c/${c.slug}` }));
@@ -152,6 +162,9 @@ export default async function PostPage({ params, searchParams }: PageProps) {
             canVote={perms?.has('communities.vote') ?? false}
             full
             flairs={flairs}
+            authorKarma={
+              karma && post.publicAuthorId ? (karma.get(post.publicAuthorId) ?? 0) : null
+            }
             t={t}
           />
         )}
@@ -239,6 +252,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           postId={post.id}
           postAuthorId={post.publicAuthorId}
           moderatorIds={new Set(moderators.map((m) => m.userId))}
+          karma={karma}
           comments={comments}
           sort={sort}
           sortHref={postPath(base, community.slug, post.id, post.title)}

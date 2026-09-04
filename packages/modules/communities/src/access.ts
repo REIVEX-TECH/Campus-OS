@@ -27,6 +27,7 @@ export type Refusal =
   | 'exists'
   | 'depth'
   | 'self'
+  | 'self_vote'
   | 'last_owner'
   | 'muted'
   | 'pin_cap'

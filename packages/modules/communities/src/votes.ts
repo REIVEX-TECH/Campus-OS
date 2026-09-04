@@ -16,6 +16,11 @@ import {
  * Votes. One row per person per item, so a second vote changes rather than
  * adds; the tallies on the item move by the difference, atomically, and the
  * ranking columns are recomputed from the tallies in the same transaction.
+ *
+ * An author's vote on their own item is refused rather than quietly dropped,
+ * so the tally and the karma agree about what happened. The karma itself moves
+ * in this transaction too, through `communities_karma_vote`, which is a definer
+ * because the author of an anonymous item is a column this role cannot read.
  */
 
 export type VoteValue = -1 | 0 | 1;
@@ -60,6 +65,9 @@ export async function votePost(
       );
     if (!post) return err('not_found');
     if (post.lockedAt) return err('locked');
+    // Refused, not ignored: a vote that appears to land but counts for nothing
+    // is a worse answer than being told it was your own post.
+    if (post.isOwn) return err('self_vote');
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (await isBanned(tx, actor.userId, tenantId, post.communityId)) return err('banned');
     if (!(await canInCommunity(tx, actor.userId, tenantId, post.communityId, 'communities.vote'))) {
@@ -113,6 +121,9 @@ export async function votePost(
         controversy: controversyScore(tally!.upVotes, tally!.downVotes).toFixed(7),
       })
       .where(eq(posts.id, postId));
+    await tx.execute(
+      sql`select communities_karma_vote('post', ${postId}::uuid, ${previous}, ${value})`,
+    );
     return ok({ upVotes: tally!.upVotes, downVotes: tally!.downVotes, score: tally!.score });
   });
 }
@@ -141,6 +152,7 @@ export async function voteComment(
       );
     if (!comment) return err('not_found');
     if (comment.lockedAt) return err('locked');
+    if (comment.comment.isOwn) return err('self_vote');
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (await isBanned(tx, actor.userId, tenantId, comment.communityId)) return err('banned');
     if (
@@ -196,6 +208,9 @@ export async function voteComment(
         controversy: controversyScore(tally!.upVotes, tally!.downVotes).toFixed(7),
       })
       .where(eq(comments.id, commentId));
+    await tx.execute(
+      sql`select communities_karma_vote('comment', ${commentId}::uuid, ${previous}, ${value})`,
+    );
     return ok({ upVotes: tally!.upVotes, downVotes: tally!.downVotes, score: tally!.score });
   });
 }

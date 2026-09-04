@@ -330,7 +330,11 @@ export async function deletePost(
   });
 }
 
-async function readOne(tx: TenantTransaction, postId: string): Promise<PostView | null> {
+async function readOne(
+  tx: TenantTransaction,
+  postId: string,
+  viewerId: string | null,
+): Promise<PostView | null> {
   const [row] = await tx
     .select({
       post: POST,
@@ -344,8 +348,16 @@ async function readOne(tx: TenantTransaction, postId: string): Promise<PostView 
     .from(postsRead)
     .leftJoin(communities, eq(communities.id, postsRead.communityId))
     .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
-    // Own-row tables: the joins yield the viewer's rows and nobody else's.
-    .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
+    // The vote join names the viewer. It used to rely on the restrictive
+    // own-row policy alone, which stopped being enough when the vote tables
+    // lost FORCE so the karma recompute could read them (0006). RLS is
+    // still the guarantee; this is the query saying what it means.
+    .leftJoin(
+      postVotes,
+      viewerId
+        ? and(eq(postVotes.postId, postsRead.id), eq(postVotes.userId, viewerId))
+        : sql`false`,
+    )
     .leftJoin(savedItems, and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)))
     .where(eq(postsRead.id, postId));
   if (!row) return null;
@@ -429,8 +441,8 @@ export async function postById(
   postId: string,
 ): Promise<PostView | null> {
   return viewer
-    ? withActorInTenant(viewer.userId, tenantId, (tx) => readOne(tx, postId))
-    : withTenant(tenantId, (tx) => readOne(tx, postId));
+    ? withActorInTenant(viewer.userId, tenantId, (tx) => readOne(tx, postId, viewer.userId))
+    : withTenant(tenantId, (tx) => readOne(tx, postId, null));
 }
 
 /**

@@ -23,6 +23,7 @@ export function PostCard({
   canVote,
   full = false,
   flairs = [],
+  authorKarma = null,
   t,
 }: {
   post: PostView;
@@ -34,6 +35,8 @@ export function PostCard({
   canVote: boolean;
   /** The post's own page: the whole body, and delete returns to the community. */
   full?: boolean;
+  /** The author's public karma, in a thread where the tenant shows it. */
+  authorKarma?: number | null;
   /** The community's flairs, to name the one this post wears. */
   flairs?: FlairView[];
   t: Translate;
@@ -97,6 +100,9 @@ export function PostCard({
                 <Link href={`${base}/people/${post.author.handle}`} className="hover:underline">
                   {post.author.handle}
                 </Link>
+                {authorKarma !== null ? (
+                  <span>{t('profile.karma').replace('{count}', String(authorKarma))}</span>
+                ) : null}
               </>
             ) : (
               <span>{t('posts.anonymous')}</span>
