@@ -596,6 +596,14 @@ export const en = {
   'communities.form.visibility.public': 'Public: anyone verified can join',
   'communities.form.visibility.restricted':
     'Restricted: by invitation (arrives with moderation tools)',
+  'communities.form.gates': 'Taking part here',
+  'communities.form.gatesHint':
+    'What someone needs before they can join, post or comment. Zero asks for nothing. Your university may already ask for more, and this can only add to it.',
+  'communities.form.minKarmaToPost': 'Karma to post',
+  'communities.form.minKarmaToComment': 'Karma to comment',
+  'communities.form.minKarmaToJoin': 'Karma to join',
+  'communities.form.minAccountAgeDays': 'Account age in days',
+  'communities.form.requireVerified': 'Only verified students may take part',
   'communities.form.modLogPublic': 'Make the moderation log public',
   'communities.form.create': 'Create community',
   'communities.form.save': 'Save changes',
@@ -631,6 +639,9 @@ export const en = {
   'communities.error.pin_cap': 'This community has as many pinned posts as it can have.',
   'communities.error.self': 'That is you.',
   'communities.error.selfVote': 'You cannot vote on your own post or comment.',
+  'communities.error.gate_karma': 'This community asks for {need} karma. You have {have}.',
+  'communities.error.gate_account_age':
+    'This community asks for an account at least {need} days old. Yours is {have}.',
   'communities.error.failed': 'That did not go through. You can try again.',
   'communities.back': 'All communities',
   'feeds.home': 'Home',

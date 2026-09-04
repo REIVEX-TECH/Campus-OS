@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createPost } from '@campusos/module-communities/posts';
-import { communityGate, refusalResponse } from '@/lib/community-route';
+import { communityGate, refusalWithGate } from '@/lib/community-route';
 
 /** Create a post in a community. The module decides membership, kind, anonymity and limits. */
 export const dynamic = 'force-dynamic';
@@ -36,6 +36,14 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     input,
     gate.settings,
   );
-  if (!result.ok) return refusalResponse(result.error);
+  if (!result.ok) {
+    return refusalWithGate(result.error, {
+      actor: { userId: gate.actor.userId },
+      tenant: gate.tenant.slug,
+      communityId: id,
+      action: 'post',
+      settings: gate.settings,
+    });
+  }
   return Response.json(result.value);
 }

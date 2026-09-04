@@ -13,6 +13,7 @@ import {
   LIMITS,
   type Refusal,
 } from './access';
+import { checkGate } from './gates';
 import { communitySlugFromName } from './domain/slug';
 import type { CommunitiesSettings } from './manifest';
 import { communities, communityMemberRoles, communityMemberships } from './schema/communities';
@@ -37,9 +38,19 @@ export interface CommunitySummary {
   memberCount: number;
   createdAt: Date;
   archivedAt: Date | null;
+  /** Participation gates (§12), as this community set them, before the tenant floor. */
+  minKarmaToPost: number;
+  minKarmaToComment: number;
+  minKarmaToJoin: number;
+  minAccountAgeDays: number;
+  requireVerified: boolean;
 }
 
-function summary(row: typeof communities.$inferSelect): CommunitySummary {
+/**
+ * One row as the summary every surface shows. Exported because three other
+ * files kept their own copy of it, and each new column meant finding all four.
+ */
+export function toCommunitySummary(row: typeof communities.$inferSelect): CommunitySummary {
   return {
     id: row.id,
     slug: row.slug,
@@ -54,6 +65,11 @@ function summary(row: typeof communities.$inferSelect): CommunitySummary {
     memberCount: row.memberCount,
     createdAt: row.createdAt,
     archivedAt: row.archivedAt,
+    minKarmaToPost: row.minKarmaToPost,
+    minKarmaToComment: row.minKarmaToComment,
+    minKarmaToJoin: row.minKarmaToJoin,
+    minAccountAgeDays: row.minAccountAgeDays,
+    requireVerified: row.requireVerified,
   };
 }
 
@@ -193,7 +209,7 @@ export async function createCommunity(
       roleKey: 'community_owner',
       grantedBy: null,
     });
-    return ok(summary(created));
+    return ok(toCommunitySummary(created));
   });
 }
 
@@ -213,7 +229,7 @@ export async function communityBySlug(
           isNull(communities.deletedAt),
         ),
       );
-    return row ? summary(row) : null;
+    return row ? toCommunitySummary(row) : null;
   });
 }
 
@@ -232,7 +248,7 @@ export async function communityById(
           isNull(communities.deletedAt),
         ),
       );
-    return row ? summary(row) : null;
+    return row ? toCommunitySummary(row) : null;
   });
 }
 
@@ -241,6 +257,7 @@ export async function joinCommunity(
   actor: { userId: string },
   tenantId: string,
   communityId: string,
+  settings: CommunitiesSettings,
 ): Promise<Result<{ joined: boolean }, Refusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [community] = await tx
@@ -252,6 +269,18 @@ export async function joinCommunity(
     if (community.visibility !== 'public') return err('not_allowed');
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
+    // Joining is a gate too: a community that asks for karma to post may also
+    // ask for it before someone is counted a member.
+    const gate = await checkGate(
+      tx,
+      actor.userId,
+      tenantId,
+      communityId,
+      community,
+      settings,
+      'join',
+    );
+    if (gate) return err(gate);
 
     const [existing] = await tx
       .select()
@@ -372,7 +401,7 @@ export async function myCommunities(
         ),
       )
       .orderBy(desc(communityMemberships.joinedAt));
-    return rows.map((r) => summary(r.community));
+    return rows.map((r) => toCommunitySummary(r.community));
   });
 }
 

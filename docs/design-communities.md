@@ -408,6 +408,18 @@ point of the check, so a community that sets zero does not thereby drop below
 what the university requires. `requireVerified` behaves the same way: a tenant
 may pin it on and no community can turn it off.
 
+**Whoever moderates here is not who this is for.** A community that sets a
+karma gate would otherwise lock out the moderators who set it, leaving them
+unable to post an announcement without lowering it first, and they can lower it
+at will, so the gate was never a boundary against them. Anyone holding
+`communities.moderate` in that community passes every gate in it.
+
+**`requireVerified` can only ever tighten.** Every write in this module already
+requires a verified membership, so a community turning it off loosens nothing;
+the tenant's `floorRequireVerified` is on by default and is what keeps it that
+way. The setting is stored and shown so that a tenant which deliberately opens
+up has somewhere to say so, not so that a community can open up on its own.
+
 **Checked where it is enforced, not where it is offered.** The gate runs inside
 the same transaction as the write, after the ban and mute checks and before the
 rate limits, in `createPost` and `createComment`. The refusal carries the number,

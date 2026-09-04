@@ -1,30 +1,12 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withActorInTenant, withTenant } from '@campusos/db';
 import { communities, communityMemberships } from './schema/communities';
-import type { CommunitySummary } from './communities';
+import { toCommunitySummary, type CommunitySummary } from './communities';
 
 /**
  * The directory: which communities a tenant has, and where one person stands
  * in one of them. Reads only.
  */
-
-function summary(row: typeof communities.$inferSelect): CommunitySummary {
-  return {
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    description: row.description,
-    iconSeed: row.iconSeed,
-    bannerSeed: row.bannerSeed,
-    visibility: row.visibility,
-    allowAnonymous: row.allowAnonymous,
-    allowedKinds: row.allowedKinds,
-    approvalStatus: row.approvalStatus,
-    memberCount: row.memberCount,
-    createdAt: row.createdAt,
-    archivedAt: row.archivedAt,
-  };
-}
 
 export type DirectoryOrder = 'members' | 'new' | 'name';
 
@@ -54,7 +36,7 @@ export async function listCommunities(
             : [desc(communities.memberCount), asc(communities.name)]),
       )
       .limit(limit);
-    return rows.map(summary);
+    return rows.map(toCommunitySummary);
   });
 }
 
@@ -72,7 +54,7 @@ export async function listPendingCommunities(tenantId: string): Promise<Communit
         ),
       )
       .orderBy(asc(communities.createdAt));
-    return rows.map(summary);
+    return rows.map(toCommunitySummary);
   });
 }
 

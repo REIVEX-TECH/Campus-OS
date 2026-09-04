@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
+import { refusalMessage } from '@/lib/refusal-message';
 
 export type ComposerLabels = {
   placeholder: string;
@@ -54,7 +55,7 @@ export function CommentComposer({
     setWorking(false);
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(labels.errors[data.error ?? ''] ?? labels.errors.failed ?? null);
+      setError(refusalMessage(labels.errors, data) || null);
       return;
     }
     setBody('');

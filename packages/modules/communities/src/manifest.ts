@@ -29,6 +29,16 @@ export const settingsSchema = z.object({
    * anyone, without making an ordinary reader's votes stop counting.
    */
   karmaVotePerDayCap: z.number().int().min(1).max(100).default(10),
+  /**
+   * The floor under every community's participation gates (§12). A community
+   * may ask for more and never for less, so raising one of these tightens the
+   * whole university at once. `floorRequireVerified` stays on by default:
+   * every write in this module already requires verification, and this is what
+   * stops a community turning that off.
+   */
+  floorMinKarma: z.number().int().min(0).max(10_000).default(0),
+  floorAccountAgeDays: z.number().int().min(0).max(365).default(0),
+  floorRequireVerified: z.boolean().default(true),
   archiveAfterMonths: z.number().int().min(1).nullable().default(null),
 });
 

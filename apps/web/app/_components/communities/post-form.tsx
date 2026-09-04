@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
 import { postPath } from '@/lib/community-constants';
+import { refusalMessage } from '@/lib/refusal-message';
 
 export type PostKind = 'text' | 'link' | 'poll';
 
@@ -129,7 +130,7 @@ export function PostForm({
     if (!response.ok) {
       setStatus({
         kind: 'error',
-        message: labels.errors[data.error ?? ''] ?? labels.errors.failed ?? '',
+        message: refusalMessage(labels.errors, data),
       });
       return;
     }

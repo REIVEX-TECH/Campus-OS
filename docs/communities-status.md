@@ -55,4 +55,12 @@ and the number an anonymous item earns stays out of the public total by the
 column it is keyed on. Display is unchanged in effect: `karmaVisible` is still
 off by default, so no tenant shows a number until it turns one on.
 
-Still to come in Phase C: participation gates (C2) and reporting a person (C3).
+Participation gates (C2) let a community ask for karma, or for an account that
+has existed a while, before someone joins, posts or comments. The tenant sets a
+floor and a community may only tighten it, computed where the check runs so
+raising the floor takes effect everywhere at once. Refusals carry the numbers,
+which is new: "this community asks for 50 karma, you have 12" rather than a
+bare code. Whoever moderates a community passes its own gates. Every gate
+defaults to asking for nothing, so nothing changes until a moderator sets one.
+
+Still to come in Phase C: reporting a person (C3).

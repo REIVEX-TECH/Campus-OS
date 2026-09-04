@@ -32,7 +32,11 @@ export type Refusal =
   | 'muted'
   | 'pin_cap'
   | 'closed'
-  | 'rules_not_accepted';
+  | 'rules_not_accepted'
+  // Participation gates (§12). The numbers behind these come from
+  // `describeGate`, on the failure path only.
+  | 'gate_karma'
+  | 'gate_account_age';
 
 function toSet(rows: unknown[]): PermissionSet {
   return new PermissionSet(

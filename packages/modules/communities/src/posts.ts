@@ -14,6 +14,7 @@ import {
 import { pollInputSchema, writePollOptions } from './polls';
 import { applyVerdict, screen } from './automod';
 import { flairBelongs } from './flairs';
+import { checkGate } from './gates';
 import { rulesPending } from './rules';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
@@ -196,6 +197,18 @@ export async function createPostIn(
   if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
     return err('not_allowed');
   }
+  // The community's own gate, after the ban and the mute and before the rate
+  // limits: it is about who this person is here, not about how fast they are.
+  const gate = await checkGate(
+    tx,
+    actor.userId,
+    tenantId,
+    communityId,
+    community,
+    settings,
+    'post',
+  );
+  if (gate) return err(gate);
   if (p.flairId && !(await flairBelongs(tx, communityId, p.flairId))) return err('invalid');
   if (await rulesPending(tx, actor.userId, tenantId, communityId)) return err('rules_not_accepted');
   if ((await ownPostsLastHour(tx, tenantId)) >= LIMITS.postsPerHour) return err('rate_limited');

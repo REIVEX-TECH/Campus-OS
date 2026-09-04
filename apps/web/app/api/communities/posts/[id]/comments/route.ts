@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createComment } from '@campusos/module-communities/comments';
-import { communityGate, refusalResponse } from '@/lib/community-route';
+import { postById } from '@campusos/module-communities/posts';
+import { communityGate, refusalResponse, refusalWithGate } from '@/lib/community-route';
 
 /** Comment on a post, or reply to a comment on it. The module decides membership, depth and limits. */
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,22 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     { body: gate.data.body, isAnonymous: gate.data.isAnonymous },
     gate.settings,
   );
-  if (!result.ok) return refusalResponse(result.error);
+  if (!result.ok) {
+    // This route knows the post, not the community, so the community is looked
+    // up only when a gate refused somebody and the numbers are wanted.
+    const post =
+      result.error === 'gate_karma' || result.error === 'gate_account_age'
+        ? await postById({ userId: gate.actor.userId }, gate.tenant.slug, id)
+        : null;
+    return post
+      ? refusalWithGate(result.error, {
+          actor: { userId: gate.actor.userId },
+          tenant: gate.tenant.slug,
+          communityId: post.communityId,
+          action: 'comment',
+          settings: gate.settings,
+        })
+      : refusalResponse(result.error);
+  }
   return Response.json(result.value);
 }

@@ -7,6 +7,7 @@ import { buttonVariants } from '@campusos/ui';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { REPORT_REASONS, type ReportReason } from '@/lib/community-constants';
 import { CommentComposer, type ComposerLabels } from './comment-composer';
+import { refusalMessage } from '@/lib/refusal-message';
 
 export type CommentData = {
   id: string;
@@ -132,7 +133,7 @@ export function CommentNode({
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       setMessage({
-        text: labels.errors[data.error ?? ''] ?? labels.errors.failed ?? '',
+        text: refusalMessage(labels.errors, data),
         error: true,
       });
       return false;
