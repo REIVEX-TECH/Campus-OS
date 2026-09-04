@@ -946,10 +946,21 @@ describe('roles and permissions', () => {
     return actor;
   }
 
-  it('gives every tenant the three system roles', async () => {
+  it('gives every tenant every system definition', async () => {
     const a = await admin('rbac-seed');
     const list = await listRoles(a.userId, 'aaa');
-    expect(list.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    // Six, not three: the community roles are definitions like any other since
+    // the definitions moved to the platform, so a tenant materialises them all.
+    // A role nobody holds grants nothing, so a tenant without the communities
+    // module carries three inert rows.
+    expect(list.map((r) => r.key).sort()).toEqual([
+      'community_member',
+      'community_moderator',
+      'community_owner',
+      'student',
+      'teacher',
+      'tenant_admin',
+    ]);
     expect(list.every((r) => r.isSystem)).toBe(true);
     expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
     expect(list.find((r) => r.key === 'student')!.permissions.sort()).toEqual([
@@ -1472,7 +1483,14 @@ describe('platform administration', () => {
     const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'ccc'));
     expect(u).toMatchObject({ name: 'CCC University', timezone: 'Asia/Karachi' });
     const seeded = await listRoles(root.userId, 'ccc');
-    expect(seeded.map((r) => r.key).sort()).toEqual(['student', 'teacher', 'tenant_admin']);
+    expect(seeded.map((r) => r.key).sort()).toEqual([
+      'community_member',
+      'community_moderator',
+      'community_owner',
+      'student',
+      'teacher',
+      'tenant_admin',
+    ]);
     const trail = await withActorInTenant(root.userId, 'ccc', (tx) =>
       tx.select().from(auditLog).where(eq(auditLog.tenantId, 'ccc')),
     );

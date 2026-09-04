@@ -40,6 +40,11 @@ by the person it was written to constrain.
   template, so it cannot mint a role of a tenant's own. Both new tables keep
   RLS without FORCE, which is what lets the function read them at all.
 - Every existing tenant is synced at the end of the migration.
+- One visible consequence: a tenant now materialises all six definitions at
+  once rather than three, since the community roles are definitions like any
+  other. A role nobody holds grants nothing, so a tenant without the
+  communities module carries three inert rows; two existing assertions that
+  counted three are updated to say so.
 
 ### Module
 
