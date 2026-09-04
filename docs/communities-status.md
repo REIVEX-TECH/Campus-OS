@@ -2,18 +2,23 @@
 
 Design: `docs/design-communities.md`.
 
-| Item  | What                                                    | State                   |
-| ----- | ------------------------------------------------------- | ----------------------- |
-| Doc   | Design                                                  | In review               |
-| A1    | Schema, RLS, RBAC wiring, anonymity views, module shell | Merged, `de2e2a0`       |
-| A2    | Communities: create, settings, join, rules, rail        | Merged, `a2d49c6`       |
-| A3    | Posts                                                   | Merged, `2218e04`       |
-| A4    | Comments                                                | Done (#94)              |
-| A5    | Voting, ranking, feeds, pagination                      | Done (#95)              |
-| A6    | Moderation, oversight, audited unmask                   | Done (#96)              |
-| A7    | Anti-abuse                                              | Done (#97)              |
-| A8    | UI and Playwright                                       | **In review** (this PR) |
-| B1–B6 | Polls, notifications, search, flairs, profiles, polish  | Not started             |
+| Item | What                                                     | State                   |
+| ---- | -------------------------------------------------------- | ----------------------- |
+| Doc  | Design                                                   | In review               |
+| A1   | Schema, RLS, RBAC wiring, anonymity views, module shell  | Merged, `de2e2a0`       |
+| A2   | Communities: create, settings, join, rules, rail         | Merged, `a2d49c6`       |
+| A3   | Posts                                                    | Merged, `2218e04`       |
+| A4   | Comments                                                 | Done (#94)              |
+| A5   | Voting, ranking, feeds, pagination                       | Done (#95)              |
+| A6   | Moderation, oversight, audited unmask                    | Done (#96)              |
+| A7   | Anti-abuse                                               | Done (#97)              |
+| A8   | UI and Playwright                                        | Done (#98)              |
+| B1   | Polls                                                    | **In review** (this PR) |
+| B2   | Notifications, unread count in the top bar               | Not started             |
+| B3   | Search and the community directory                       | Not started             |
+| B4   | Flairs, pinned ordering, crosspost, share                | Not started             |
+| B5   | Profiles, karma toggle, saved and hidden, blocked list   | Not started             |
+| B6   | Polish: counts, rules acceptance, archive after N months | Not started             |
 
 Deferred on purpose (design §11): media uploads, direct messages, awards, wiki,
 email digests.

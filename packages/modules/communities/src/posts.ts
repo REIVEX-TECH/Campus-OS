@@ -11,6 +11,7 @@ import {
   ownPostsLastHour,
   type Refusal,
 } from './access';
+import { pollInputSchema, writePollOptions } from './polls';
 import { applyVerdict, screen } from './automod';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
@@ -25,20 +26,22 @@ import {
 } from './schema/communities';
 
 /**
- * Posts: text and link. Written to `posts`, always read from `posts_read`, so
+ * Posts: text, link and poll. Written to `posts`, always read from `posts_read`, so
  * no code path in this module can see an author the view does not show.
  */
 
 export const postInputSchema = z
   .object({
-    kind: z.enum(['text', 'link']),
+    kind: z.enum(['text', 'link', 'poll']),
     title: z.string().trim().min(1).max(300),
     body: z.string().trim().max(40_000).optional(),
     url: z.string().trim().url().max(2048).optional(),
     isAnonymous: z.boolean().default(false),
     spoiler: z.boolean().default(false),
+    poll: pollInputSchema.optional(),
   })
-  .refine((p) => p.kind !== 'link' || Boolean(p.url), { message: 'a link post needs a url' });
+  .refine((p) => p.kind !== 'link' || Boolean(p.url), { message: 'a link post needs a url' })
+  .refine((p) => p.kind !== 'poll' || Boolean(p.poll), { message: 'a poll needs options' });
 
 export type PostInput = z.input<typeof postInputSchema>;
 
@@ -84,6 +87,8 @@ export interface PostView {
   removedAt: Date | null;
   removalReason: string | null;
   deletedAt: Date | null;
+  /** Polls only: when voting closes. */
+  pollClosesAt: Date | null;
   /** The viewer's own vote, 0 when none or when there is no viewer. */
   myVote: -1 | 0 | 1;
   /** Whether the viewer saved it. */
@@ -127,6 +132,7 @@ export function toPostView(
     removedAt: row.removedAt,
     removalReason: row.removalReason,
     deletedAt: row.deletedAt,
+    pollClosesAt: row.pollClosesAt,
     myVote: viewer.myVote === 1 ? 1 : viewer.myVote === -1 ? -1 : 0,
     saved: viewer.saved === true,
     community: { slug: community.slug ?? '', name: community.name ?? '' },
@@ -219,7 +225,7 @@ export async function createPost(
         authorId: actor.userId,
         kind: p.kind,
         title: p.title,
-        body: p.body ?? (p.kind === 'text' ? '' : null),
+        body: p.body ?? (p.kind === 'link' ? null : ''),
         url: p.url ?? null,
         urlDomain,
         isAnonymous: p.isAnonymous,
@@ -227,8 +233,13 @@ export async function createPost(
         hotScore: hotScore(0, 0, now).toFixed(7),
         createdAt: now,
         removedAt: verdict ? now : null,
+        pollClosesAt:
+          p.kind === 'poll' && p.poll
+            ? new Date(now.getTime() + p.poll.closesInHours * 3_600_000)
+            : null,
       })
       .returning({ id: posts.id });
+    if (p.kind === 'poll' && p.poll) await writePollOptions(tx, tenantId, row!.id, p.poll.options);
     if (verdict) {
       const reason = await applyVerdict(
         tx,

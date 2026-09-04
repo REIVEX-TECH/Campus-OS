@@ -13,7 +13,7 @@ export type CommunityFormValues = {
   name: string;
   description: string;
   allowAnonymous: boolean;
-  allowedKinds: ('text' | 'link')[];
+  allowedKinds: ('text' | 'link' | 'poll')[];
   visibility: 'public' | 'restricted';
   modLogPublic: boolean;
 };
@@ -26,6 +26,7 @@ export type CommunityFormLabels = {
   kinds: string;
   kindText: string;
   kindLink: string;
+  kindPoll: string;
   visibility: string;
   visibilityPublic: string;
   visibilityRestricted: string;
@@ -71,7 +72,7 @@ export function CommunityForm({
     setV((prev) => ({ ...prev, [key]: value }));
     setStatus({ kind: 'idle' });
   };
-  const toggleKind = (kind: 'text' | 'link', on: boolean) =>
+  const toggleKind = (kind: 'text' | 'link' | 'poll', on: boolean) =>
     set(
       'allowedKinds',
       on
@@ -131,7 +132,7 @@ export function CommunityForm({
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium">{labels.kinds}</legend>
         <div className="flex flex-wrap gap-4">
-          {(['text', 'link'] as const).map((kind) => (
+          {(['text', 'link', 'poll'] as const).map((kind) => (
             <label key={kind} className="flex min-h-10 items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -139,7 +140,11 @@ export function CommunityForm({
                 checked={v.allowedKinds.includes(kind)}
                 onChange={(e) => toggleKind(kind, e.target.checked)}
               />
-              {kind === 'text' ? labels.kindText : labels.kindLink}
+              {kind === 'text'
+                ? labels.kindText
+                : kind === 'link'
+                  ? labels.kindLink
+                  : labels.kindPoll}
             </label>
           ))}
         </div>

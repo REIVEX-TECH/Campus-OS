@@ -29,7 +29,8 @@ export type Refusal =
   | 'self'
   | 'last_owner'
   | 'muted'
-  | 'pin_cap';
+  | 'pin_cap'
+  | 'closed';
 
 function toSet(rows: unknown[]): PermissionSet {
   return new PermissionSet(

@@ -61,9 +61,11 @@ test.describe.serial('a community, end to end', () => {
     await upvote.click();
     await expect(upvote).toHaveAttribute('aria-pressed', 'true');
 
-    await page.getByRole('button', { name: 'Report', exact: true }).first().click();
-    await page.getByRole('button', { name: /send/i }).click();
-    await expect(page.locator('article').first().getByRole('status')).toBeVisible();
+    // The post's own row: comments carry Report and Send too.
+    const card = page.locator('article').first();
+    await card.getByRole('button', { name: 'Report', exact: true }).click();
+    await card.getByRole('button', { name: /send/i }).click();
+    await expect(card.getByRole('status')).toBeVisible();
   });
 
   test('the moderator sees no anonymous author anywhere, removes with a reason and bans', async ({
@@ -74,8 +76,9 @@ test.describe.serial('a community, end to end', () => {
     // Report the anonymous post so it reaches the queue, then look everywhere a moderator looks.
     await page.goto(state.anonPath);
     await expect(page.getByText('Anonymous').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Report', exact: true }).first().click();
-    await page.getByRole('button', { name: /send/i }).click();
+    const anonCard = page.locator('article').first();
+    await anonCard.getByRole('button', { name: 'Report', exact: true }).click();
+    await anonCard.getByRole('button', { name: /send/i }).click();
     for (const path of [state.anonPath, `/u/lgu/c/${state.slug}`, `/u/lgu/c/${state.slug}/mod`]) {
       await page.goto(path);
       expect(await page.content(), path).not.toContain(member);

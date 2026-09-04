@@ -111,3 +111,14 @@ test('the automod rules route refuses a stranger', async ({ request }) => {
   );
   expect(response.status()).toBe(401);
 });
+
+test('the poll vote action refuses a stranger', async ({ request }) => {
+  const response = await request.post(
+    '/api/communities/posts/00000000-0000-0000-0000-000000000000',
+    {
+      headers: fromOurPage(),
+      data: { tenant: 'lgu', action: 'pollVote', optionId: '00000000-0000-0000-0000-000000000000' },
+    },
+  );
+  expect(response.status()).toBe(401);
+});

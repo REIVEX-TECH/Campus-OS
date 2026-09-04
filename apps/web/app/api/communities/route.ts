@@ -10,7 +10,7 @@ const schema = z.object({
   name: z.string(),
   description: z.string().optional(),
   allowAnonymous: z.boolean().optional(),
-  allowedKinds: z.array(z.enum(['text', 'link'])).optional(),
+  allowedKinds: z.array(z.enum(['text', 'link', 'poll'])).optional(),
   visibility: z.enum(['public', 'restricted']).optional(),
 });
 

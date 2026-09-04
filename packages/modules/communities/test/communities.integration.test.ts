@@ -29,6 +29,7 @@ import { listCommunities, listPendingCommunities, membershipState } from '../src
 import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
 import { listHeld, listModLog, listQueue } from '../src/queue';
 import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
+import { pollFor, votePoll } from '../src/polls';
 import {
   approveItem,
   liftSanction,
@@ -154,6 +155,8 @@ describe('row security invariants', () => {
     reports: true,
     moderation_actions: true,
     automod_rules: true,
+    poll_options: true,
+    poll_votes: true,
     // Read by auth_effective_community_permissions, so FORCE must be off.
     community_memberships: false,
     community_member_roles: false,
@@ -1390,5 +1393,118 @@ describe('anti abuse', () => {
     expect(
       (await listQueue(owner, 'aaa', c.id)).ok && (await listQueue(owner, 'aaa', c.id)),
     ).toMatchObject({ value: [] });
+  });
+});
+
+describe('polls', () => {
+  it('takes one final vote per person, shows counts to all and the choice to its owner alone', async () => {
+    const owner = await member('poll-owner');
+    const a = await member('poll-a');
+    const b = await member('poll-b');
+    const made = await createCommunity(
+      owner,
+      'aaa',
+      { name: 'Poll Hall', allowedKinds: ['text', 'poll'] },
+      settings,
+    );
+    if (!made.ok) throw new Error(made.error);
+    const c = made.value;
+    await joinCommunity(a, 'aaa', c.id);
+    await joinCommunity(b, 'aaa', c.id);
+
+    expect(
+      await createPost(
+        owner,
+        'aaa',
+        c.id,
+        { kind: 'poll', title: 'No options', body: '' },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'invalid' });
+    expect(
+      await createPost(
+        owner,
+        'aaa',
+        c.id,
+        { kind: 'poll', title: 'Repeats', poll: { options: ['Tea', 'tea'] } },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'invalid' });
+    const p = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      {
+        kind: 'poll',
+        title: 'Best study spot?',
+        body: 'Be honest.',
+        poll: { options: ['Library', 'Cafeteria', 'Lawn'], closesInHours: 48 },
+      },
+      settings,
+    );
+    if (!p.ok) throw new Error(p.error);
+    expect(p.value.held).toBe(false);
+
+    const fresh = await pollFor(null, 'aaa', p.value.id);
+    expect(fresh?.options.map((o) => [o.text, o.votes, o.share])).toEqual([
+      ['Library', 0, 0],
+      ['Cafeteria', 0, 0],
+      ['Lawn', 0, 0],
+    ]);
+    expect(fresh).toMatchObject({ total: 0, closed: false, myOptionId: null });
+    expect(fresh!.closesAt.getTime() - Date.now()).toBeGreaterThan(47 * 3_600_000);
+    expect((await postById(null, 'aaa', p.value.id))?.pollClosesAt).toEqual(fresh!.closesAt);
+
+    const [library, cafeteria] = fresh!.options.map((o) => o.id) as [string, string, string];
+    const voted = await votePoll(a, 'aaa', p.value.id, library);
+    expect(voted.ok && voted.value).toMatchObject({ total: 1, myOptionId: library });
+    expect(voted.ok && voted.value.options[0]).toMatchObject({ votes: 1, share: 100 });
+    // Final: a second vote, for anything, is refused.
+    expect(await votePoll(a, 'aaa', p.value.id, cafeteria)).toEqual({ ok: false, error: 'exists' });
+    expect(await votePoll(a, 'aaa', p.value.id, library)).toEqual({ ok: false, error: 'exists' });
+    await votePoll(b, 'aaa', p.value.id, cafeteria);
+
+    // Counts for everyone; the choice for its owner only.
+    const asB = await pollFor(b, 'aaa', p.value.id);
+    expect(asB?.options.map((o) => [o.votes, o.share])).toEqual([
+      [1, 50],
+      [1, 50],
+      [0, 0],
+    ]);
+    expect(asB?.myOptionId).toBe(cafeteria);
+    expect((await pollFor(owner, 'aaa', p.value.id))?.myOptionId).toBeNull();
+    expect((await pollFor(null, 'aaa', p.value.id))?.myOptionId).toBeNull();
+
+    // An option from elsewhere, a stranger, a community without polls.
+    const other = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'poll', title: 'Other poll', poll: { options: ['Yes', 'No'] } },
+      settings,
+    );
+    if (!other.ok) throw new Error(other.error);
+    const otherOption = (await pollFor(null, 'aaa', other.value.id))!.options[0]!.id;
+    expect(await votePoll(owner, 'aaa', p.value.id, otherOption)).toEqual({
+      ok: false,
+      error: 'invalid',
+    });
+    const outsider = await member('poll-outsider');
+    expect(await votePoll(outsider, 'aaa', p.value.id, library)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    const plain = await community(owner, 'Text Only');
+    expect(
+      await createPost(
+        owner,
+        'aaa',
+        plain.id,
+        { kind: 'poll', title: 'Nope', poll: { options: ['A', 'B'] } },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'kind_not_allowed' });
+    // A text post has no poll.
+    expect(await pollFor(null, 'aaa', plain.id)).toBeNull();
   });
 });

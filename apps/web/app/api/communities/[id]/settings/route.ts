@@ -13,7 +13,7 @@ const schema = z.object({
   description: z.string(),
   allowAnonymous: z.boolean(),
   visibility: z.enum(['public', 'restricted']),
-  allowedKinds: z.array(z.enum(['text', 'link'])),
+  allowedKinds: z.array(z.enum(['text', 'link', 'poll'])),
   modLogPublic: z.boolean(),
 });
 

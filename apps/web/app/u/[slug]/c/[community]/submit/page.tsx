@@ -68,7 +68,7 @@ export default async function SubmitPage({ params }: Params) {
               communitySlug={community.slug}
               mode="create"
               allowedKinds={community.allowedKinds.filter(
-                (k): k is 'text' | 'link' => k === 'text' || k === 'link',
+                (k): k is 'text' | 'link' | 'poll' => k === 'text' || k === 'link' || k === 'poll',
               )}
               anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}
               labels={postFormLabels(t, 'create')}

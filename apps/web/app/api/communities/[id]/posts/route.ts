@@ -9,12 +9,15 @@ type Params = { params: Promise<{ id: string }> };
 
 const schema = z.object({
   tenant: z.string().min(1).max(64),
-  kind: z.enum(['text', 'link']),
+  kind: z.enum(['text', 'link', 'poll']),
   title: z.string(),
   body: z.string().optional(),
   url: z.string().optional(),
   isAnonymous: z.boolean().optional(),
   spoiler: z.boolean().optional(),
+  poll: z
+    .object({ options: z.array(z.string()), closesInHours: z.number().int().optional() })
+    .optional(),
 });
 
 export async function POST(request: Request, { params }: Params): Promise<Response> {
