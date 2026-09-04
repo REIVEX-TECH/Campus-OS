@@ -36,5 +36,16 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
+  {
+    // CommonJS files (e.g. ecosystem.config.cjs) legitimately use require().
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
   prettier,
 ];
