@@ -20,7 +20,7 @@ Design: `docs/design-communities.md`.
 | B5   | Profiles, karma toggle, saved and hidden, blocked list   | Done                    |
 | B6   | Polish: counts, rules acceptance, archive after N months | **In review** (this PR) |
 
-Deferred on purpose (design §11): media uploads, direct messages, awards, wiki,
+Deferred on purpose (design §14): media uploads, direct messages, awards, wiki,
 email digests.
 
 ## Phase A: complete
@@ -42,5 +42,5 @@ polish step (B6: rules acceptance on a first post, the archive sweep and
 reopen, flair pills on every feed, held items across the university) are
 merged or in review. Left for later, by choice: user flairs, search over
 comments, karma decay, comment paging on profiles, and email digests (design
-§11). Live-database steps for each migration are in the PR bodies and
+§14). Live-database steps for each migration are in the PR bodies and
 `docs/runbooks/`.

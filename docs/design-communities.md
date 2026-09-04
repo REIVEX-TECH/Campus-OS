@@ -10,7 +10,7 @@ now uses. Community roles are RBAC roles in that system; there is no parallel
 scheme.
 
 Everything below is the plan. Phase A builds it end to end; Phase B adds the
-rest of the Reddit surface. Nothing deferred in §11 is started.
+rest of the Reddit surface. Nothing deferred in §14 is started.
 
 ---
 
@@ -162,6 +162,12 @@ the community membership has ended, or a ban is in force. It reads
 created **without FORCE** and added to the invariant map on purpose; the rest
 already are.
 
+Which roles exist and what each carries is a **platform-level definition**, not a
+tenant's to edit; a tenant administrator sees the definitions read-only and
+grants and revokes them, and may never grant a role carrying a permission they
+do not hold themselves. See `docs/design-platform-admin.md` §2. The community
+roles above are templates on the same footing as the tenant ones.
+
 `tenant_admin` holds every catalogue permission except `communities.unmask`, so
 a tenant administrator sits above every community's owner for oversight, and
 unmasking still needs an explicit, audited role grant. A platform administrator
@@ -174,15 +180,19 @@ acting under a Phase 5 grant is exactly a `tenant_admin`, so the same holds.
 `communities` settings schema on the tenant config (Phase 4 made it editable
 without a deploy):
 
-| Setting              | Default    | Meaning                                                                |
-| -------------------- | ---------- | ---------------------------------------------------------------------- |
-| `readAccess`         | `signedIn` | `signedIn` or `public`; the tenant admin may open reading later        |
-| `createCommunity`    | `verified` | `verified` (any verified member) or `approval` (tenant admin approves) |
-| `anonymousPosting`   | `on`       | Tenant-wide master switch; each community also has its own toggle      |
-| `commentDepth`       | `8`        | Reply nesting cap                                                      |
-| `pinnedPerCommunity` | `3`        | Pin cap                                                                |
-| `karmaVisible`       | `off`      | Phase B                                                                |
-| `archiveAfterMonths` | `null`     | Phase B                                                                |
+| Setting                | Default    | Meaning                                                                |
+| ---------------------- | ---------- | ---------------------------------------------------------------------- |
+| `readAccess`           | `signedIn` | `signedIn` or `public`; the tenant admin may open reading later        |
+| `createCommunity`      | `verified` | `verified` (any verified member) or `approval` (tenant admin approves) |
+| `anonymousPosting`     | `on`       | Tenant-wide master switch; each community also has its own toggle      |
+| `commentDepth`         | `8`        | Reply nesting cap                                                      |
+| `pinnedPerCommunity`   | `3`        | Pin cap                                                                |
+| `karmaVisible`         | `off`      | Whether a public karma number is shown at all (§11)                    |
+| `archiveAfterMonths`   | `null`     | Idle communities go read only after this many months                   |
+| `karmaVotePerDayCap`   | `5`        | How far one voter may move one target's karma in a day (§11)           |
+| `floorMinKarma`        | `0`        | Tenant floor a community may tighten, never loosen (§12)               |
+| `floorAccountAgeDays`  | `0`        | Tenant floor for account age, in days (§12)                            |
+| `floorRequireVerified` | `on`       | Pins verification on for every community (§12)                         |
 
 Post, comment, vote, create, report: **verified** members of the tenant
 (`verified_at` set, membership active). Reading: anyone signed in by default.
@@ -321,7 +331,126 @@ pending review and put it at the top of the queue.
 
 ---
 
-## 11. Deferred, on purpose
+## 11. Karma
+
+**Karma is what other people did.** Upvotes received on a person's posts and
+comments, less downvotes received. Nothing accrues for viewing, signing in,
+joining, saving, or for posting itself: a score that rises by being present is a
+score that rewards idling, and this one cannot be farmed that way because there
+is no path from an action of your own to a number of your own.
+
+Per tenant, and two numbers rather than one: **post karma** and **comment
+karma**, stored apart and shown together, because "what did they write" and
+"what did they say in someone's thread" are different reputations and a single
+total hides the difference from moderators who need it.
+
+**Anti-gaming.**
+
+- **No self-votes.** An author's own vote on their own item is refused, not
+  silently ignored, so the tally and the karma agree.
+- **One vote per person per item**, which the vote tables' primary keys have
+  enforced since A3.
+- **The vote rate limit**, `votesPerHour`, which has been in `LIMITS` since A1.
+- **A per-voter, per-target, per-day cap.** One account can move one other
+  account's karma by only so much in a day, so a ring of two cannot inflate
+  either, and a grudge cannot bury anyone.
+
+**The anonymous problem, and why the public number excludes them.** An anonymous
+post is still the author's, and its votes are still theirs to keep. But karma is
+displayed, and a displayed number that moves when an anonymous post is voted on
+is a channel: watch a handle's karma, watch an anonymous post's score, and the
+correlation names the author. So there are two totals, and only one is public:
+
+| Total       | Counts                    | Seen by                          |
+| ----------- | ------------------------- | -------------------------------- |
+| **Public**  | Signed items only         | Anyone, per `karmaVisible`       |
+| **Private** | Signed and anonymous both | The person, on their own profile |
+
+The private total is summed on `author_id` and therefore inside a definer
+function, since the application role cannot read that column. The public total
+is summed on the generated `public_author_id`, which is null for anonymous
+items, so the public number cannot include one **by construction** rather than by
+a filter somebody has to remember.
+
+**Storage.** A `community_karma` row per (tenant, user) holding both halves,
+moved in the same transaction as the vote that caused it, and fully recomputable
+from `post_votes` and `comment_votes` by a script: the table is a cache of a
+derivation, never the only copy. A recompute is the repair for any drift, and
+the drift is detectable because the derivation is cheap to run.
+
+**Display is modest.** The profile, and next to a handle in a thread, and
+nowhere else; behind the tenant's `karmaVisible` toggle, off by default. No
+leaderboards: a campus does not need a ranking of its own students.
+
+---
+
+## 12. Participation gates
+
+A community may ask for more than the tenant does before someone posts in it.
+Set by its owner or moderators in the community's settings, every one of them
+optional:
+
+| Gate                | Meaning                                       | Default |
+| ------------------- | --------------------------------------------- | ------- |
+| `minKarmaToPost`    | Public karma needed to post here              | `0`     |
+| `minKarmaToComment` | Public karma needed to comment here           | `0`     |
+| `minKarmaToJoin`    | Public karma needed to join                   | `0`     |
+| `minAccountAgeDays` | Days since the account was created            | `0`     |
+| `requireVerified`   | Verified membership needed to post or comment | `on`    |
+
+**Account age is age, not attendance.** Days since `users.created_at`. Nothing
+measures time spent in the app, and nothing ever will: a gate that rewards
+lingering is a gate that punishes people with less time.
+
+**The tenant sets a floor, and a community may only tighten it.** The floor is a
+tenant setting; the effective gate is the greater of the two, computed at the
+point of the check, so a community that sets zero does not thereby drop below
+what the university requires. `requireVerified` behaves the same way: a tenant
+may pin it on and no community can turn it off.
+
+**Checked where it is enforced, not where it is offered.** The gate runs inside
+the same transaction as the write, after the ban and mute checks and before the
+rate limits, in `createPost` and `createComment`. The refusal carries the number,
+which is new: every refusal in this module until now has been a bare code, and
+"you cannot post here" is a worse thing to read than "you need 50 karma to post
+here, and you have 12".
+
+---
+
+## 13. Restrictions, suspensions, and reporting a person
+
+Communities can already ban and mute inside themselves (§9). Two things sit
+above that and belong to the tenant, not to a community, because they are about
+a person's standing in the university rather than their welcome in one room:
+**restriction** and **suspension**. Both are described in
+`docs/design-platform-admin.md` §6, which owns the membership model; what
+belongs here is what they mean to this module.
+
+- A **restricted** person reads everything they could read before and writes
+  nothing: no post, no comment, no vote, no report, no community. They pass the
+  same `isVerifiedMember` check every write already passes, and fail it on
+  standing rather than on verification.
+- A **suspended** person does not have a session in this tenant at all, so no
+  question about content reaches this module.
+
+**Reporting a person, not only a post.** `reports` gains `item_type = 'user'`
+alongside `post` and `comment`, with `community_id` nullable, because a person
+does not belong to a community the way a post does. Those reports land in the
+tenant-wide queue that already exists at `/admin/communities` rather than in a
+community's queue, since only a tenant administrator can act on them; the
+per-item dedup (`reports_item_reporter_uq`) already means one report per person
+per target, and repeated reports from **different** people on the same person
+raise a flag on the queue the way the threshold already raises one on an item.
+
+**Never quietly.** Nothing here is shadow-applied. The person sees their own
+status, its reason and its expiry, on their account page, and has one appeal
+note. This is the same rule as §5's promise about anonymity, pointed the other
+way: the platform does not lie about what it has done to you, and it does not
+lie about who you are to anyone else.
+
+---
+
+## 14. Deferred, on purpose
 
 Documented as decisions, not built, and not to be started by any phase item:
 
@@ -333,13 +462,18 @@ Documented as decisions, not built, and not to be started by any phase item:
 - **Wiki**: later, if communities ask.
 - **Email notifications and digests**: in-app only in Phase B; email needs the
   provider interface and unsubscribe handling.
+- **Account deletion**: a soft delete that anonymises what the person wrote
+  rather than tearing holes in other people's threads. Wanted, specified when
+  it is built, and not before: it touches every table that carries an author.
+- **Export my data**: later, and after account deletion, since both need the
+  same inventory of what is held about a person.
 
 If a phase item appears to need one of these, that item stops and the need is
 noted here.
 
 ---
 
-## 12. Phases
+## 15. Phases
 
 **Phase A, MVP core and moderation.** One PR per item unless two are tiny.
 
@@ -381,9 +515,32 @@ first post, automod settings UI, mod log public toggle, archive after N months.
 
 A status note lives in `docs/communities-status.md` once A1 opens.
 
+**Phase C, governance**, after B merges and alongside the platform work it
+leans on (`docs/design-platform-admin.md` phases 6 and 7):
+
+- **C1** Karma (§11): the `community_karma` table moved with each vote, the
+  public and private totals, the self-vote refusal, the per-voter per-day cap,
+  the recompute script, and the display behind `karmaVisible`. Tests: a
+  self-vote is refused; the public total excludes anonymous items and the
+  private one includes them; the cap holds; a recompute reproduces the stored
+  numbers exactly.
+- **C2** Participation gates (§12): the five community settings, the tenant
+  floor, the checks inside `createPost`, `createComment` and `joinCommunity`,
+  and refusals that carry the number they are about. Tests: each gate blocks
+  and then admits the same person; a community cannot set itself below the
+  tenant floor; zero means off.
+- **C3** Reporting a person (§13): `item_type = 'user'`, the tenant-wide queue,
+  the repeated-report flag, and the restriction surfaces this module shows a
+  restricted member. Tests: a restricted member is refused every write and
+  refused nothing they read; the flag raises on reports from different people
+  and not on one person's repeats.
+
+C1 and C2 need nothing from the platform phases. C3 needs the `restricted`
+status from platform phase 7, and its own half can land first.
+
 ---
 
-## 13. Open questions (defaults chosen; say if different)
+## 16. Open questions (defaults chosen; say if different)
 
 1. Comment depth cap 8, pinned cap 3, and the rate limits in §10 are starting
    values, all tenant settings.
