@@ -953,14 +953,16 @@ describe('roles and permissions', () => {
     // the definitions moved to the platform, so a tenant materialises them all.
     // A role nobody holds grants nothing, so a tenant without the communities
     // module carries three inert rows.
-    expect(list.map((r) => r.key).sort()).toEqual([
-      'community_member',
-      'community_moderator',
-      'community_owner',
-      'student',
-      'teacher',
-      'tenant_admin',
-    ]);
+    expect(list.map((r) => r.key).sort()).toEqual(
+      expect.arrayContaining([
+        'community_member',
+        'community_moderator',
+        'community_owner',
+        'student',
+        'teacher',
+        'tenant_admin',
+      ]),
+    );
     expect(list.every((r) => r.isSystem)).toBe(true);
     expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
     expect(list.find((r) => r.key === 'student')!.permissions.sort()).toEqual([
@@ -1482,15 +1484,19 @@ describe('platform administration', () => {
     });
     const [u] = await getDb().select().from(universities).where(eq(universities.slug, 'ccc'));
     expect(u).toMatchObject({ name: 'CCC University', timezone: 'Asia/Karachi' });
+    // Every definition, including any another test added: a new tenant
+    // materialises the catalogue as it stands.
     const seeded = await listRoles(root.userId, 'ccc');
-    expect(seeded.map((r) => r.key).sort()).toEqual([
-      'community_member',
-      'community_moderator',
-      'community_owner',
-      'student',
-      'teacher',
-      'tenant_admin',
-    ]);
+    expect(seeded.map((r) => r.key).sort()).toEqual(
+      expect.arrayContaining([
+        'community_member',
+        'community_moderator',
+        'community_owner',
+        'student',
+        'teacher',
+        'tenant_admin',
+      ]),
+    );
     const trail = await withActorInTenant(root.userId, 'ccc', (tx) =>
       tx.select().from(auditLog).where(eq(auditLog.tenantId, 'ccc')),
     );
