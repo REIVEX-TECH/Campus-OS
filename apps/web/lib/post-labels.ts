@@ -32,6 +32,8 @@ export function postFormLabels(t: Translate, mode: 'create' | 'edit'): PostFormL
     title: t('posts.compose.title'),
     body: t('posts.compose.body'),
     url: t('posts.compose.url'),
+    flair: t('flairs.label'),
+    noFlair: t('flairs.none'),
     anonymous: t('posts.compose.anonymous'),
     anonymousHint: t('posts.compose.anonymousHint'),
     spoiler: t('posts.compose.spoiler'),

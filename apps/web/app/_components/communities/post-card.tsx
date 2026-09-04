@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { FlairView } from '@campusos/module-communities/flairs';
 import type { PostView } from '@campusos/module-communities/posts';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { postPath, type ReportReason } from '@/lib/community-constants';
@@ -21,6 +22,7 @@ export function PostCard({
   signedIn,
   canVote,
   full = false,
+  flairs = [],
   t,
 }: {
   post: PostView;
@@ -32,9 +34,12 @@ export function PostCard({
   canVote: boolean;
   /** The post's own page: the whole body, and delete returns to the community. */
   full?: boolean;
+  /** The community's flairs, to name the one this post wears. */
+  flairs?: FlairView[];
   t: Translate;
 }) {
   const permalink = postPath(base, community.slug, post.id, post.title);
+  const flair = post.flairId ? flairs.find((f) => f.id === post.flairId) : undefined;
   const when = relativeTime(post.createdAt.toISOString(), locale);
   const errors = {
     not_verified: t('communities.error.not_verified'),
@@ -101,6 +106,24 @@ export function PostCard({
               {t('posts.edited')}
             </Link>
           ) : null}
+          {flair ? (
+            <Link
+              href={`${base}/c/${community.slug}?flair=${flair.id}`}
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium hover:underline"
+            >
+              <span
+                aria-hidden="true"
+                className="size-2 rounded-full"
+                style={{ backgroundColor: flair.color }}
+              />
+              {flair.name}
+            </Link>
+          ) : null}
+          {post.crosspostOf ? (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
+              {t('posts.crosspostPill')}
+            </span>
+          ) : null}
           {post.kind === 'poll' ? (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
               {t('posts.pollPill')}
@@ -138,6 +161,21 @@ export function PostCard({
           </h3>
         )}
 
+        {post.crosspost ? (
+          <p className="text-sm text-muted-foreground">
+            <Link
+              href={postPath(
+                base,
+                post.crosspost.communitySlug,
+                post.crosspost.postId,
+                post.crosspost.title,
+              )}
+              className="font-medium text-foreground hover:underline"
+            >
+              {t('posts.crosspostedFrom', { community: post.crosspost.communityName })}
+            </Link>
+          </p>
+        ) : null}
         {post.kind === 'link' && post.url ? (
           <a
             href={post.url}

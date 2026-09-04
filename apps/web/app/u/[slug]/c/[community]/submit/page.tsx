@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { JoinButton } from '@/app/_components/communities/join-button';
+import { listFlairs } from '@campusos/module-communities/flairs';
 import { PostForm } from '@/app/_components/communities/post-form';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
@@ -48,6 +49,7 @@ export default async function SubmitPage({ params }: Params) {
   const settings = communitiesSettings(tenant);
   const perms = await permissionsIn(actor, slug, community.id);
   const canPost = perms.has('communities.post');
+  const flairs = canPost ? await listFlairs(slug, community.id) : [];
 
   return (
     <PageShell>
@@ -71,6 +73,7 @@ export default async function SubmitPage({ params }: Params) {
                 (k): k is 'text' | 'link' | 'poll' => k === 'text' || k === 'link' || k === 'poll',
               )}
               anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}
+              flairs={flairs.map((f) => ({ id: f.id, name: f.name }))}
               labels={postFormLabels(t, 'create')}
             />
           </div>

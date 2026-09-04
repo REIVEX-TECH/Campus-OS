@@ -4,8 +4,10 @@ import { notFound, redirect } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
 import { listMembers } from '@campusos/module-communities/members';
 import { listAutomodRules } from '@campusos/module-communities/automod';
+import { listFlairs } from '@campusos/module-communities/flairs';
 import { listRules } from '@campusos/module-communities/rules';
 import { AutomodEditor } from '@/app/_components/communities/automod-editor';
+import { FlairEditor } from '@/app/_components/communities/flair-editor';
 import { CommunityForm } from '@/app/_components/communities/community-form';
 import { ModeratorsPanel } from '@/app/_components/communities/moderators-panel';
 import { RulesEditor } from '@/app/_components/communities/rules-editor';
@@ -56,10 +58,11 @@ export default async function CommunitySettingsPage({ params }: Params) {
   if (!perms.hasAny('communities.manage', 'communities.oversee')) notFound();
   const t = translator(tenant.locale);
   const settings = communitiesSettings(tenant);
-  const [rules, members, filters] = await Promise.all([
+  const [rules, members, filters, flairs] = await Promise.all([
     listRules(slug, community.id),
     listMembers(slug, community.id),
     listAutomodRules(actor, slug, community.id),
+    listFlairs(slug, community.id),
   ]);
   const errors = communityErrors(t);
 
@@ -128,6 +131,25 @@ export default async function CommunitySettingsPage({ params }: Params) {
             }}
           />
         </section>
+
+        <FlairEditor
+          tenant={slug}
+          communityId={community.id}
+          initial={flairs.map((f) => ({ id: f.id, name: f.name, color: f.color }))}
+          labels={{
+            heading: t('flairs.heading'),
+            intro: t('flairs.intro'),
+            name: t('flairs.name'),
+            color: t('flairs.color'),
+            add: t('flairs.add'),
+            remove: t('flairs.remove', { n: '{n}' }),
+            save: t('flairs.save'),
+            saved: t('flairs.saved'),
+            working: t('communities.working'),
+            empty: t('flairs.empty'),
+            errors,
+          }}
+        />
 
         <AutomodEditor
           tenant={slug}

@@ -21,6 +21,8 @@ export type PostFormLabels = {
   pollRemoveOption: string;
   pollDuration: string;
   pollDurations: { day: string; threeDays: string; week: string };
+  flair: string;
+  noFlair: string;
   anonymous: string;
   anonymousHint: string;
   spoiler: string;
@@ -56,6 +58,7 @@ export function PostForm({
   postId,
   allowedKinds,
   anonymousAllowed,
+  flairs = [],
   initial,
   labels,
 }: {
@@ -67,6 +70,7 @@ export function PostForm({
   postId?: string;
   allowedKinds: PostKind[];
   anonymousAllowed: boolean;
+  flairs?: { id: string; name: string }[];
   initial?: { title: string; body: string };
   labels: PostFormLabels;
 }) {
@@ -77,6 +81,7 @@ export function PostForm({
   const [url, setUrl] = useState('');
   const [options, setOptions] = useState<string[]>(['', '']);
   const [duration, setDuration] = useState<Duration>('threeDays');
+  const [flairId, setFlairId] = useState('');
   const [isAnonymous, setAnonymous] = useState(false);
   const [spoiler, setSpoiler] = useState(false);
   const [status, setStatus] = useState<{
@@ -112,6 +117,7 @@ export function PostForm({
                   : undefined,
               isAnonymous,
               spoiler,
+              flairId: flairId || undefined,
             }),
           })
         : await fetch(`/api/communities/posts/${postId}`, {
@@ -244,6 +250,24 @@ export function PostForm({
             </label>
           </div>
         </fieldset>
+      ) : null}
+
+      {mode === 'create' && flairs.length > 0 ? (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">{labels.flair}</span>
+          <select
+            value={flairId}
+            onChange={(e) => setFlairId(e.target.value)}
+            className="ios-field h-11 w-full rounded-xl px-3.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">{labels.noFlair}</option>
+            {flairs.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </label>
       ) : null}
 
       {mode === 'create' ? (

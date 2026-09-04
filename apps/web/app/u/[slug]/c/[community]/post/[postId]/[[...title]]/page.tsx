@@ -2,13 +2,19 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { commentsForPost, type CommentSort } from '@campusos/module-communities/comments';
-import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
+import {
+  communityBySlug,
+  myCommunities,
+  permissionsIn,
+} from '@campusos/module-communities/communities';
 import { listModerators } from '@campusos/module-communities/members';
+import { listFlairs } from '@campusos/module-communities/flairs';
 import { pollFor } from '@campusos/module-communities/polls';
 import { postById } from '@campusos/module-communities/posts';
 import { listRules } from '@campusos/module-communities/rules';
 import { CommentThread } from '@/app/_components/communities/comment-thread';
 import { CommunityRail } from '@/app/_components/communities/community-rail';
+import { CrosspostButton } from '@/app/_components/communities/crosspost-button';
 import { ModControls } from '@/app/_components/communities/mod-controls';
 import { PollCard } from '@/app/_components/communities/poll-card';
 import { PostCard } from '@/app/_components/communities/post-card';
@@ -90,6 +96,13 @@ export default async function PostPage({ params, searchParams }: PageProps) {
     commentsForPost(actor, slug, post.id, sort),
     post.kind === 'poll' ? pollFor(actor, slug, post.id) : Promise.resolve(null),
   ]);
+  const [flairs, mine] = await Promise.all([
+    listFlairs(slug, community.id),
+    actor ? myCommunities(actor, slug) : Promise.resolve([]),
+  ]);
+  const targets = mine
+    .filter((c) => c.id !== community.id && c.allowedKinds.includes('text'))
+    .map((c) => ({ id: c.id, name: c.name, href: `${base}/c/${c.slug}` }));
   const canComment = perms?.has('communities.comment') ?? false;
   const canModerate = perms?.hasAny('communities.moderate', 'communities.oversee') ?? false;
   const withheld = post.removedAt !== null && !post.isOwn && !canModerate;
@@ -138,9 +151,27 @@ export default async function PostPage({ params, searchParams }: PageProps) {
             signedIn={actor !== null}
             canVote={perms?.has('communities.vote') ?? false}
             full
+            flairs={flairs}
             t={t}
           />
         )}
+        {actor && !withheld && !post.removedAt && targets.length > 0 ? (
+          <div className="px-1">
+            <CrosspostButton
+              tenant={slug}
+              postId={post.id}
+              targets={targets}
+              labels={{
+                crosspost: t('posts.crosspost'),
+                to: t('posts.crosspostTo'),
+                send: t('posts.crosspostSend'),
+                cancel: t('mod.cancel'),
+                errors: postErrors(t),
+              }}
+              className="ios-pressable inline-flex h-8 items-center rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            />
+          </div>
+        ) : null}
         {poll && !withheld ? (
           <PollCard
             tenant={slug}

@@ -1,4 +1,4 @@
-import { and, desc, eq, getViewSelectedFields, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, getViewSelectedFields, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
@@ -13,6 +13,7 @@ import {
 } from './access';
 import { pollInputSchema, writePollOptions } from './polls';
 import { applyVerdict, screen } from './automod';
+import { flairBelongs } from './flairs';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
 import {
@@ -39,6 +40,7 @@ export const postInputSchema = z
     isAnonymous: z.boolean().default(false),
     spoiler: z.boolean().default(false),
     poll: pollInputSchema.optional(),
+    flairId: z.string().uuid().optional(),
   })
   .refine((p) => p.kind !== 'link' || Boolean(p.url), { message: 'a link post needs a url' })
   .refine((p) => p.kind !== 'poll' || Boolean(p.poll), { message: 'a poll needs options' });
@@ -89,6 +91,10 @@ export interface PostView {
   deletedAt: Date | null;
   /** Polls only: when voting closes. */
   pollClosesAt: Date | null;
+  flairId: string | null;
+  crosspostOf: string | null;
+  /** The original, when this is a crosspost and the original is public and live. */
+  crosspost: { postId: string; title: string; communitySlug: string; communityName: string } | null;
   /** The viewer's own vote, 0 when none or when there is no viewer. */
   myVote: -1 | 0 | 1;
   /** Whether the viewer saved it. */
@@ -133,6 +139,9 @@ export function toPostView(
     removalReason: row.removalReason,
     deletedAt: row.deletedAt,
     pollClosesAt: row.pollClosesAt,
+    flairId: row.flairId,
+    crosspostOf: row.crosspostOf,
+    crosspost: null,
     myVote: viewer.myVote === 1 ? 1 : viewer.myVote === -1 ? -1 : 0,
     saved: viewer.saved === true,
     community: { slug: community.slug ?? '', name: community.name ?? '' },
@@ -153,106 +162,120 @@ export async function createPost(
 ): Promise<Result<{ id: string; held: boolean }, Refusal>> {
   const parsed = postInputSchema.safeParse(input);
   if (!parsed.success) return err('invalid');
-  const p = parsed.data;
+  return withActorInTenant(actor.userId, tenantId, (tx) =>
+    createPostIn(tx, actor, tenantId, communityId, parsed.data, settings),
+  );
+}
+
+/** The insert itself, inside a caller's transaction: what createPost does, and what a crosspost shares. */
+export async function createPostIn(
+  tx: TenantTransaction,
+  actor: { userId: string },
+  tenantId: string,
+  communityId: string,
+  p: z.output<typeof postInputSchema>,
+  settings: CommunitiesSettings,
+  extra: { crosspostOf?: string | null } = {},
+): Promise<Result<{ id: string; held: boolean }, Refusal>> {
   const urlDomain = p.kind === 'link' && p.url ? domainOf(p.url) : null;
   if (p.kind === 'link' && !urlDomain) return err('invalid');
-
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
-    const [community] = await tx
-      .select()
-      .from(communities)
-      .where(and(eq(communities.id, communityId), isNull(communities.deletedAt)));
-    if (!community || community.approvalStatus !== 'approved') return err('not_found');
-    if (community.archivedAt) return err('archived');
-    if (!community.allowedKinds.includes(p.kind)) return err('kind_not_allowed');
-    if (p.isAnonymous && (!community.allowAnonymous || settings.anonymousPosting !== 'on')) {
-      return err('anonymous_not_allowed');
-    }
-    if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
-    if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
-    if (await isMuted(tx, actor.userId, tenantId, communityId)) return err('muted');
-    if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
-      return err('not_allowed');
-    }
-    if ((await ownPostsLastHour(tx, tenantId)) >= LIMITS.postsPerHour) return err('rate_limited');
-    if (
-      p.isAnonymous &&
-      (await ownPostsLastHour(tx, tenantId, true)) >= LIMITS.anonymousPostsPerHour
-    ) {
-      return err('rate_limited');
-    }
-    if (p.url) {
-      const dup = await tx
-        .select({ id: postsRead.id })
-        .from(postsRead)
-        .where(
-          and(
-            eq(postsRead.communityId, communityId),
-            eq(postsRead.url, p.url),
-            isNull(postsRead.deletedAt),
-            sql`${postsRead.createdAt} > now() - interval '1 day'`,
-          ),
-        )
-        .limit(1);
-      if (dup.length > 0) return err('exists');
-    }
-    // The same title from the same person in the same day is a repeat too.
-    const again = await tx
+  const [community] = await tx
+    .select()
+    .from(communities)
+    .where(and(eq(communities.id, communityId), isNull(communities.deletedAt)));
+  if (!community || community.approvalStatus !== 'approved') return err('not_found');
+  if (community.archivedAt) return err('archived');
+  if (!community.allowedKinds.includes(p.kind)) return err('kind_not_allowed');
+  if (p.isAnonymous && (!community.allowAnonymous || settings.anonymousPosting !== 'on')) {
+    return err('anonymous_not_allowed');
+  }
+  if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
+  if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
+  if (await isMuted(tx, actor.userId, tenantId, communityId)) return err('muted');
+  if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
+    return err('not_allowed');
+  }
+  if (p.flairId && !(await flairBelongs(tx, communityId, p.flairId))) return err('invalid');
+  if ((await ownPostsLastHour(tx, tenantId)) >= LIMITS.postsPerHour) return err('rate_limited');
+  if (
+    p.isAnonymous &&
+    (await ownPostsLastHour(tx, tenantId, true)) >= LIMITS.anonymousPostsPerHour
+  ) {
+    return err('rate_limited');
+  }
+  if (p.url) {
+    const dup = await tx
       .select({ id: postsRead.id })
       .from(postsRead)
       .where(
         and(
           eq(postsRead.communityId, communityId),
-          eq(postsRead.isOwn, true),
-          eq(postsRead.title, p.title),
+          eq(postsRead.url, p.url),
           isNull(postsRead.deletedAt),
           sql`${postsRead.createdAt} > now() - interval '1 day'`,
         ),
       )
       .limit(1);
-    if (again.length > 0) return err('exists');
-    const verdict = await screen(tx, communityId, {
-      text: `${p.title}\n${p.body ?? ''}`,
-      domain: urlDomain,
-    });
-
-    const now = new Date();
-    const [row] = await tx
-      .insert(posts)
-      .values({
-        tenantId,
-        communityId,
-        authorId: actor.userId,
-        kind: p.kind,
-        title: p.title,
-        body: p.body ?? (p.kind === 'link' ? null : ''),
-        url: p.url ?? null,
-        urlDomain,
-        isAnonymous: p.isAnonymous,
-        spoiler: p.spoiler,
-        hotScore: hotScore(0, 0, now).toFixed(7),
-        createdAt: now,
-        removedAt: verdict ? now : null,
-        pollClosesAt:
-          p.kind === 'poll' && p.poll
-            ? new Date(now.getTime() + p.poll.closesInHours * 3_600_000)
-            : null,
-      })
-      .returning({ id: posts.id });
-    if (p.kind === 'poll' && p.poll) await writePollOptions(tx, tenantId, row!.id, p.poll.options);
-    if (verdict) {
-      const reason = await applyVerdict(
-        tx,
-        tenantId,
-        communityId,
-        { type: 'post', id: row!.id, postId: row!.id },
-        verdict,
-      );
-      await tx.update(posts).set({ removalReason: reason }).where(eq(posts.id, row!.id));
-      return ok({ id: row!.id, held: true });
-    }
-    return ok({ id: row!.id, held: false });
+    if (dup.length > 0) return err('exists');
+  }
+  // The same title from the same person in the same day is a repeat too.
+  const again = await tx
+    .select({ id: postsRead.id })
+    .from(postsRead)
+    .where(
+      and(
+        eq(postsRead.communityId, communityId),
+        eq(postsRead.isOwn, true),
+        eq(postsRead.title, p.title),
+        isNull(postsRead.deletedAt),
+        sql`${postsRead.createdAt} > now() - interval '1 day'`,
+      ),
+    )
+    .limit(1);
+  if (again.length > 0) return err('exists');
+  const verdict = await screen(tx, communityId, {
+    text: `${p.title}\n${p.body ?? ''}`,
+    domain: urlDomain,
   });
+
+  const now = new Date();
+  const [row] = await tx
+    .insert(posts)
+    .values({
+      tenantId,
+      communityId,
+      authorId: actor.userId,
+      kind: p.kind,
+      title: p.title,
+      body: p.body ?? (p.kind === 'link' ? null : ''),
+      url: p.url ?? null,
+      urlDomain,
+      isAnonymous: p.isAnonymous,
+      spoiler: p.spoiler,
+      hotScore: hotScore(0, 0, now).toFixed(7),
+      createdAt: now,
+      removedAt: verdict ? now : null,
+      flairId: p.flairId ?? null,
+      crosspostOf: extra.crosspostOf ?? null,
+      pollClosesAt:
+        p.kind === 'poll' && p.poll
+          ? new Date(now.getTime() + p.poll.closesInHours * 3_600_000)
+          : null,
+    })
+    .returning({ id: posts.id });
+  if (p.kind === 'poll' && p.poll) await writePollOptions(tx, tenantId, row!.id, p.poll.options);
+  if (verdict) {
+    const reason = await applyVerdict(
+      tx,
+      tenantId,
+      communityId,
+      { type: 'post', id: row!.id, postId: row!.id },
+      verdict,
+    );
+    await tx.update(posts).set({ removalReason: reason }).where(eq(posts.id, row!.id));
+    return ok({ id: row!.id, held: true });
+  }
+  return ok({ id: row!.id, held: false });
 }
 
 /** Edit your own post. The previous text is kept; the post shows as edited. */
@@ -323,15 +346,56 @@ async function readOne(tx: TenantTransaction, postId: string): Promise<PostView 
     .leftJoin(postVotes, eq(postVotes.postId, postsRead.id))
     .leftJoin(savedItems, and(eq(savedItems.itemType, 'post'), eq(savedItems.itemId, postsRead.id)))
     .where(eq(postsRead.id, postId));
-  return row
-    ? toPostView(
-        row.post,
-        row.handle,
-        row.avatarSeed,
-        { myVote: row.myVote, saved: row.saved !== null },
-        { slug: row.communitySlug, name: row.communityName },
-      )
-    : null;
+  if (!row) return null;
+  const view = toPostView(
+    row.post,
+    row.handle,
+    row.avatarSeed,
+    { myVote: row.myVote, saved: row.saved !== null },
+    { slug: row.communitySlug, name: row.communityName },
+  );
+  return (await attachCrossposts(tx, [view]))[0] ?? null;
+}
+
+/**
+ * Fill in the original behind each crosspost, in one query. Only a public,
+ * live original is named: a restricted community's post does not travel by
+ * title, and a removed one leaves the crosspost pointing at nothing.
+ */
+export async function attachCrossposts(
+  tx: TenantTransaction,
+  views: PostView[],
+): Promise<PostView[]> {
+  const ids = [...new Set(views.map((v) => v.crosspostOf).filter((x): x is string => x !== null))];
+  if (ids.length === 0) return views;
+  const rows = await tx
+    .select({
+      id: postsRead.id,
+      title: postsRead.title,
+      deletedAt: postsRead.deletedAt,
+      removedAt: postsRead.removedAt,
+      slug: communities.slug,
+      name: communities.name,
+      visibility: communities.visibility,
+    })
+    .from(postsRead)
+    .innerJoin(communities, eq(communities.id, postsRead.communityId))
+    .where(inArray(postsRead.id, ids));
+  const by = new Map(rows.map((r) => [r.id, r]));
+  return views.map((v) => {
+    const src = v.crosspostOf ? by.get(v.crosspostOf) : undefined;
+    return src && !src.deletedAt && !src.removedAt && src.visibility === 'public'
+      ? {
+          ...v,
+          crosspost: {
+            postId: src.id,
+            title: src.title,
+            communitySlug: src.slug,
+            communityName: src.name,
+          },
+        }
+      : v;
+  });
 }
 
 export interface PostEdit {
