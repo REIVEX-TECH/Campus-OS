@@ -236,6 +236,8 @@ export const posts = pgTable(
     commentCount: integer('comment_count').notNull().default(0),
     /** Polls only: when voting closes. */
     pollClosesAt: tz('poll_closes_at'),
+    /** A crosspost points at the original. */
+    crosspostOf: uuid('crosspost_of'),
     createdAt,
   },
   (t) => [
@@ -511,6 +513,7 @@ export const postsRead = pgView('posts_read', {
   createdAt: tz('created_at').notNull(),
   isOwn: boolean('is_own').notNull(),
   pollClosesAt: tz('poll_closes_at'),
+  crosspostOf: uuid('crosspost_of'),
 }).existing();
 
 export const commentsRead = pgView('comments_read', {

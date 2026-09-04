@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   approveItem,
   liftSanction,
+  movePin,
   muteMember,
   removeItem,
   setLocked,
@@ -39,6 +40,12 @@ const schema = z.discriminatedUnion('action', [
   z.object({ tenant, action: z.literal('mute'), userId: uuid, reason: z.string(), minutes }),
   z.object({ tenant, action: z.literal('ban'), userId: uuid, reason: z.string(), minutes }),
   z.object({ tenant, action: z.literal('lift'), kind: z.enum(['ban', 'mute']), id: uuid }),
+  z.object({
+    tenant,
+    action: z.literal('pinMove'),
+    postId: uuid,
+    direction: z.enum(['up', 'down']),
+  }),
   z.object({ tenant, action: z.literal('dissolve'), reason: z.string() }),
   z.object({ tenant, action: z.literal('approveCommunity') }),
   z.object({ tenant, action: z.literal('unmask'), itemType, itemId: uuid, reportId: uuid }),
@@ -82,6 +89,8 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
           minutes: data.minutes,
         }),
       );
+    case 'pinMove':
+      return reply(await movePin(actor, slug, data.postId, data.direction));
     case 'lift':
       return reply(await liftSanction(actor, slug, data.kind, data.id));
     case 'approveCommunity':

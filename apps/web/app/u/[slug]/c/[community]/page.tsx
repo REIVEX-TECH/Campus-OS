@@ -10,6 +10,7 @@ import {
   type FeedSort,
   type TopWindow,
 } from '@campusos/module-communities/feed';
+import { listFlairs } from '@campusos/module-communities/flairs';
 import { listModerators } from '@campusos/module-communities/members';
 import { listRules } from '@campusos/module-communities/rules';
 import { buttonVariants } from '@campusos/ui';
@@ -33,7 +34,7 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string; community: string }> };
 type PageProps = Params & {
-  searchParams: Promise<{ after?: string; sort?: string; t?: string }>;
+  searchParams: Promise<{ after?: string; sort?: string; t?: string; flair?: string }>;
 };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -82,24 +83,28 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
     );
   }
 
-  const [rules, moderators, state, perms] = await Promise.all([
+  const [rules, moderators, state, perms, flairs] = await Promise.all([
     listRules(slug, community.id),
     listModerators(slug, community.id),
     actor ? membershipState(actor, slug, community.id) : Promise.resolve(null),
     actor ? permissionsIn(actor, slug, community.id) : Promise.resolve(null),
+    listFlairs(slug, community.id),
   ]);
   const canManage = perms?.hasAny('communities.manage', 'communities.oversee') ?? false;
   const query = await searchParams;
   const sort: FeedSort = isFeedSort(query.sort) ? query.sort : 'hot';
   const window: TopWindow = isTopWindow(query.t) ? query.t : 'day';
+  const flairId = flairs.some((f) => f.id === query.flair) ? query.flair : undefined;
   const feed = await listCommunityPosts(actor, slug, community.id, {
     sort,
     window,
     cursor: query.after,
+    flairId,
   });
-  const href = (patch: Partial<{ sort: string; t: string; after: string }>) => {
+  const href = (patch: Partial<{ sort: string; t: string; after: string; flair: string }>) => {
     const p = new URLSearchParams();
-    const next = { sort, t: window, ...patch };
+    const next = { sort, t: window, flair: flairId ?? '', ...patch };
+    if (next.flair) p.set('flair', next.flair);
     if (next.sort !== 'hot') p.set('sort', next.sort);
     if (next.sort === 'top' && next.t !== 'day') p.set('t', next.t);
     if (next.after) p.set('after', next.after);
@@ -191,6 +196,32 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
             ) : null}
           </div>
           <FeedTabs feeds={[]} sort={sort} window={window} hrefFor={href} t={t} />
+          {flairs.length > 0 ? (
+            <nav aria-label={t('flairs.label')} className="flex flex-wrap gap-1 px-1">
+              <Link
+                href={href({ flair: '' })}
+                aria-current={flairId ? undefined : 'page'}
+                className={`ios-pressable rounded-full px-2.5 py-1 text-xs font-medium ${flairId ? 'text-muted-foreground hover:text-foreground' : 'bg-muted text-foreground'}`}
+              >
+                {t('flairs.filterAll')}
+              </Link>
+              {flairs.map((f) => (
+                <Link
+                  key={f.id}
+                  href={href({ flair: f.id })}
+                  aria-current={f.id === flairId ? 'page' : undefined}
+                  className={`ios-pressable inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${f.id === flairId ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: f.color }}
+                  />
+                  {f.name}
+                </Link>
+              ))}
+            </nav>
+          ) : null}
           {feed.items.length === 0 ? (
             <EmptyState title={t('posts.none')}>{canPost ? t('posts.beFirst') : null}</EmptyState>
           ) : (
@@ -205,6 +236,7 @@ export default async function CommunityPage({ params, searchParams }: PageProps)
                     locale={tenant.locale}
                     signedIn={actor !== null}
                     canVote={perms?.has('communities.vote') ?? false}
+                    flairs={flairs}
                     t={t}
                   />
                 </li>

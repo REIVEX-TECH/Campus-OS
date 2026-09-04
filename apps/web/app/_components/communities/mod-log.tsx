@@ -19,6 +19,8 @@ const KNOWN = new Set([
   'unmute',
   'settings.updated',
   'automod.updated',
+  'flairs.updated',
+  'pin_order',
   'automod_hold',
   'automod_remove',
   'auto_hide',

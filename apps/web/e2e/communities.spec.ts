@@ -141,3 +141,23 @@ test('search reaches communities and the directory takes a query', async ({ page
   await expect(page.getByRole('heading', { level: 1, name: 'Search' })).toBeVisible();
   expect((await page.goto('/u/lgu/c/browse?q=cs'))?.status()).toBe(200);
 });
+
+test('the flairs route and the crosspost action refuse a stranger', async ({ request }) => {
+  const flairs = await request.post(
+    '/api/communities/00000000-0000-0000-0000-000000000000/flairs',
+    {
+      headers: fromOurPage(),
+      data: { tenant: 'lgu', flairs: [{ name: 'Q', color: '#000000' }] },
+    },
+  );
+  expect(flairs.status()).toBe(401);
+  const cross = await request.post('/api/communities/posts/00000000-0000-0000-0000-000000000000', {
+    headers: fromOurPage(),
+    data: {
+      tenant: 'lgu',
+      action: 'crosspost',
+      communityId: '00000000-0000-0000-0000-000000000000',
+    },
+  });
+  expect(cross.status()).toBe(401);
+});

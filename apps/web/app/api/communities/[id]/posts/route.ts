@@ -15,6 +15,7 @@ const schema = z.object({
   url: z.string().optional(),
   isAnonymous: z.boolean().optional(),
   spoiler: z.boolean().optional(),
+  flairId: z.string().uuid().optional(),
   poll: z
     .object({ options: z.array(z.string()), closesInHours: z.number().int().optional() })
     .optional(),

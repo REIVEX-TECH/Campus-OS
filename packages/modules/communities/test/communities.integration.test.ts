@@ -30,12 +30,15 @@ import { listCommunityPosts, listPosts, trendingPosts } from '../src/feed';
 import { listHeld, listModLog, listQueue } from '../src/queue';
 import { dissolveCommunity, listCommunitiesForOversight } from '../src/oversight';
 import { listNotifications, markRead, unreadCount } from '../src/notifications';
+import { listFlairs, setFlairs } from '../src/flairs';
+import { crosspost } from '../src/crosspost';
 import { pollFor, votePoll } from '../src/polls';
 import { searchCommunities, searchPosts } from '../src/search';
 import {
   approveItem,
   liftSanction,
   listSanctions,
+  movePin,
   muteMember,
   removeItem,
   setLocked,
@@ -1652,5 +1655,209 @@ describe('search and the directory', () => {
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     expect(byMembers.map((c) => c.id)).toEqual(expect.arrayContaining([open.id]));
     expect(byMembers.map((c) => c.id)).not.toContain(closed.id);
+  });
+});
+
+describe('flairs, pins in order, crossposts', () => {
+  it('keeps flairs by id, lets a post wear one, and filters by it', async () => {
+    const owner = await member('fl-owner');
+    const m = await member('fl-member');
+    const c = await community(owner, 'Flair Hall');
+    const other = await community(owner, 'Other Hall');
+    await joinCommunity(m, 'aaa', c.id);
+    expect(await setFlairs(m, 'aaa', c.id, [{ name: 'Q', color: '#000000' }])).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    expect(
+      await setFlairs(owner, 'aaa', c.id, [
+        { name: 'Same', color: '#000000' },
+        { name: 'same', color: '#111111' },
+      ]),
+    ).toEqual({
+      ok: false,
+      error: 'invalid',
+    });
+    const first = await setFlairs(owner, 'aaa', c.id, [
+      { name: 'Question', color: '#1D4ED8' },
+      { name: 'Notice', color: '#b45309' },
+    ]);
+    if (!first.ok) throw new Error(first.error);
+    expect(first.value.map((f) => [f.name, f.color, f.position])).toEqual([
+      ['Question', '#1d4ed8', 1],
+      ['Notice', '#b45309', 2],
+    ]);
+    const question = first.value[0]!;
+    const notice = first.value[1]!;
+
+    // The other community's flair is not this one's.
+    const theirs = await setFlairs(owner, 'aaa', other.id, [
+      { name: 'Elsewhere', color: '#000000' },
+    ]);
+    if (!theirs.ok) throw new Error(theirs.error);
+    expect(
+      await createPost(
+        m,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Wrong flair', body: '', flairId: theirs.value[0]!.id },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'invalid' });
+    const worn = await createPost(
+      m,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Where is B block?', body: '', flairId: question.id },
+      settings,
+    );
+    if (!worn.ok) throw new Error(worn.error);
+    const bare = await createPost(
+      m,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'No flair here', body: '' },
+      settings,
+    );
+    if (!bare.ok) throw new Error(bare.error);
+    expect((await postById(null, 'aaa', worn.value.id))?.flairId).toBe(question.id);
+    expect(
+      (await listCommunityPosts(null, 'aaa', c.id, { flairId: question.id })).items.map(
+        (p) => p.id,
+      ),
+    ).toEqual([worn.value.id]);
+    expect((await listCommunityPosts(null, 'aaa', c.id, { flairId: notice.id })).items).toEqual([]);
+    expect((await listCommunityPosts(null, 'aaa', c.id)).items).toHaveLength(2);
+
+    // Rename by id: the post keeps it. Drop the other: gone from the list.
+    const second = await setFlairs(owner, 'aaa', c.id, [
+      { id: question.id, name: 'Questions', color: '#1d4ed8' },
+    ]);
+    if (!second.ok) throw new Error(second.error);
+    expect(second.value.map((f) => [f.id, f.name])).toEqual([[question.id, 'Questions']]);
+    expect((await listFlairs('aaa', c.id)).map((f) => f.name)).toEqual(['Questions']);
+    expect((await postById(null, 'aaa', worn.value.id))?.flairId).toBe(question.id);
+    // Dropping the worn one takes it off the post.
+    const none = await setFlairs(owner, 'aaa', c.id, []);
+    expect(none.ok && none.value).toEqual([]);
+    expect((await postById(null, 'aaa', worn.value.id))?.flairId).toBeNull();
+  });
+
+  it('reorders pins by moving one up or down, moderators only', async () => {
+    const owner = await member('po-owner');
+    const m = await member('po-member');
+    const c = await community(owner, 'Pin Order');
+    await joinCommunity(m, 'aaa', c.id);
+    const ids: string[] = [];
+    for (const title of ['One', 'Two', 'Three']) {
+      const r = await createPost(owner, 'aaa', c.id, { kind: 'text', title, body: '' }, settings);
+      if (!r.ok) throw new Error(r.error);
+      ids.push(r.value.id);
+      expect((await setPinned(owner, 'aaa', r.value.id, true, settings)).ok).toBe(true);
+    }
+    const [one, two, three] = ids as [string, string, string];
+    const order = async () =>
+      (await listCommunityPosts(null, 'aaa', c.id, { limit: 1 })).items
+        .filter((p) => p.pinnedAt !== null)
+        .map((p) => p.title);
+    expect(await order()).toEqual(['Three', 'Two', 'One']);
+    expect(await movePin(m, 'aaa', one, 'up')).toEqual({ ok: false, error: 'not_allowed' });
+    expect(await movePin(owner, 'aaa', one, 'up')).toEqual({ ok: true, value: { moved: true } });
+    expect(await order()).toEqual(['Three', 'One', 'Two']);
+    expect(await movePin(owner, 'aaa', three, 'up')).toEqual({ ok: true, value: { moved: false } });
+    expect(await movePin(owner, 'aaa', three, 'down')).toEqual({
+      ok: true,
+      value: { moved: true },
+    });
+    expect(await order()).toEqual(['One', 'Three', 'Two']);
+    await setPinned(owner, 'aaa', two, false, settings);
+    expect(await movePin(owner, 'aaa', two, 'up')).toEqual({ ok: false, error: 'not_found' });
+    const log = await listModLog(owner, 'aaa', c.id, { limit: 3 });
+    expect(log.ok && log.value.items.map((e) => e.action)).toEqual([
+      'unpin',
+      'pin_order',
+      'pin_order',
+    ]);
+  });
+
+  it('crossposts into a community the person belongs to, once, naming a public original', async () => {
+    const owner = await member('xp-owner');
+    const m = await member('xp-member');
+    const home = await community(owner, 'Origin Hall');
+    const target = await community(owner, 'Target Hall');
+    // A second founder: one person may start two communities a day.
+    const founder = await member('xp-founder');
+    const made = await createCommunity(
+      founder,
+      'aaa',
+      { name: 'Closed Origin', visibility: 'restricted' },
+      settings,
+    );
+    if (!made.ok) throw new Error(made.error);
+    const closed = made.value;
+    await joinCommunity(m, 'aaa', home.id);
+    await joinCommunity(m, 'aaa', target.id);
+    const original = await createPost(
+      owner,
+      'aaa',
+      home.id,
+      { kind: 'text', title: 'Read this everywhere', body: 'x' },
+      settings,
+    );
+    if (!original.ok) throw new Error(original.error);
+    const secret = await createPost(
+      founder,
+      'aaa',
+      closed.id,
+      { kind: 'text', title: 'Members only', body: '' },
+      settings,
+    );
+    if (!secret.ok) throw new Error(secret.error);
+
+    expect(await crosspost(m, 'aaa', original.value.id, home.id, settings)).toEqual({
+      ok: false,
+      error: 'invalid',
+    });
+    expect(await crosspost(m, 'aaa', secret.value.id, target.id, settings)).toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+    const stranger = await member('xp-stranger');
+    expect(await crosspost(stranger, 'aaa', original.value.id, target.id, settings)).toEqual({
+      ok: false,
+      error: 'not_allowed',
+    });
+    const made2 = await crosspost(m, 'aaa', original.value.id, target.id, settings);
+    if (!made2.ok) throw new Error(made2.error);
+    expect(await crosspost(m, 'aaa', original.value.id, target.id, settings)).toEqual({
+      ok: false,
+      error: 'exists',
+    });
+
+    const view = await postById(null, 'aaa', made2.value.id);
+    expect(view).toMatchObject({
+      title: 'Read this everywhere',
+      communityId: target.id,
+      crosspostOf: original.value.id,
+      crosspost: {
+        postId: original.value.id,
+        title: 'Read this everywhere',
+        communitySlug: home.slug,
+        communityName: 'Origin Hall',
+      },
+    });
+    const feed = await listCommunityPosts(null, 'aaa', target.id);
+    expect(feed.items[0]?.crosspost?.communitySlug).toBe(home.slug);
+    // Crossposting a crosspost points at the original; the removed original leaves the pointer bare.
+    const third = await community(founder, 'Third Hall');
+    await joinCommunity(m, 'aaa', third.id);
+    const again = await crosspost(m, 'aaa', made2.value.id, third.id, settings);
+    expect(again.ok && (await postById(null, 'aaa', again.value.id))?.crosspostOf).toBe(
+      original.value.id,
+    );
+    expect((await removeItem(owner, 'aaa', 'post', original.value.id, { reason: 'Gone' })).ok).toBe(
+      true,
+    );
+    expect((await postById(null, 'aaa', made2.value.id))?.crosspost).toBeNull();
   });
 });

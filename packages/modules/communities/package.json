@@ -28,7 +28,9 @@
     "./automod": "./src/automod.ts",
     "./polls": "./src/polls.ts",
     "./notifications": "./src/notifications.ts",
-    "./search": "./src/search.ts"
+    "./search": "./src/search.ts",
+    "./flairs": "./src/flairs.ts",
+    "./crosspost": "./src/crosspost.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

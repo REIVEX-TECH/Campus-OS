@@ -94,9 +94,18 @@ export function PostActions({
     return true;
   }
 
-  async function copyLink(): Promise<void> {
+  async function share(): Promise<void> {
+    const url = new URL(permalink, window.location.origin).toString();
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: document.title, url });
+        return;
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
+      }
+    }
     try {
-      await navigator.clipboard.writeText(new URL(permalink, window.location.origin).toString());
+      await navigator.clipboard.writeText(url);
       setMessage({ text: labels.shared, error: false });
     } catch {
       setMessage({ text: labels.errors.failed ?? '', error: true });
@@ -109,7 +118,7 @@ export function PostActions({
         <Link href={`${permalink}#comments`} className={action}>
           {labels.comments}
         </Link>
-        <button type="button" onClick={copyLink} className={action}>
+        <button type="button" onClick={share} className={action}>
           {labels.share}
         </button>
         {signedIn ? (

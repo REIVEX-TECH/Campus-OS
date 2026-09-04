@@ -2,10 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { communityBySlug } from '@campusos/module-communities/communities';
+import { listCommunityPosts } from '@campusos/module-communities/feed';
 import { listHeld, listModLog, listQueue } from '@campusos/module-communities/queue';
 import { buttonVariants } from '@campusos/ui';
 import { ModLog } from '@/app/_components/communities/mod-log';
 import { ModQueue } from '@/app/_components/communities/mod-queue';
+import { PinnedOrder } from '@/app/_components/communities/pinned-order';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { requireCommunities } from '@/lib/communities';
@@ -57,10 +59,23 @@ export default async function ModPage({ params, searchParams }: PageProps) {
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const query = await searchParams;
-  const tab = query.tab === 'log' ? 'log' : query.tab === 'held' ? 'held' : 'queue';
+  const tab =
+    query.tab === 'log'
+      ? 'log'
+      : query.tab === 'held'
+        ? 'held'
+        : query.tab === 'pinned'
+          ? 'pinned'
+          : 'queue';
   const log =
     tab === 'log' ? await listModLog(actor, slug, community.id, { cursor: query.after }) : null;
   const held = tab === 'held' ? await listHeld(actor, slug, community.id) : null;
+  const pinned =
+    tab === 'pinned'
+      ? (await listCommunityPosts(actor, slug, community.id, { limit: 1 })).items.filter(
+          (p) => p.pinnedAt !== null,
+        )
+      : [];
   const here = `${base}/c/${community.slug}/mod`;
 
   const queueLabels = {
@@ -95,7 +110,7 @@ export default async function ModPage({ params, searchParams }: PageProps) {
           </h1>
         </header>
         <nav aria-label={t('mod.tools')} className="flex flex-wrap gap-1 px-1">
-          {(['queue', 'held', 'log'] as const).map((k) => (
+          {(['queue', 'held', 'pinned', 'log'] as const).map((k) => (
             <Link
               key={k}
               href={k === 'queue' ? here : `${here}?tab=${k}`}
@@ -137,6 +152,23 @@ export default async function ModPage({ params, searchParams }: PageProps) {
               when: relativeTime(q.lastReportedAt.toISOString(), tenant.locale),
             }))}
             labels={queueLabels}
+          />
+        ) : tab === 'pinned' ? (
+          <PinnedOrder
+            tenant={slug}
+            communityId={community.id}
+            items={pinned.map((p) => ({
+              id: p.id,
+              title: p.title,
+              href: postPath(base, community.slug, p.id, p.title),
+            }))}
+            labels={{
+              empty: t('mod.pinnedEmpty'),
+              up: t('mod.moveUp'),
+              down: t('mod.moveDown'),
+              unpin: t('mod.unpin'),
+              errors: communityErrors(t),
+            }}
           />
         ) : tab === 'held' ? (
           <ModQueue

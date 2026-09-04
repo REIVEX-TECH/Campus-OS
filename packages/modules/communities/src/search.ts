@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
 import type { CommunitySummary } from './communities';
 import { scopeWhere, selectPosts, viewerFilters } from './feed';
-import { toPostView, type PostView } from './posts';
+import { attachCrossposts, toPostView, type PostView } from './posts';
 import { communities } from './schema/communities';
 import { postsRead } from './schema/communities';
 
@@ -52,13 +52,16 @@ async function findPosts(
     )
     .orderBy(sql`ts_rank(${postDocument}, ${query}) desc`, desc(postsRead.createdAt))
     .limit(limit);
-  return rows.map((r) =>
-    toPostView(
-      r.post,
-      r.handle,
-      r.avatarSeed,
-      { myVote: r.myVote, saved: r.saved !== null },
-      { slug: r.communitySlug, name: r.communityName },
+  return attachCrossposts(
+    tx,
+    rows.map((r) =>
+      toPostView(
+        r.post,
+        r.handle,
+        r.avatarSeed,
+        { myVote: r.myVote, saved: r.saved !== null },
+        { slug: r.communitySlug, name: r.communityName },
+      ),
     ),
   );
 }

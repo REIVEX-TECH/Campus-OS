@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
@@ -417,5 +417,53 @@ export async function listSanctions(
       createdAt: r.createdAt,
     });
     return ok([...bans.map(shape('ban')), ...mutes.map(shape('mute'))]);
+  });
+}
+
+/** Move a pinned post one step up or down the pinned order, by swapping pin times. */
+export async function movePin(
+  actor: { userId: string },
+  tenantId: string,
+  postId: string,
+  direction: 'up' | 'down',
+): Promise<Result<{ moved: boolean }, Refusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const item = await locate(tx, 'post', postId);
+    if (!item || !item.pinnedAt) return err('not_found');
+    if (!(await moderates(tx, actor.userId, tenantId, item.communityId))) return err('not_allowed');
+    const pins = await tx
+      .select({ id: postsRead.id, pinnedAt: postsRead.pinnedAt })
+      .from(postsRead)
+      .where(
+        and(
+          eq(postsRead.communityId, item.communityId),
+          isNotNull(postsRead.pinnedAt),
+          isNull(postsRead.deletedAt),
+          isNull(postsRead.removedAt),
+        ),
+      )
+      .orderBy(desc(postsRead.pinnedAt));
+    const i = pins.findIndex((p) => p.id === postId);
+    const j = direction === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= pins.length) return ok({ moved: false });
+    const a = pins[i]!;
+    const b = pins[j]!;
+    const ta = a.pinnedAt!;
+    const tb = b.pinnedAt!;
+    // Equal times would not reorder, so the one moving up takes a millisecond more.
+    const forA =
+      direction === 'up' && tb.getTime() === ta.getTime() ? new Date(tb.getTime() + 1) : tb;
+    await tx.update(posts).set({ pinnedAt: forA }).where(eq(posts.id, a.id));
+    await tx.update(posts).set({ pinnedAt: ta }).where(eq(posts.id, b.id));
+    await logAction(tx, {
+      tenantId,
+      communityId: item.communityId,
+      actorId: actor.userId,
+      action: 'pin_order',
+      targetType: 'post',
+      targetId: postId,
+      meta: { direction },
+    });
+    return ok({ moved: true });
   });
 }

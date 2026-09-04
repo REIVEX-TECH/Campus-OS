@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
-import { POST, toPostView, type PostView, type ReadRow } from './posts';
+import { attachCrossposts, POST, toPostView, type PostView, type ReadRow } from './posts';
 import {
   communities,
   communityMemberships,
@@ -41,6 +41,8 @@ export interface FeedOptions {
   window?: TopWindow;
   cursor?: string;
   limit?: number;
+  /** Community scope only: posts wearing this flair. */
+  flairId?: string;
 }
 
 export interface PostPage {
@@ -259,6 +261,8 @@ async function page(
               eq(postsRead.tenantId, tenantId),
               eq(postsRead.communityId, scope.communityId),
               isNotNull(postsRead.pinnedAt),
+              // A flair filter applies to the pins too.
+              options.flairId ? eq(postsRead.flairId, options.flairId) : undefined,
               ...live,
             ),
           )
@@ -272,6 +276,7 @@ async function page(
         eq(postsRead.tenantId, tenantId),
         scopeWhere(tx, tenantId, scope, viewer),
         scope.kind === 'community' ? isNull(postsRead.pinnedAt) : undefined,
+        options.flairId ? eq(postsRead.flairId, options.flairId) : undefined,
         ...live,
         p.where,
         windowMs ? gt(postsRead.createdAt, new Date(Date.now() - windowMs)) : undefined,
@@ -282,7 +287,7 @@ async function page(
   const shown = rows.slice(0, limit);
   const last = shown[shown.length - 1];
   return {
-    items: [...pinned.map(shape), ...shown.map(shape)],
+    items: await attachCrossposts(tx, [...pinned.map(shape), ...shown.map(shape)]),
     nextCursor: p.pageable && rows.length > limit && last ? p.cursorOf(last.post) : null,
   };
 }

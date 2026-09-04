@@ -2,7 +2,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import type { Refusal } from './access';
-import { POST, toPostView, type PostView } from './posts';
+import { attachCrossposts, POST, toPostView, type PostView } from './posts';
 import {
   commentsRead,
   communities,
@@ -124,13 +124,16 @@ export async function listSavedPosts(
       )
       .orderBy(desc(savedItems.createdAt))
       .limit(limit);
-    return rows.map((r) =>
-      toPostView(
-        r.post,
-        r.handle,
-        r.avatarSeed,
-        { myVote: r.myVote, saved: true },
-        { slug: r.communitySlug, name: r.communityName },
+    return attachCrossposts(
+      tx,
+      rows.map((r) =>
+        toPostView(
+          r.post,
+          r.handle,
+          r.avatarSeed,
+          { myVote: r.myVote, saved: true },
+          { slug: r.communitySlug, name: r.communityName },
+        ),
       ),
     );
   });
