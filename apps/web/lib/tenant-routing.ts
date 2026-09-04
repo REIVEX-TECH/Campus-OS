@@ -68,14 +68,20 @@ function isLocalHost(host: string): boolean {
  * absolute host; in production it also logs, because reaching here with no public
  * base is a deployment misconfiguration, not a normal state.
  */
+let warnedNoPublicBase = false;
+
 export function tenantOrigin(slug: string, base: string = tenantBaseDomain()): string | null {
   const s = slug.toLowerCase();
   const bare = bareHost(base);
   if (!bare || isLocalHost(base)) {
-    if ((process.env.NODE_ENV ?? '') === 'production') {
+    // Loud, but once per process, not once per render: a local base is expected
+    // in dev and in a local production build, so per-request logging is noise.
+    if ((process.env.NODE_ENV ?? '') === 'production' && !warnedNoPublicBase) {
+      warnedNoPublicBase = true;
       console.error(
-        `tenantOrigin("${slug}"): no public TENANT_BASE_DOMAIN configured ` +
-          `(base="${base}"); emitting the /u/${slug} path form. Set TENANT_BASE_DOMAIN.`,
+        `tenantOrigin: no public TENANT_BASE_DOMAIN configured (base="${base}"); ` +
+          `emitting the /u/{slug} path form for tenant links. Set TENANT_BASE_DOMAIN ` +
+          `if this is a real deployment.`,
       );
     }
     return null;

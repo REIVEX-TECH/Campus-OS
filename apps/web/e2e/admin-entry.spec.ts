@@ -1,22 +1,30 @@
 import { expect, test } from '@playwright/test';
 
-// BUG 1: the platform landing card must link to the tenant as a subdomain of the
-//        CURRENT platform host (single hop), never the legacy host.
+// BUG 1: the platform landing card must link to the tenant canonically and must
+//        NEVER double the slug (lgu.lgu.*), whatever host the landing is served
+//        on. The link is built from TENANT_BASE_DOMAIN, not the request host, so
+//        it is deterministic. In e2e the base is local, so the card is the
+//        /u/{slug} path form; the production subdomain form and non-doubling are
+//        covered exhaustively by the tenant-routing unit tests.
 // BUG 2: bare /admin must be a valid entry point, not a 404.
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const PLATFORM = `localhost:${PORT}`;
 const TENANT = `lgu.localhost:${PORT}`;
 
-test('landing card links to a subdomain of the live platform host, not the legacy host', async ({
+test('landing card links to the tenant without doubling the slug, whatever host serves it', async ({
   request,
 }) => {
-  // A non-local Host makes the landing emit the production subdomain form; the
-  // card href must be {slug}.{that host} and must not contain the legacy domain.
-  const res = await request.get('/', { headers: { Host: 'campus.example.edu' } });
-  expect(res.status()).toBe(200);
-  const html = await res.text();
-  expect(html).toContain('https://lgu.campus.example.edu'); // single-hop nested URL
-  expect(html).not.toContain('reivex.io'); // never the legacy {slug}.APP_DOMAIN host
+  // Served on the platform host and on an unrelated non-local host: the card is
+  // the same deterministic tenant link either way, never the doubled host and
+  // never the legacy host.
+  for (const host of [PLATFORM, 'campus.example.edu']) {
+    const res = await request.get('/', { headers: { Host: host } });
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('/u/lgu'); // fail-safe path form (local base)
+    expect(html).not.toContain('lgu.lgu'); // never the doubled host (the bug)
+    expect(html).not.toContain('reivex.io'); // never the legacy host
+  }
 });
 
 test('bare /admin on a tenant host sends a signed out visitor to sign in (not a 404)', async ({
