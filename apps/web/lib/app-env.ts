@@ -30,7 +30,13 @@
  */
 import manifest from './app-env.vars.json';
 
-type EnvVar = { name: string; required: boolean };
+type EnvVar = {
+  name: string;
+  /** Enforced in every environment (dev included). */
+  required?: boolean;
+  /** Enforced only when NODE_ENV=production. */
+  requiredInProduction?: boolean;
+};
 
 type FsLike = {
   existsSync(p: string): boolean;
@@ -114,14 +120,16 @@ export type AssertOptions = {
 export function assertAppEnv(opts: AssertOptions = {}): void {
   const env = opts.env ?? process.env;
   const problems: string[] = [];
+  const isProd = (env.NODE_ENV ?? '') === 'production';
 
   for (const v of VARS) {
-    if (v.required && !nonEmpty(env[v.name])) {
-      problems.push(`  - ${v.name} is REQUIRED but missing/empty in the process environment.`);
+    const mustHave = v.required || (v.requiredInProduction && isProd);
+    if (mustHave && !nonEmpty(env[v.name])) {
+      const scope = v.required ? 'REQUIRED' : 'REQUIRED in production';
+      problems.push(`  - ${v.name} is ${scope} but missing/empty in the process environment.`);
     }
   }
 
-  const isProd = (env.NODE_ENV ?? '') === 'production';
   if (opts.forceCompare || isProd) {
     const fs = getBuiltin<FsLike>('node:fs');
     const path = getBuiltin<PathLike>('node:path');
