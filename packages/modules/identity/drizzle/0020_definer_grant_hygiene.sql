@@ -13,6 +13,14 @@
 -- migration now enforces it for EVERY definer, so a future owner-only function
 -- that silently inherits the grant fails CI by construction rather than being
 -- caught, twice, only by an adversarial read.
+--
+-- Two grants must go: 0018 created this function with neither a REVOKE nor a
+-- GRANT, so it carries BOTH the default PUBLIC EXECUTE and the campusos_app
+-- entry from ALTER DEFAULT PRIVILEGES. `has_function_privilege` is true if
+-- either stands, so both are removed: PUBLIC unconditionally (as every other
+-- definer does), and campusos_app by name (split-guarded).
+REVOKE ALL ON FUNCTION audit_log_stamp_grant() FROM PUBLIC;
+--> statement-breakpoint
 DO $$
 BEGIN
 	-- Split database only, and only when the app is not the owner: on an unsplit
