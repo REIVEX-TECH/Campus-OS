@@ -38,3 +38,4 @@ Thumbs.db
 
 # local db data (docker volume is named, but ignore any stray dumps)
 *.dump
+apps/web/e2e/.auth/
