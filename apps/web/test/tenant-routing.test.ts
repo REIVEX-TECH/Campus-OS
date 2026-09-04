@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isPlatformHost,
-  planRoute,
-  tenantBaseForHost,
-  tenantUrlForHost,
-} from '../lib/tenant-routing';
+import { isPlatformHost, planRoute, tenantBaseForHost, tenantOrigin } from '../lib/tenant-routing';
 
 // The nested-host model: a tenant is {slug}.TENANT_BASE_DOMAIN, nested under the
 // platform root PLATFORM_HOST (which equals the bare tenant base). APP_DOMAIN is
@@ -125,18 +120,34 @@ describe('planRoute: legacy host 308', () => {
   });
 });
 
-describe('tenantUrlForHost (host-reflective tenant link)', () => {
-  it('is a subdomain of the platform host the request is served on (single hop)', () => {
-    expect(tenantUrlForHost('lgu', 'campusos.reivex.io')).toBe('https://lgu.campusos.reivex.io');
-    // Does NOT depend on TENANT_BASE_DOMAIN: whatever platform host is live, the
-    // tenant link is its subdomain, so the landing card never emits a legacy host.
-    expect(tenantUrlForHost('lgu', 'campus.example.edu')).toBe('https://lgu.campus.example.edu');
+describe('tenantOrigin (canonical tenant link)', () => {
+  it('is {slug}.{TENANT_BASE_DOMAIN}, built from the base not the request host', () => {
+    expect(tenantOrigin('lgu', 'campusos.reivex.io')).toBe('https://lgu.campusos.reivex.io');
+    expect(tenantOrigin('lgu', 'campus.example.edu')).toBe('https://lgu.campus.example.edu');
   });
 
-  it('is null for a local host (tenants are path-based in dev)', () => {
-    expect(tenantUrlForHost('lgu', 'localhost:3000')).toBeNull();
-    expect(tenantUrlForHost('lgu', '127.0.0.1:3000')).toBeNull();
-    expect(tenantUrlForHost('lgu', 'lgu.localhost:3000')).toBeNull();
-    expect(tenantUrlForHost('lgu', '')).toBeNull();
+  it('is idempotent: never doubles the slug (the lgu.lgu.* bug)', () => {
+    // The base already carries the slug (a tenant host passed in, or a
+    // misconfigured base) — the slug must not be prepended again.
+    expect(tenantOrigin('lgu', 'lgu.campusos.reivex.io')).toBe('https://lgu.campusos.reivex.io');
+    expect(tenantOrigin('lgu', 'lgu.campusos.reivex.io')).not.toContain('lgu.lgu');
+  });
+
+  it('never yields lgu.lgu.* for any base it could render against', () => {
+    for (const base of [
+      'campusos.reivex.io',
+      'lgu.campusos.reivex.io',
+      'lgu.lgu.campusos.reivex.io',
+      'campus.example.edu',
+    ]) {
+      expect(tenantOrigin('lgu', base)).not.toMatch(/lgu\.lgu/);
+    }
+  });
+
+  it('is null for a local/absent base (tenants are path-based in dev), never a wrong host', () => {
+    expect(tenantOrigin('lgu', 'localhost:3000')).toBeNull();
+    expect(tenantOrigin('lgu', '127.0.0.1:3000')).toBeNull();
+    expect(tenantOrigin('lgu', 'lgu.localhost:3000')).toBeNull();
+    expect(tenantOrigin('lgu', '')).toBeNull();
   });
 });
