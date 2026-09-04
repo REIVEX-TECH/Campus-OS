@@ -13,6 +13,7 @@ import {
   type Refusal,
 } from './access';
 import { applyVerdict, screen } from './automod';
+import { notify } from './notifications';
 import { canReplyAt, childPath } from './domain/paths';
 import type { CommunitiesSettings } from './manifest';
 import {
@@ -185,6 +186,15 @@ export async function createComment(
       .update(posts)
       .set({ commentCount: sql`${posts.commentCount} + 1` })
       .where(eq(posts.id, postId));
+    // A held comment tells nobody until a moderator lets it through.
+    if (!verdict) {
+      await notify(tx, parentId ? 'reply' : 'comment_on_post', {
+        postId,
+        commentId: id,
+        actorId: actor.userId,
+        actorPublic: !c.isAnonymous,
+      });
+    }
     return ok({ id });
   });
 }

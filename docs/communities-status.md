@@ -13,8 +13,8 @@ Design: `docs/design-communities.md`.
 | A6   | Moderation, oversight, audited unmask                    | Done (#96)              |
 | A7   | Anti-abuse                                               | Done (#97)              |
 | A8   | UI and Playwright                                        | Done (#98)              |
-| B1   | Polls                                                    | **In review** (this PR) |
-| B2   | Notifications, unread count in the top bar               | Not started             |
+| B1   | Polls                                                    | Done (#99)              |
+| B2   | Notifications, unread count in the top bar               | **In review** (this PR) |
 | B3   | Search and the community directory                       | Not started             |
 | B4   | Flairs, pinned ordering, crosspost, share                | Not started             |
 | B5   | Profiles, karma toggle, saved and hidden, blocked list   | Not started             |

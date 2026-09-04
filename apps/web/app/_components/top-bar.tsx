@@ -28,6 +28,8 @@ export type TopBarLabels = {
   account: AccountLabels;
 };
 
+export type TopNotifications = { href: string; unread: number; label: string } | null;
+
 export function TopBar({
   tenantName,
   tenant,
@@ -35,6 +37,7 @@ export function TopBar({
   searchHref,
   signInHref,
   account,
+  notifications = null,
   firebase,
   labels,
 }: {
@@ -44,6 +47,7 @@ export function TopBar({
   searchHref: string;
   signInHref: string;
   account: TopAccount;
+  notifications?: TopNotifications;
   firebase: FirebaseWebConfig | null;
   labels: TopBarLabels;
 }) {
@@ -114,6 +118,20 @@ export function TopBar({
             <SearchIcon />
           </button>
           <ThemeToggle label={labels.theme} />
+          {notifications ? (
+            <Link
+              href={notifications.href}
+              aria-label={notifications.label}
+              className="ios-pressable relative grid h-9 w-9 place-items-center rounded-full text-foreground"
+            >
+              <BellIcon />
+              {notifications.unread > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 text-primary-foreground">
+                  {notifications.unread > 99 ? '99+' : notifications.unread}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
           <AccountMenu
             account={account}
             signInHref={signInHref}
@@ -155,6 +173,23 @@ function CloseIcon() {
       aria-hidden="true"
     >
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg
+      className="h-[18px] w-[18px]"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0" />
     </svg>
   );
 }

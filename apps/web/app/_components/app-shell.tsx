@@ -8,6 +8,7 @@ import { MODULES } from '@/lib/modules';
 import { ChromeProvider } from './chrome-context';
 import { Sidebar, type SidebarGroup, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
+import { unreadCount } from '@campusos/module-communities/notifications';
 import { TopBar } from './top-bar';
 
 /**
@@ -58,6 +59,9 @@ export async function AppShell({
   }));
   // The communities a signed in person has joined, as a second section.
   const groups: SidebarGroup[] = [];
+  // The bell: one count per page for a signed in person, only where the module is on.
+  const unread =
+    actor && enabledModules.includes('communities') ? await unreadCount(actor, tenantSlug) : null;
   if (actor && enabledModules.includes(COMMUNITIES)) {
     const mine = await myCommunities(actor, tenantSlug);
     groups.push({
@@ -87,6 +91,11 @@ export async function AppShell({
             actor
               ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
               : null
+          }
+          notifications={
+            unread === null
+              ? null
+              : { href: `${base}/notifications`, unread, label: t('notifications.bell') }
           }
           firebase={firebaseWebConfig()}
           labels={{

@@ -4,6 +4,7 @@ import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { canInCommunity, canInTenant, type Refusal } from './access';
 import type { CommunitiesSettings } from './manifest';
+import { notify } from './notifications';
 import {
   comments,
   commentsRead,
@@ -145,6 +146,13 @@ export async function removeItem(
       targetId: id,
       reason,
       meta: { postId: item.postId },
+    });
+    // The author learns it happened, not who did it.
+    await notify(tx, type === 'post' ? 'post_removed' : 'comment_removed', {
+      postId: item.postId,
+      commentId: type === 'comment' ? id : null,
+      actorId: actor.userId,
+      actorPublic: false,
     });
     return ok({ removed: true });
   });
