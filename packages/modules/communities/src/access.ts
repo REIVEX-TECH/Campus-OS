@@ -93,8 +93,15 @@ export async function canInCommunity(
 }
 
 /**
- * A verified, active member of the tenant. Read from the person's own
+ * A verified member of the tenant, in good standing. Read from the person's own
  * membership row under their own context; no import of the identity module.
+ *
+ * A restriction or a suspension with an expiry that has passed is not a
+ * standing any more, which is the same clause `auth_effective_permissions`
+ * carries (identity 0014). Without it here, the two disagreed: a suspension
+ * that ran out gave a person their permissions back and still refused every
+ * write, leaving them stuck until an administrator lifted by hand something
+ * that had already ended.
  */
 export async function isVerifiedMember(
   tx: TenantTransaction,
@@ -105,7 +112,8 @@ export async function isVerifiedMember(
     ...(await tx.execute(sql`
       select 1 from tenant_memberships
       where user_id = ${userId}::uuid and tenant_id = ${tenantId}
-        and status = 'active' and verified_at is not null
+        and verified_at is not null
+        and (status = 'active' or (standing_until is not null and standing_until <= now()))
       limit 1`)),
   ];
   return rows.length > 0;

@@ -15,7 +15,7 @@ import {
   ensureDomainMembership,
 } from '@campusos/module-identity/membership';
 import { grantRole } from '@campusos/module-identity/rbac';
-import { standingFor } from '@campusos/module-identity/standing';
+import { liftStanding, setStanding, standingFor } from '@campusos/module-identity/standing';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
 import { createRoleTemplate } from '@campusos/module-identity/role-templates';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
@@ -2599,5 +2599,104 @@ describe('reporting a person', () => {
     expect(onPost).toMatchObject({ ok: true, value: { hidden: false } });
     const stillPeople = await listReportedPeople(admin1, 'aaa');
     expect(stillPeople.ok && stillPeople.value).toEqual([]);
+  });
+});
+
+describe('standing reaches every write', () => {
+  it('lets a restricted member read and refuses everything they would write', async () => {
+    const a = await admin('st-admin');
+    const owner = await member('st-owner');
+    const target = await member('st-target');
+    const c = await community(owner, 'Standing');
+    await joinCommunity(target, 'aaa', c.id, settings);
+    const host = await createPost(
+      owner,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'A thread', body: '' },
+      settings,
+    );
+    if (!host.ok) throw new Error(host.error);
+    const mine = await createPost(
+      target,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Mine', body: '' },
+      settings,
+    );
+    if (!mine.ok) throw new Error(mine.error);
+
+    expect(
+      await setStanding(a, 'aaa', target.userId, { status: 'restricted', reason: 'Cooling off' }),
+    ).toMatchObject({ ok: true });
+
+    // Read-only in the tenant: they can still see everything they could see.
+    expect((await postById(target, 'aaa', host.value.id))!.title).toBe('A thread');
+    expect((await listCommunityPosts(target, 'aaa', c.id)).items.length).toBeGreaterThan(0);
+
+    // And write nothing at all. The refusal is `not_verified` because standing
+    // and verification meet at the same check: `auth_effective_permissions`
+    // returns nothing for a membership that is not active, so the database is
+    // what refuses them rather than a branch in this module.
+    const refused = { ok: false, error: 'not_verified' };
+    expect(
+      await createPost(target, 'aaa', c.id, { kind: 'text', title: 'No', body: '' }, settings),
+    ).toEqual(refused);
+    expect(
+      await createComment(target, 'aaa', host.value.id, null, { body: 'no' }, settings),
+    ).toEqual(refused);
+    expect(await votePost(target, 'aaa', host.value.id, 1)).toEqual(refused);
+    expect(
+      await reportItem(target, 'aaa', {
+        itemType: 'post',
+        itemId: host.value.id,
+        reason: 'spam',
+      }),
+    ).toEqual(refused);
+    expect(await createCommunity(target, 'aaa', { name: 'Not Now' }, settings)).toEqual(refused);
+    expect(await joinCommunity(target, 'aaa', c.id, settings)).toEqual(refused);
+    // Their own post is still theirs and still there; a restriction is not a
+    // deletion, and nothing of theirs was touched.
+    expect((await postById(null, 'aaa', mine.value.id))!.removedAt).toBeNull();
+
+    // Lifting it gives everything back.
+    expect(await liftStanding(a, 'aaa', target.userId)).toMatchObject({ ok: true });
+    expect(
+      (await createPost(target, 'aaa', c.id, { kind: 'text', title: 'Back', body: '' }, settings))
+        .ok,
+    ).toBe(true);
+  });
+
+  it('refuses a suspended member every write too, and holds until it lapses', async () => {
+    const a = await admin('sp-admin');
+    const owner = await member('sp-owner');
+    const target = await member('sp-target');
+    const c = await community(owner, 'Suspended');
+    await joinCommunity(target, 'aaa', c.id, settings);
+
+    expect(
+      await setStanding(a, 'aaa', target.userId, {
+        status: 'suspended',
+        reason: 'Repeated abuse',
+        minutes: 60,
+      }),
+    ).toMatchObject({ ok: true });
+    // A suspension is not enforced at sign in: an account spans universities,
+    // and the same person may be in good standing at another. It is enforced
+    // where this university's pages are, and here, where its writes are.
+    expect(
+      await createPost(target, 'aaa', c.id, { kind: 'text', title: 'No', body: '' }, settings),
+    ).toEqual({ ok: false, error: 'not_verified' });
+
+    // An expiry in the past is no longer a standing, and nothing has to run.
+    await runAsMigrationRole(
+      `update tenant_memberships set standing_until = now() - interval '1 minute'
+       where tenant_id = 'aaa' and user_id = '${target.userId}'`,
+    );
+    expect(await standingFor(target.userId, 'aaa')).toMatchObject({ status: 'active' });
+    expect(
+      (await createPost(target, 'aaa', c.id, { kind: 'text', title: 'Back', body: '' }, settings))
+        .ok,
+    ).toBe(true);
   });
 });
