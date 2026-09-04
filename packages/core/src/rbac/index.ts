@@ -12,6 +12,8 @@ export const PERMISSIONS = [
   'manage-rooms',
   'approve-verifications',
   'manage-members',
+  // Standing: restricting a member to reading, or suspending them outright.
+  'restrict-members',
   'manage-roles',
   'view-analytics',
   'post',

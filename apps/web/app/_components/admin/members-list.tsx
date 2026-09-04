@@ -21,7 +21,9 @@ export type MemberItem = {
   handle: string | null;
   avatarSeed: string;
   roles: MemberRole[];
-  suspended: boolean;
+  standing: 'active' | 'restricted' | 'suspended';
+  /** Why and until when, already worded. Null when in good standing. */
+  standingLine: string | null;
   verified: boolean;
   /** Already formatted for the locale. */
   since: string;
@@ -34,13 +36,17 @@ export type MembersLabels = {
   you: string;
   verified: string;
   unverified: string;
+  restricted: string;
   suspended: string;
+  restrict: string;
+  restrictPrompt: string;
   roles: string;
   noRoles: string;
   addRole: string;
   /** "{role}" is replaced with the role's name. */
   removeRole: string;
   suspend: string;
+  suspendPrompt: string;
   reinstate: string;
   working: string;
   saved: string;
@@ -55,6 +61,7 @@ export function MembersList({
   tenant,
   selfUserId,
   canManageRoles,
+  canRestrict,
   roles,
   items,
   labels,
@@ -62,6 +69,7 @@ export function MembersList({
   tenant: string;
   selfUserId: string;
   canManageRoles: boolean;
+  canRestrict: boolean;
   roles: MemberRole[];
   items: MemberItem[];
   labels: MembersLabels;
@@ -101,11 +109,14 @@ export function MembersList({
         const available = roles.filter((r) => !held.has(r.key));
         const name = m.handle ?? labels.noProfile;
         const isBusy = busy === m.userId;
-        const status = m.suspended
-          ? labels.suspended
-          : m.verified
-            ? labels.verified
-            : labels.unverified;
+        const status =
+          m.standing === 'suspended'
+            ? labels.suspended
+            : m.standing === 'restricted'
+              ? labels.restricted
+              : m.verified
+                ? labels.verified
+                : labels.unverified;
         return (
           <li key={m.userId} className="ios-card flex flex-col gap-3 rounded-2xl p-4">
             <div className="flex items-center gap-3">
@@ -125,7 +136,7 @@ export function MembersList({
               </div>
               <span
                 className={
-                  m.suspended
+                  m.standing !== 'active'
                     ? 'shrink-0 rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive'
                     : 'shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
                 }
@@ -202,22 +213,62 @@ export function MembersList({
               ) : null}
             </div>
 
+            {m.standingLine ? (
+              <p className="text-xs text-muted-foreground">{m.standingLine}</p>
+            ) : null}
+
             {self && outcome?.userId !== m.userId ? null : (
               <div className="flex flex-wrap items-center gap-2">
-                {self ? null : (
+                {self || !canRestrict ? null : m.standing === 'active' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt(labels.restrictPrompt)?.trim() ?? '';
+                        if (reason.length < 3) return;
+                        post(m.userId, '/api/admin/members/status', {
+                          userId: m.userId,
+                          status: 'restricted',
+                          reason,
+                        });
+                      }}
+                      disabled={busy !== null}
+                      aria-busy={isBusy || undefined}
+                      className={buttonVariants({ size: 'sm', variant: 'outline' })}
+                    >
+                      {isBusy ? labels.working : labels.restrict}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt(labels.suspendPrompt)?.trim() ?? '';
+                        if (reason.length < 3) return;
+                        post(m.userId, '/api/admin/members/status', {
+                          userId: m.userId,
+                          status: 'suspended',
+                          reason,
+                        });
+                      }}
+                      disabled={busy !== null}
+                      className={buttonVariants({ size: 'sm', variant: 'outline' })}
+                    >
+                      {labels.suspend}
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
                     onClick={() =>
                       post(m.userId, '/api/admin/members/status', {
                         userId: m.userId,
-                        status: m.suspended ? 'active' : 'suspended',
+                        status: 'active',
                       })
                     }
                     disabled={busy !== null}
                     aria-busy={isBusy || undefined}
                     className={buttonVariants({ size: 'sm', variant: 'outline' })}
                   >
-                    {isBusy ? labels.working : m.suspended ? labels.reinstate : labels.suspend}
+                    {isBusy ? labels.working : labels.reinstate}
                   </button>
                 )}
                 {outcome?.userId === m.userId ? (

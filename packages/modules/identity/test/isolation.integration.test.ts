@@ -27,7 +27,12 @@ import {
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
-import { ensureConfiguredAdmin, ensureDomainMembership, membershipFor } from '../src/membership';
+import {
+  ensureConfiguredAdmin,
+  ensureDomainMembership,
+  isVerified,
+  membershipFor,
+} from '../src/membership';
 import {
   can,
   effectivePermissions,
@@ -36,7 +41,8 @@ import {
   revokeRole,
   rolesForMember,
 } from '../src/rbac';
-import { listMembers, setMemberStatus } from '../src/members';
+import { listMembers } from '../src/members';
+import { appeal, listStandings, liftStanding, setStanding, standingFor } from '../src/standing';
 import { tenantActivity } from '../src/analytics';
 import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
 import {
@@ -112,6 +118,10 @@ beforeEach(async () => {
   await runAsMigrationRole(`truncate table "users" restart identity cascade`);
   await runAsMigrationRole(`truncate table "audit_log" restart identity cascade`);
   await runAsMigrationRole(`truncate table "universities" restart identity cascade`);
+  // Definitions have no tenant, so the truncate above does not reach them: one
+  // another run added would still be here and would make a create report
+  // `exists`. The six system ones are seeded by the migration and stay.
+  await runAsMigrationRole(`delete from "role_templates" where "is_system" = false`);
   await getDb()
     .insert(universities)
     .values([
@@ -543,15 +553,34 @@ describe('membership by domain', () => {
     expect(await membershipFor(actor.userId, 'bbb')).toBeNull();
   });
 
-  it('does nothing for anyone else', async () => {
+  it('makes anyone else a student too, but unverified', async () => {
     const actor = await findOrCreateUser({ subject: 'dom-2', email: 'someone@gmail.com' });
-    expect(await ensureDomainMembership(actor, policy)).toBeNull();
-    expect(await membershipFor(actor.userId, 'aaa')).toBeNull();
+    const membership = await ensureDomainMembership(actor, policy);
+    // The floor everyone stands on: a place to read from and to ask from.
+    // Before this an address off the list got nothing, which left the person
+    // unable to reach the page that would have let them ask to be verified.
+    expect(membership).toMatchObject({
+      tenantId: 'aaa',
+      role: 'student',
+      status: 'active',
+      verifiedAt: null,
+      verificationMethod: null,
+    });
+    expect(isVerified(membership)).toBe(false);
+    expect(await membershipFor(actor.userId, 'aaa')).toMatchObject({ id: membership!.id });
+    // And it grants nothing anywhere else.
+    expect(await membershipFor(actor.userId, 'bbb')).toBeNull();
   });
 
-  it('does nothing for a tenant that joins by invitation', async () => {
+  it('does the same for a tenant that joins by invitation', async () => {
+    // An invitation decides who is verified, not who may read: the same
+    // address on the domain list is still unverified here, because this
+    // tenant does not verify by domain at all.
     const actor = await findOrCreateUser({ subject: 'dom-3', email: 'student@aaa.edu' });
-    expect(await ensureDomainMembership(actor, { ...policy, joinMode: 'invite' })).toBeNull();
+    expect(await ensureDomainMembership(actor, { ...policy, joinMode: 'invite' })).toMatchObject({
+      role: 'student',
+      verifiedAt: null,
+    });
   });
 
   it('is idempotent across sign ins', async () => {
@@ -1139,58 +1168,127 @@ describe('members, and the roles a tenant defines', () => {
     expect(await listMembers(s, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
   });
 
-  it('suspends a member, which removes every permission until they are reinstated', async () => {
+  it('restricts a member, which removes every permission until it is lifted', async () => {
     const a = await admin('sus-admin');
     const s = await member('sus-student');
     expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
       'communities.create',
       'post',
     ]);
-    expect(await setMemberStatus(a, 'aaa', s.userId, 'suspended')).toEqual({
+    const set = await setStanding(a, 'aaa', s.userId, {
+      status: 'restricted',
+      reason: 'Cooling off',
+    });
+    expect(set).toMatchObject({
       ok: true,
-      value: { changed: true },
+      value: { standing: { status: 'restricted', reason: 'Cooling off', until: null } },
     });
     expect((await effectivePermissions(s.userId, 'aaa')).size).toBe(0);
-    // Idempotent: suspending again changes nothing and says so.
-    expect(await setMemberStatus(a, 'aaa', s.userId, 'suspended')).toEqual({
-      ok: true,
-      value: { changed: false },
+    // The person is told what was done, why, and that it has no end date.
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({
+      status: 'restricted',
+      reason: 'Cooling off',
+      until: null,
     });
-    expect(await setMemberStatus(a, 'aaa', s.userId, 'active')).toEqual({
-      ok: true,
-      value: { changed: true },
+    // And an administrator can see who is under one, with their reason.
+    const listed = await listStandings(a, 'aaa');
+    expect(listed.ok && listed.value.find((e) => e.userId === s.userId)).toMatchObject({
+      status: 'restricted',
+      reason: 'Cooling off',
     });
+    expect(await listStandings(s, 'aaa')).toEqual({ ok: false, error: 'not_allowed' });
+
+    // One appeal note, which the administrator sees and a new decision clears.
+    expect(await appeal(s, 'aaa', 'It was a misunderstanding.')).toEqual({
+      ok: true,
+      value: { noted: true },
+    });
+    expect(await appeal(s, 'aaa', 'x')).toEqual({ ok: false, error: 'invalid' });
+    const withAppeal = await listStandings(a, 'aaa');
+    expect(withAppeal.ok && withAppeal.value.find((e) => e.userId === s.userId)?.appealNote).toBe(
+      'It was a misunderstanding.',
+    );
+    // Appealing writes the note and nothing else: the person cannot lift their
+    // own standing, nor verify themselves, by way of the one row they may write.
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({ status: 'restricted' });
+    expect(await membershipFor(s.userId, 'aaa')).toMatchObject({ status: 'restricted' });
+
+    expect(await liftStanding(a, 'aaa', s.userId)).toEqual({ ok: true, value: { changed: true } });
+    expect(await liftStanding(a, 'aaa', s.userId)).toEqual({ ok: true, value: { changed: false } });
     expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
       'communities.create',
       'post',
     ]);
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({ status: 'active', reason: null });
+    // Nothing to appeal once it is lifted.
+    expect(await appeal(s, 'aaa', 'Still sorry.')).toEqual({ ok: false, error: 'not_restricted' });
   });
 
-  it('refuses to suspend oneself, without the permission, or the last administrator', async () => {
+  it('suspends a member, and lets a standing lapse on its own', async () => {
+    const a = await admin('susp-admin');
+    const s = await member('susp-student');
+    const set = await setStanding(a, 'aaa', s.userId, {
+      status: 'suspended',
+      reason: 'Repeated abuse',
+      minutes: 60,
+    });
+    expect(set).toMatchObject({ ok: true, value: { standing: { status: 'suspended' } } });
+    expect(set.ok && set.value.standing.until).toBeInstanceOf(Date);
+    expect((await effectivePermissions(s.userId, 'aaa')).size).toBe(0);
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({
+      status: 'suspended',
+      reason: 'Repeated abuse',
+    });
+
+    // An expiry in the past is no longer a standing, and the permissions return
+    // without anybody running anything: the resolver compares against now().
+    await withActorInTenant(a.userId, 'aaa', (tx) =>
+      tx.execute(
+        sql`update tenant_memberships set standing_until = now() - interval '1 minute'
+            where tenant_id = 'aaa' and user_id = ${s.userId}::uuid`,
+      ),
+    );
+    expect(await standingFor(s.userId, 'aaa')).toMatchObject({ status: 'active' });
+    expect((await effectivePermissions(s.userId, 'aaa')).toArray().sort()).toEqual([
+      'communities.create',
+      'post',
+    ]);
+    // A lapsed standing is not listed as current either.
+    const listed = await listStandings(a, 'aaa');
+    expect(listed.ok && listed.value.some((e) => e.userId === s.userId)).toBe(false);
+  });
+
+  it('refuses a standing on oneself, without the permission, or on the last administrator', async () => {
     const a = await admin('sus-self');
     const s = await member('sus-self-student');
-    expect(await setMemberStatus(a, 'aaa', a.userId, 'suspended')).toEqual({
+    expect(
+      await setStanding(a, 'aaa', a.userId, { status: 'restricted', reason: 'Myself' }),
+    ).toEqual({ ok: false, error: 'self' });
+    expect(
+      await setStanding(s, 'aaa', a.userId, { status: 'restricted', reason: 'The boss' }),
+    ).toEqual({ ok: false, error: 'not_allowed' });
+    expect(await setStanding(a, 'aaa', s.userId, { status: 'restricted', reason: 'x' })).toEqual({
       ok: false,
-      error: 'self',
+      error: 'invalid',
     });
-    expect(await setMemberStatus(s, 'aaa', a.userId, 'suspended')).toEqual({
-      ok: false,
-      error: 'not_allowed',
-    });
-    // A member manager who is not an administrator cannot remove the last one.
+
+    // Someone who may restrict but is not an administrator still cannot remove
+    // the last one: a tenant that locks itself out needs the platform to help.
     const p = await platform('sus-platform');
     const created = await createRoleTemplate(p, {
       name: 'Member Manager',
-      permissions: ['manage-members'],
+      permissions: ['manage-members', 'restrict-members'],
     });
     expect(created.ok).toBe(true);
     await grantRole(a, 'aaa', s.userId, 'member-manager');
-    expect(await setMemberStatus(s, 'aaa', a.userId, 'suspended')).toEqual({
-      ok: false,
-      error: 'last_admin',
-    });
     expect(
-      await setMemberStatus(s, 'aaa', '00000000-0000-0000-0000-000000000000', 'suspended'),
+      await setStanding(s, 'aaa', a.userId, { status: 'restricted', reason: 'The boss' }),
+    ).toEqual({ ok: false, error: 'last_admin' });
+    expect(
+      await setStanding(s, 'aaa', '00000000-0000-0000-0000-000000000000', {
+        status: 'restricted',
+        reason: 'Nobody',
+      }),
     ).toEqual({ ok: false, error: 'not_found' });
   });
 
