@@ -2,23 +2,26 @@
 
 Design: `docs/design-communities.md`.
 
-| Item | What                                                     | State                   |
-| ---- | -------------------------------------------------------- | ----------------------- |
-| Doc  | Design                                                   | In review               |
-| A1   | Schema, RLS, RBAC wiring, anonymity views, module shell  | Merged, `de2e2a0`       |
-| A2   | Communities: create, settings, join, rules, rail         | Merged, `a2d49c6`       |
-| A3   | Posts                                                    | Merged, `2218e04`       |
-| A4   | Comments                                                 | Done (#94)              |
-| A5   | Voting, ranking, feeds, pagination                       | Done (#95)              |
-| A6   | Moderation, oversight, audited unmask                    | Done (#96)              |
-| A7   | Anti-abuse                                               | Done (#97)              |
-| A8   | UI and Playwright                                        | Done (#98)              |
-| B1   | Polls                                                    | Done (#99)              |
-| B2   | Notifications, unread count in the top bar               | Done                    |
-| B3   | Search and the community directory                       | Done                    |
-| B4   | Flairs, pinned ordering, crosspost, share                | Done                    |
-| B5   | Profiles, karma toggle, saved and hidden, blocked list   | Done                    |
-| B6   | Polish: counts, rules acceptance, archive after N months | **In review** (this PR) |
+| Item | What                                                     | State             |
+| ---- | -------------------------------------------------------- | ----------------- |
+| Doc  | Design                                                   | Merged            |
+| A1   | Schema, RLS, RBAC wiring, anonymity views, module shell  | Merged, `de2e2a0` |
+| A2   | Communities: create, settings, join, rules, rail         | Merged, `a2d49c6` |
+| A3   | Posts                                                    | Merged, `2218e04` |
+| A4   | Comments                                                 | Done (#94)        |
+| A5   | Voting, ranking, feeds, pagination                       | Done (#95)        |
+| A6   | Moderation, oversight, audited unmask                    | Done (#96)        |
+| A7   | Anti-abuse                                               | Done (#97)        |
+| A8   | UI and Playwright                                        | Done (#98)        |
+| B1   | Polls                                                    | Done (#99)        |
+| B2   | Notifications, unread count in the top bar               | Done              |
+| B3   | Search and the community directory                       | Done              |
+| B4   | Flairs, pinned ordering, crosspost, share                | Done              |
+| B5   | Profiles, karma toggle, saved and hidden, blocked list   | Done              |
+| B6   | Polish: counts, rules acceptance, archive after N months | Merged, `eac1684` |
+| C1   | Karma: materialised, self-vote refused, per-day cap      | Merged, `3a1c4b9` |
+| C2   | Participation gates and the tenant floor                 | Merged, `3a37550` |
+| C3   | Reporting a person, tenant-wide queue                    | Merged, `782e75d` |
 
 Deferred on purpose (design §14): media uploads, direct messages, awards, wiki,
 email digests.
@@ -45,9 +48,9 @@ comments, karma decay, comment paging on profiles, and email digests (design
 §14). Live-database steps for each migration are in the PR bodies and
 `docs/runbooks/`.
 
-## Phase C: karma (C1) in review
+## Phase C: complete
 
-Karma (C1) replaces the live sum of item scores with a materialised pair of
+Karma (C1) replaced the live sum of item scores with a materialised pair of
 totals, moved by the vote that causes them and rebuilt from the votes by
 `pnpm communities:karma`. An author's vote on their own item is now refused
 rather than counted, one account may move another's karma only so far in a day,
@@ -70,9 +73,12 @@ administrator's queue, which sits above the member list so the decision and the
 controls that carry it out are on one page. Restricting or suspending stays a
 separate, signed act.
 
-## Phase C: complete
+All three are merged. A follow-up (`1838206`) added the two tests the
+governance addendum asked for and nothing had, that a restricted member cannot
+write and neither can a suspended one, and fixed the two bugs they found: a
+standing whose expiry had passed was honoured by one resolver and not by the
+other two, so a suspension that ran out left a person half restored.
 
-Karma (C1), participation gates (C2) and reporting a person (C3) are merged or
-in review. Left for later, by choice: karma decay, showing a community's gates
-before somebody tries, and a tenant-admin surface for the module settings that
-hold the floor.
+Left for later, by choice: karma decay, showing a community's gates before
+somebody tries, and a tenant-admin surface for the module settings that hold
+the floor.
