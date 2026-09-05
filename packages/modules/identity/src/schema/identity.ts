@@ -208,6 +208,24 @@ export const userRecents = pgTable(
 );
 
 /**
+ * Whether a person has dismissed the "get verified" prompt for a tenant. Per
+ * account, not per device: theirs to set and to read, nobody else's. See 0027.
+ */
+export const verifyPromptDismissed = pgTable(
+  'verify_prompt_dismissed',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tenantId] })],
+);
+
+/**
  * Asks to be verified in a tenant, from people off its email domain. The
  * details are what an admin checks against the university's records and are
  * PURGED on decision; the row stays, with its status and timestamps, so the

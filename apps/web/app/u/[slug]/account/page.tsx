@@ -12,7 +12,8 @@ import { AccountAvatarButton } from '@/app/_components/account-avatar-button';
 import { PageShell } from '@/app/_components/page-shell';
 import { communitiesEnabled } from '@/lib/communities';
 import { SignOutButton } from '@/app/_components/sign-out-button';
-import { VerificationRequestForm } from '@/app/_components/verification-request-form';
+import { GetVerified } from '@/app/_components/get-verified';
+import { getVerifiedLabels } from '@/lib/verify-labels';
 import { currentActor } from '@/lib/auth';
 import { firstAdminSection } from '@/lib/admin-sections';
 import { translator } from '@/lib/i18n';
@@ -179,22 +180,9 @@ export default async function AccountPage({ params }: Params) {
                     {t('account.verification.rejected')}
                   </p>
                 ) : null}
-                <VerificationRequestForm
-                  tenant={slug}
-                  labels={{
-                    fullName: t('account.verification.fullName'),
-                    rollNumber: t('account.verification.rollNumber'),
-                    note: t('account.verification.note'),
-                    submit: t('account.verification.submit'),
-                    submitting: t('account.verification.submitting'),
-                    sent: t('account.verification.sent'),
-                    errorFormat: t('account.verification.errorFormat'),
-                    errorOpen: t('account.verification.errorOpen'),
-                    errorRate: t('account.verification.errorRate'),
-                    errorVerified: t('account.verification.errorVerified'),
-                    errorGeneric: t('account.verification.errorGeneric'),
-                  }}
-                />
+                <div>
+                  <GetVerified tenant={slug} labels={getVerifiedLabels(t)} />
+                </div>
               </>
             )}
           </section>

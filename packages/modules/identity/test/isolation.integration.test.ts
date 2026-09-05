@@ -29,6 +29,7 @@ import {
   userRecents,
   users,
   verificationRequests,
+  verifyPromptDismissed,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
@@ -57,6 +58,8 @@ import {
 import { createTenant, listTenantConfigs, updateTenantConfig } from '../src/tenants';
 import {
   decideRequest,
+  dismissVerifyPrompt,
+  isVerifyPromptDismissed,
   latestRequest,
   listPendingRequests,
   requestVerification,
@@ -2405,5 +2408,22 @@ describe('finding a member by email (0026)', () => {
         ].length,
     );
     expect(crossTenant).toBe(0);
+  });
+});
+
+describe('verify prompt dismissal (0027)', () => {
+  it('remembers a dismissal per account and per tenant, idempotently, and keeps it private', async () => {
+    await dismissVerifyPrompt(alice, 'aaa');
+    await dismissVerifyPrompt(alice, 'aaa'); // idempotent: no error, no duplicate
+
+    expect(await isVerifyPromptDismissed(alice, 'aaa')).toBe(true);
+    expect(await isVerifyPromptDismissed(alice, 'bbb')).toBe(false); // per tenant
+    expect(await isVerifyPromptDismissed(bob, 'aaa')).toBe(false); // per account
+
+    // RLS: bob's own dismissal is never visible to alice.
+    await dismissVerifyPrompt(bob, 'aaa');
+    const aliceSees = await withActor(alice, (tx) => tx.select().from(verifyPromptDismissed));
+    expect(aliceSees.every((r) => r.userId === alice)).toBe(true);
+    expect(await isVerifyPromptDismissed(bob, 'aaa')).toBe(true);
   });
 });
