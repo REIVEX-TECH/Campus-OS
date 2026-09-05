@@ -48,18 +48,50 @@ function isLocalHost(host: string): boolean {
 }
 
 /**
- * A tenant's absolute URL as a subdomain of `host`, the platform host the current
- * request is served on: `https://{slug}.{host}`. HOST-REFLECTIVE, so the link
- * always matches the live platform host and is a SINGLE hop, with no dependency
- * on TENANT_BASE_DOMAIN being set in the environment (if it is unset or stale, an
- * env-based URL would emit the legacy host and force a second redirect). Returns
- * null for a local host, where tenants are reached by the /u/{slug} path instead.
- * The landing and sitemap are only served on the platform host (== the tenant
- * base), so its subdomains are exactly the tenant hosts.
+ * A tenant's absolute origin: `https://{slug}.{TENANT_BASE_DOMAIN}`.
+ *
+ * Built from the configured tenant base domain, NOT the request host, so it is
+ * the SAME on whatever host it renders on. That deterministic base is the fix for
+ * the `{slug}.{slug}.*` doubling class: the previous host-reflective form
+ * (`{slug}.{host}`) doubled to `lgu.lgu.campusos.reivex.io` whenever a page that
+ * emits tenant links was itself served on a tenant host (e.g. the platform
+ * landing rendered on `lgu.…` because a missing TENANT_BASE_DOMAIN broke tenant
+ * detection).
+ *
+ * IDEMPOTENT: if the base already carries the slug (a misconfigured base, or a
+ * tenant host passed in), the slug is not prepended again - this single guard
+ * makes doubling unrepresentable for every emitter that goes through here.
+ *
+ * NEVER a wrong host:
+ *  - ABSENT base (empty/whitespace) THROWS. A missing base must never silently
+ *    produce a hostname; that is exactly what shipped a broken link to users.
+ *    This is unreachable in a booted production process (assertAppEnv requires
+ *    TENANT_BASE_DOMAIN in production), so reaching it is a real misconfiguration.
+ *  - LOCAL base (localhost/127/::1) returns null, so callers emit the `/u/{slug}`
+ *    path form; that is the correct dev behaviour, not a wrong host.
  */
-export function tenantUrlForHost(slug: string, host: string): string | null {
-  if (!host || isLocalHost(host)) return null;
-  return `https://${slug}.${host}`;
+export function tenantOrigin(slug: string, base: string = tenantBaseDomain()): string | null {
+  const s = slug.toLowerCase();
+  const bare = bareHost(base);
+  if (!bare.trim()) {
+    throw new Error(
+      `tenantOrigin("${slug}"): the tenant base domain is absent; refusing to ` +
+        `construct a tenant URL. Set TENANT_BASE_DOMAIN.`,
+    );
+  }
+  if (isLocalHost(base)) return null; // dev: tenants are reached by /u/{slug}
+  if (bare === s) return `https://${base}`;
+  // Idempotent: if the base already leads with the slug (a tenant host passed in,
+  // or a base that is itself already doubled), strip every leading `{slug}.` group
+  // so the slug appears exactly once. This makes `{slug}.{slug}.*` unrepresentable
+  // for any base, not just the single-prepend case.
+  if (bare.startsWith(`${s}.`)) {
+    const prefix = `${s}.`;
+    let b = base;
+    while (b.toLowerCase().startsWith(prefix + prefix)) b = b.slice(prefix.length);
+    return `https://${b}`;
+  }
+  return `https://${s}.${base}`;
 }
 
 /**

@@ -8,15 +8,16 @@ import {
   isPlatformHost,
   tenantBaseDomain,
   tenantBaseForHost,
-  tenantUrlForHost,
+  tenantOrigin,
 } from '@/lib/tenant-routing';
 
 export const dynamic = 'force-dynamic';
 
-// Host-reflective: a tenant instance is a subdomain of the platform host this
-// sitemap is served on (single hop), or the /u/{slug} path in local dev.
-function instanceUrl(host: string, baseUrl: string, slug: string): string {
-  return tenantUrlForHost(slug, host) ?? `${baseUrl}/u/${slug}`;
+// A tenant instance is its canonical origin {slug}.{TENANT_BASE_DOMAIN}, built
+// from the configured base (not this request's host, so no {slug}.{slug}.*
+// doubling), or the /u/{slug} path in local dev.
+function instanceUrl(baseUrl: string, slug: string): string {
+  return tenantOrigin(slug) ?? `${baseUrl}/u/${slug}`;
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -29,7 +30,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [
       { url: `${baseUrl}/`, lastModified: now, changeFrequency: 'weekly', priority: 1 },
       ...(await getTenantRegistry()).all().map((tnt) => ({
-        url: instanceUrl(host, baseUrl, tnt.slug),
+        url: instanceUrl(baseUrl, tnt.slug),
         lastModified: now,
         changeFrequency: 'daily' as const,
         priority: 0.8,

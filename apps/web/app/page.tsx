@@ -7,7 +7,7 @@ import { getTenantRegistry } from '@/lib/tenants';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { websiteLd } from '@/lib/json-ld';
 import { baseUrlFromHost } from '@/lib/tenant';
-import { tenantUrlForHost } from '@/lib/tenant-routing';
+import { tenantOrigin } from '@/lib/tenant-routing';
 import { JsonLd } from './_components/json-ld';
 import { PlatformHeader } from './_components/platform-header';
 import { SkipLink } from './_components/skip-link';
@@ -44,11 +44,12 @@ const FEATURES = [
 export default async function PlatformHome() {
   const t = translator('en');
   const tenants = (await getTenantRegistry()).all();
-  // Host-reflective: the landing is served on the platform host, so a tenant is
-  // a subdomain of THIS host (single hop, no legacy redirect). Path-based in dev.
+  // A tenant link is its canonical origin {slug}.{TENANT_BASE_DOMAIN}, built from
+  // the configured base (NOT this request's host), so it is correct even if the
+  // landing is mistakenly served on a tenant host. Path-based in dev.
   const host = (await headers()).get('host') ?? '';
   const baseUrl = baseUrlFromHost(host);
-  const tenantUrl = (slug: string): string => tenantUrlForHost(slug, host) ?? `/u/${slug}`;
+  const tenantUrl = (slug: string): string => tenantOrigin(slug) ?? `/u/${slug}`;
 
   return (
     <div className="flex min-h-screen flex-col">

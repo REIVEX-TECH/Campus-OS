@@ -1,0 +1,13 @@
+{
+  "comment": "Single source of truth for the env vars the RUNTIME web process reads from .env. ecosystem.config.cjs builds its pm2 forward-list from this, and assertAppEnv (apps/web/lib/app-env.ts, run at boot from instrumentation.ts) proves each one reached the process. 'required' is enforced in every environment; 'requiredInProduction' only when NODE_ENV=production (dev leaves PLATFORM_HOST empty and the host vars fall back to localhost). Declare a runtime var here ONCE; do not maintain a second list. EXCLUDES: NODE_ENV (ecosystem sets it directly), MIGRATION_DATABASE_URL / TEST_* (owner + test DBs the app must never hold), NEXT_PUBLIC_FIREBASE_* / FIREBASE_PROJECT_ID (inlined by Next at build time, not read from the runtime env), LGU_* (ingestion job only).",
+  "vars": [
+    { "name": "DATABASE_URL", "required": true },
+    { "name": "TENANT_BASE_DOMAIN", "requiredInProduction": true },
+    { "name": "PLATFORM_HOST", "requiredInProduction": true },
+    { "name": "APP_DOMAIN", "requiredInProduction": true },
+    { "name": "PORT", "required": false },
+    { "name": "SOURCE_MODE", "required": false },
+    { "name": "SUPERADMIN_EMAILS", "required": false },
+    { "name": "GOOGLE_SITE_VERIFICATION", "required": false }
+  ]
+}
