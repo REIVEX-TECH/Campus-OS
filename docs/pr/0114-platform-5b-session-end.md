@@ -16,9 +16,9 @@ This closes that gap so ending a session actually ends the grant:
   grant bound to a session (sets `revoked_at`, `revoke_reason = 'session_ended'`,
   audits each). App-callable by name (sign-out runs as the app role); ambient
   PUBLIC/default grant revoked first.
-- `packages/modules/identity/src/sessions.ts` - `revokeSession` (sign-out) calls
-  it before soft-revoking the session, so sign-out, session revocation, and any
-  future session-kill path all revoke the bound grant.
+- `packages/modules/identity/src/sessions.ts` - `revokeSession` (sign-out)
+  revokes the session first (committed), then calls it best-effort, so sign-out,
+  session revocation, and any future session-kill path revoke the bound grant.
 
 Result across the three session-end paths:
 
