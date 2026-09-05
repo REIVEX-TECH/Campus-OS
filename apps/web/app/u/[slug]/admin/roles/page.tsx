@@ -5,6 +5,7 @@ import { getTenantRegistry } from '@/lib/tenants';
 import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { RoleList } from '@/app/_components/admin/role-list';
+import { GrantByEmail } from '@/app/_components/admin/grant-by-email';
 import { PageShell } from '@/app/_components/page-shell';
 import { accessForPage } from '@/lib/tenant-access';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -79,6 +80,29 @@ export default async function AdminRolesPage({ params }: Params) {
             definitionNote: t('admin.roles.definitionNote'),
           }}
         />
+
+        <section aria-labelledby="grant-by-email" className="flex flex-col gap-3 px-1">
+          <h2 id="grant-by-email" className="text-sm font-semibold">
+            {t('admin.grantByEmail.heading')}
+          </h2>
+          <GrantByEmail
+            tenant={slug}
+            labels={{
+              intro: t('admin.grantByEmail.intro'),
+              email: t('admin.grantByEmail.email'),
+              find: t('admin.grantByEmail.find'),
+              finding: t('admin.grantByEmail.finding'),
+              notFound: t('admin.grantByEmail.notFound'),
+              foundVerified: t('admin.grantByEmail.foundVerified', { handle: '{handle}' }),
+              foundUnverified: t('admin.grantByEmail.foundUnverified', { handle: '{handle}' }),
+              alreadyAdmin: t('admin.grantByEmail.alreadyAdmin', { handle: '{handle}' }),
+              grant: t('admin.grantByEmail.grant'),
+              granting: t('admin.grantByEmail.granting'),
+              granted: t('admin.grantByEmail.granted', { handle: '{handle}' }),
+              failed: t('admin.grantByEmail.failed'),
+            }}
+          />
+        </section>
 
         <p className="px-1 text-sm">
           <Link href={`${base}/account`} className="font-medium text-primary hover:underline">

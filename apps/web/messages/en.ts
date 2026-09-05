@@ -37,6 +37,8 @@ export const en = {
   'platform.admin.new.heading': 'New university',
   'platform.admin.new.intro':
     'The slug is permanent: it keys every row the university owns. Everything else can change later.',
+  'platform.admin.new.firstAdmin':
+    'A new university starts with no administrators. After you create it, ask its first administrator to sign in to the university once, then grant them the administrator role from its roles page while you are entered on a grant.',
   'platform.admin.edit.heading': 'Edit {name}',
   'platform.admin.edit.intro':
     'Saving writes this configuration to the database, which then wins over the file for this university.',
@@ -594,6 +596,21 @@ export const en = {
   'admin.roles.permission.view-analytics': 'View analytics',
   'admin.roles.permission.post': 'Post in communities',
   'admin.roles.permission.moderate': 'Moderate posts and reports',
+  'admin.grantByEmail.heading': 'Grant an administrator by email',
+  'admin.grantByEmail.intro':
+    'Find a member of this university by the email they signed in with, then grant them the administrator role. They must have signed in to this university at least once.',
+  'admin.grantByEmail.email': 'Email address',
+  'admin.grantByEmail.find': 'Find member',
+  'admin.grantByEmail.finding': 'Finding',
+  'admin.grantByEmail.notFound':
+    'No member of this university has that email. Ask them to sign in to this university once, then try again.',
+  'admin.grantByEmail.foundVerified': '{handle} is a verified member.',
+  'admin.grantByEmail.foundUnverified': '{handle} is a member, not yet verified.',
+  'admin.grantByEmail.alreadyAdmin': '{handle} is already an administrator.',
+  'admin.grantByEmail.grant': 'Grant administrator',
+  'admin.grantByEmail.granting': 'Granting',
+  'admin.grantByEmail.granted': '{handle} is now an administrator.',
+  'admin.grantByEmail.failed': 'That did not go through. You can try again.',
   'admin.backToAccount': 'Back to your account',
   'admin.noProfile': 'Account not active',
   'communities.heading': 'Communities',

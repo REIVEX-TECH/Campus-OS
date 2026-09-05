@@ -2749,6 +2749,7 @@ describe('definer grant hygiene', () => {
     auth_assume_tenant_grant: 'app',
     auth_effective_community_permissions: 'app',
     auth_effective_permissions: 'app',
+    auth_find_member_by_email: 'app',
     auth_grant_admin_for_txn: 'app',
     auth_grant_platform_admin: 'app',
     auth_handle_is_reserved: 'app',
