@@ -821,6 +821,72 @@ describe('configured admins', () => {
   });
 });
 
+describe('migrating configured admins to memberships (0023)', () => {
+  // The one-time, owner-run migration that turns each config adminEmails address
+  // with an account into a real tenant_admin membership, audited distinctly, so
+  // `ensureConfiguredAdmin` can then be retired. It is owner-only: the
+  // application role must never be able to seed tenant_admin by arbitrary email.
+  it('seeds a tenant_admin membership for a listed address, audited as migrated_from_config', async () => {
+    await runAsMigrationRole(`select auth_migrate_configured_admin('aaa', 'alice@aaa.edu')`);
+
+    const membership = await membershipFor(alice, 'aaa');
+    expect(membership).toMatchObject({ role: 'tenant_admin', status: 'active' });
+    expect(membership!.verificationMethod).toBe('config');
+
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'membership.migrated_from_config')),
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]!.actorUserId).toBe(alice);
+    expect(audits[0]!.meta).toMatchObject({ role: 'tenant_admin', source: 'config_migration' });
+  });
+
+  it('is idempotent: a second run neither duplicates the membership nor re-audits', async () => {
+    await runAsMigrationRole(`select auth_migrate_configured_admin('aaa', 'alice@aaa.edu')`);
+    await runAsMigrationRole(`select auth_migrate_configured_admin('aaa', 'alice@aaa.edu')`);
+
+    const rows = await withActor(alice, (tx) =>
+      tx.select().from(tenantMemberships).where(eq(tenantMemberships.userId, alice)),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.role).toBe('tenant_admin');
+
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'membership.migrated_from_config')),
+    );
+    expect(audits).toHaveLength(1);
+  });
+
+  it('upgrades an existing student in place rather than duplicating', async () => {
+    await ensureDomainMembership(
+      { userId: alice, email: 'alice@aaa.edu' },
+      { slug: 'aaa', joinMode: 'domain', allowedEmailDomains: ['aaa.edu'] },
+    );
+    await runAsMigrationRole(`select auth_migrate_configured_admin('aaa', 'ALICE@AAA.EDU')`);
+
+    const rows = await withActor(alice, (tx) =>
+      tx.select().from(tenantMemberships).where(eq(tenantMemberships.userId, alice)),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.role).toBe('tenant_admin');
+  });
+
+  it('touches nobody with no account yet (no_user), writing no membership', async () => {
+    await runAsMigrationRole(`select auth_migrate_configured_admin('aaa', 'nobody@aaa.edu')`);
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'membership.migrated_from_config')),
+    );
+    expect(audits).toHaveLength(0);
+  });
+
+  it('is owner-only: the application role cannot seed tenant_admin by email', async () => {
+    await expect(
+      getDb().execute(sql`select auth_migrate_configured_admin('aaa', 'alice@aaa.edu')`),
+    ).rejects.toThrow(/permission denied/i);
+    expect(await membershipFor(alice, 'aaa')).toBeNull();
+  });
+});
+
 describe('verification requests', () => {
   it('lets a person ask once, see their own, and change nothing', async () => {
     const user = await findOrCreateUser({ subject: 'req-1', email: 'req1@gmail.com' });

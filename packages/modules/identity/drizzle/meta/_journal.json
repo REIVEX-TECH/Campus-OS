@@ -162,6 +162,13 @@
       "when": 1756800022000,
       "tag": "0022_standing_self_check",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1756800023000,
+      "tag": "0023_migrate_configured_admins",
+      "breakpoints": true
     }
   ]
 }
