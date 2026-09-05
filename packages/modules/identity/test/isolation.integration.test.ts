@@ -2192,3 +2192,156 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect(grant.grantId).toBeTruthy();
   });
 });
+
+describe('setting a tenant join policy (0024)', () => {
+  // aaa needs a config row for the definer to update, and its system roles synced
+  // so auth_effective_permissions and the grant resolver have a tenant_admin to
+  // resolve to (a resident member would trigger the sync; these tests create few).
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `insert into tenant_configs (slug, config)
+         values ('aaa', '{"slug":"aaa","displayName":"Alpha U","joinMode":"invite","allowedEmailDomains":[]}'::jsonb)
+         on conflict (slug) do update set config = excluded.config, version = 1`,
+    );
+  });
+
+  async function joinPolicyCode(userId: string, mode: string, domains: string[]): Promise<string> {
+    const arr = domains.length
+      ? sql`array[${sql.join(
+          domains.map((d) => sql`${d}`),
+          sql`, `,
+        )}]::text[]`
+      : sql`array[]::text[]`;
+    const [row] = [
+      ...(await withActor(userId, (tx) =>
+        tx.execute(sql`select auth_set_join_policy('aaa', ${mode}, ${arr}) as code`),
+      )),
+    ] as { code: string }[];
+    return row?.code ?? 'error';
+  }
+
+  async function aaaConfig(): Promise<Record<string, unknown>> {
+    const [row] = await withTenant('aaa', (tx) =>
+      tx
+        .select({ config: tenantConfigs.config })
+        .from(tenantConfigs)
+        .where(eq(tenantConfigs.slug, 'aaa')),
+    );
+    return (row?.config ?? {}) as Record<string, unknown>;
+  }
+
+  it('lets a tenant admin set the mode and domains, touching only those keys, audited as a member action', async () => {
+    const admin = await adminIn('aaa', 'jp-admin');
+    expect(await joinPolicyCode(admin.userId, 'domain', ['AAA.edu', ' aaa.edu '])).toBe('ok');
+
+    const config = await aaaConfig();
+    expect(config.joinMode).toBe('domain');
+    expect(config.allowedEmailDomains).toEqual(['aaa.edu', 'aaa.edu']); // normalised, order kept
+    expect(config.displayName).toBe('Alpha U'); // other keys untouched
+
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]!.actorUserId).toBe(admin.userId);
+    expect(audits[0]!.meta).toMatchObject({ joinMode: 'domain', via: 'member' });
+  });
+
+  it('refuses a consumer email provider structurally, writing nothing', async () => {
+    const admin = await adminIn('aaa', 'jp-consumer');
+    expect(await joinPolicyCode(admin.userId, 'domain', ['aaa.edu', 'gmail.com'])).toBe(
+      'blocked_domain:gmail.com',
+    );
+    const config = await aaaConfig();
+    expect(config.allowedEmailDomains).toEqual([]); // unchanged
+    expect(config.joinMode).toBe('invite');
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(audits).toHaveLength(0);
+  });
+
+  it('refuses anyone without manage-members, and a platform admin without a grant', async () => {
+    // alice has no membership in aaa: no permissions there.
+    expect(await joinPolicyCode(alice, 'domain', ['aaa.edu'])).toBe('not_allowed');
+    // A platform admin, but NOT under a grant, is just a stranger to aaa here.
+    const p = await joinPolicyPlatformActor('jp-nogrant');
+    expect(await joinPolicyCode(p.userId, 'domain', ['aaa.edu'])).toBe('not_allowed');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual([]);
+  });
+
+  it('lets a platform admin set it under a grant, and the audit is grant-stamped', async () => {
+    const p = await joinPolicyPlatformActor('jp-grant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to set the join policy', async () => undefined);
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('aaa', 'domain', array['aaa.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('ok');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual(['aaa.edu']);
+
+    const [row] = await withActor(p.userId, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(row!.actorUserId).toBe(p.userId);
+    expect(row!.meta).toMatchObject({ via: 'grant' });
+    expect(row!.adminTenantSessionId).not.toBeNull(); // stamped by audit_log_stamp_grant
+  });
+
+  it('refuses a grant for another tenant: the decision keys on the grant tenant', async () => {
+    const p = await joinPolicyPlatformActor('jp-xtenant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    // Under the aaa grant, reach for bbb's policy: auth_effective_permissions
+    // yields nothing for bbb, so the definer refuses without a write.
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('bbb', 'domain', array['bbb.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('not_allowed');
+  });
+
+  it('refuses a de-admined holder of a still-open grant (0018 liveness re-check)', async () => {
+    const p = await joinPolicyPlatformActor('jp-deadmin');
+    await withPlatformGrant(p, 'aaa', 'entered aaa before losing the role', async () => undefined);
+    // The platform role is removed while the grant and session stay live. Assuming
+    // the grant still stamps a use-row, but the authority resolves through
+    // auth_effective_permissions, whose grant branch re-checks platform_admin: so
+    // the one write that used to key on the bare use-row is now refused too.
+    await runAsMigrationRole(`delete from platform_roles where user_id = '${p.userId}'`);
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('aaa', 'domain', array['aaa.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('not_allowed');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual([]);
+  });
+});
+
+async function joinPolicyPlatformActor(
+  subject: string,
+): Promise<{ userId: string; sessionId: string }> {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@example.com` });
+  await ensurePlatformAdmin(actor, [`${subject}@example.com`]);
+  await issueSession(actor);
+  const rows = await withActor(actor.userId, (tx) =>
+    tx
+      .select({ id: sessions.id, revokedAt: sessions.revokedAt })
+      .from(sessions)
+      .where(eq(sessions.userId, actor.userId)),
+  );
+  const live = rows.find((r) => r.revokedAt === null);
+  return { userId: actor.userId, sessionId: live!.id };
+}

@@ -2748,6 +2748,7 @@ describe('definer grant hygiene', () => {
     auth_resolve_user_by_subject: 'app',
     auth_revoke_grants_for_session: 'app',
     auth_revoke_tenant_grant: 'app',
+    auth_set_join_policy: 'app',
     auth_set_membership_role: 'app',
     auth_sync_tenant_roles: 'app',
     auth_tenant_activity_days: 'app',

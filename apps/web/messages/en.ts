@@ -50,10 +50,6 @@ export const en = {
   'platform.admin.field.primaryColor': 'Accent colour',
   'platform.admin.field.logoPath': 'Logo path',
   'platform.admin.field.aliases': 'Slug aliases',
-  'platform.admin.field.allowedEmailDomains': 'Email domains that join automatically',
-  'platform.admin.field.joinMode': 'How people join',
-  'platform.admin.field.joinMode.domain': 'Anyone with a listed email domain',
-  'platform.admin.field.joinMode.invite': 'By invitation only',
   'platform.admin.field.adminEmails': 'Administrator emails',
   'platform.admin.field.adminEmailsHint':
     'Each becomes an administrator of this university at their next sign in. Never shown anywhere.',
@@ -289,6 +285,22 @@ export const en = {
   'admin.platformAccess.expired': 'Expired {when}',
   'admin.platformAccess.ended': 'Ended {when}',
   'admin.platformAccess.signOut': 'Sign out',
+  'admin.nav.joinPolicy': 'Join policy',
+  'admin.joinPolicy.heading': 'Join policy',
+  'admin.joinPolicy.intro':
+    'Who may join this university automatically, and how. This governs member sign-up only, never who is an administrator.',
+  'admin.joinPolicy.mode': 'How people join',
+  'admin.joinPolicy.mode.domain':
+    'By email domain: a verified university email joins automatically',
+  'admin.joinPolicy.mode.invite': 'By invitation: an administrator verifies each person',
+  'admin.joinPolicy.domains': 'Allowed email domains',
+  'admin.joinPolicy.domainsHelp':
+    'One per line, e.g. lgu.edu.pk. University domains only; consumer providers such as gmail.com are refused. Used only when the mode is by email domain.',
+  'admin.joinPolicy.save': 'Save join policy',
+  'admin.joinPolicy.saved': 'Join policy saved.',
+  'admin.joinPolicy.blocked':
+    '{domain} is a consumer email provider, so it cannot be an allowed domain: it would let anyone with that provider join. Open membership, if you want it, is a deliberate choice, not a side effect of a domain.',
+  'admin.joinPolicy.error': 'That change could not be saved. Check the domains and try again.',
   'admin.roles.permission.communities.create': 'Create a community',
   'admin.roles.permission.communities.oversee': 'Oversee every community',
   'admin.roles.permission.communities.unmask': 'Reveal an anonymous author',
