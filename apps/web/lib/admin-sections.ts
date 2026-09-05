@@ -11,7 +11,7 @@ import type { MessageKey } from './i18n';
  */
 
 export type AdminSectionKey =
-  'verification' | 'members' | 'roles' | 'rooms' | 'analytics' | 'communities';
+  'verification' | 'members' | 'roles' | 'rooms' | 'analytics' | 'communities' | 'platform-access';
 
 export interface AdminSection {
   key: AdminSectionKey;
@@ -47,6 +47,16 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     permission: 'communities.oversee',
     path: '/admin/communities',
     label: 'admin.nav.communities',
+  },
+  {
+    // The record of which platform administrators entered this tenant, and why.
+    // Gated on restrict-members to match auth_tenant_grants_for_tenant, which is
+    // read from membership, not through a grant: a visiting platform admin cannot
+    // see it (the definer returns nothing to a non-member).
+    key: 'platform-access',
+    permission: 'restrict-members',
+    path: '/admin/platform-access',
+    label: 'admin.nav.platformAccess',
   },
 ];
 

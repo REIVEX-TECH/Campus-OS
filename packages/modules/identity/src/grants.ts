@@ -1,5 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { withActor, withTenantMutation, type TenantWriteContext } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withTenantMutation,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { recordAudit } from './audit';
 
 /**
@@ -30,6 +35,56 @@ export async function revokeTenantGrant(
  * row and the `audit_log_stamp_grant` trigger stamps the line with the grant id.
  * Callers use it for the grant path, so god-mode access is always logged.
  */
+export interface TenantGrantRecord {
+  grantId: string;
+  /** The platform admin's public handle; never their email. */
+  adminHandle: string;
+  reason: string;
+  openedAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  /** How many transactions acted under the grant. */
+  uses: number;
+}
+
+/**
+ * The platform grants into this tenant, for the tenant's OWN admins to see who
+ * entered and why. `auth_tenant_grants_for_tenant` (0018) reads from membership,
+ * not through a grant, and requires restrict-members, so a visiting platform
+ * admin gets nothing; the tenant's resident admins get the full record.
+ */
+export async function tenantGrantsFor(
+  actorUserId: string,
+  tenantId: string,
+): Promise<TenantGrantRecord[]> {
+  return withActorInTenant(actorUserId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(
+        sql`select grant_id, admin_handle, reason, opened_at, expires_at, revoked_at, uses
+            from auth_tenant_grants_for_tenant(${tenantId})`,
+      )),
+    ] as {
+      grant_id: string;
+      admin_handle: string;
+      reason: string;
+      opened_at: string | Date;
+      expires_at: string | Date;
+      revoked_at: string | Date | null;
+      uses: string | number;
+    }[];
+    const asDate = (v: string | Date): Date => (v instanceof Date ? v : new Date(v));
+    return rows.map((r) => ({
+      grantId: r.grant_id,
+      adminHandle: r.admin_handle,
+      reason: r.reason,
+      openedAt: asDate(r.opened_at),
+      expiresAt: asDate(r.expires_at),
+      revokedAt: r.revoked_at == null ? null : asDate(r.revoked_at),
+      uses: typeof r.uses === 'number' ? r.uses : Number(r.uses),
+    }));
+  });
+}
+
 export async function auditTenantAdminAction(
   actorUserId: string,
   tenantId: string,

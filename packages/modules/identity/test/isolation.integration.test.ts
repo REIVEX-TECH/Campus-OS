@@ -52,6 +52,7 @@ import { listMembers } from '../src/members';
 import { appeal, listStandings, liftStanding, setStanding, standingFor } from '../src/standing';
 import { tenantActivity } from '../src/analytics';
 import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
+import { tenantGrantsFor } from '../src/grants';
 import {
   createRoleTemplate,
   deleteRoleTemplate,
@@ -1958,6 +1959,27 @@ describe('tenant grants (cross-tenant platform administration)', () => {
       return row?.statement_timeout;
     });
     expect(timeout).toBe('10s');
+  });
+
+  it('shows the tenant who entered, and hides it from the visiting admin (piece 4)', async () => {
+    const p = await platformActor('grant-transparency');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for the record', async () => undefined);
+
+    // A resident admin of aaa (holds restrict-members) sees the grant and reason.
+    const resident = await findOrCreateUser({
+      subject: 'aaa-resident',
+      email: 'aaa-resident@gmail.com',
+    });
+    await ensureConfiguredAdmin(resident, {
+      slug: 'aaa',
+      adminEmails: ['aaa-resident@gmail.com'],
+    });
+    const seen = await tenantGrantsFor(resident.userId, 'aaa');
+    expect(seen.map((g) => g.reason)).toContain('entered aaa for the record');
+
+    // The visiting platform admin, even holding the grant, sees nothing: the
+    // record is read from membership, never through a grant.
+    expect(await tenantGrantsFor(p.userId, 'aaa')).toEqual([]);
   });
 
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
