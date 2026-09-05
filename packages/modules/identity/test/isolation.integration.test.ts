@@ -42,6 +42,7 @@ import {
 import {
   can,
   effectivePermissions,
+  effectivePermissionsInTransaction,
   grantRole,
   listRoles,
   revokeRole,
@@ -1883,6 +1884,21 @@ describe('tenant grants (cross-tenant platform administration)', () => {
       async (_tx, g) => g,
     );
     expect(grant2.tenantId).toBe('aaa');
+  });
+
+  it('grants nothing in another tenant: the resolver keys on the grant tenant (the seam mismatch)', async () => {
+    // The seam refuses a grant whose tenant is not the URL slug; underneath, the
+    // resolver already keys the grant branch on the grant's own tenant, so even
+    // in the granted transaction a grant for aaa yields tenant_admin for aaa and
+    // nothing for bbb. Both layers, so a slip in one cannot leak the other.
+    const p = await platformActor('grant-crosscheck');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    const [aaa, bbb] = await withGrantedTenant(p, async (tx) => [
+      await effectivePermissionsInTransaction(tx, p.userId, 'aaa'),
+      await effectivePermissionsInTransaction(tx, p.userId, 'bbb'),
+    ]);
+    expect(aaa.size).toBeGreaterThan(0);
+    expect(bbb.size).toBe(0);
   });
 
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {

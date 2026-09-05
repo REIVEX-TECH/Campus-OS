@@ -6,7 +6,7 @@ import { ModQueue } from '@/app/_components/communities/mod-queue';
 import { OversightList } from '@/app/_components/communities/oversight-list';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { requireCommunities } from '@/lib/communities';
 import { postPath } from '@/lib/community-constants';
 import { communityErrors } from '@/lib/community-labels';
@@ -46,7 +46,7 @@ export default async function AdminCommunitiesPage({ params }: Params) {
   requireCommunities(tenant);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const { actor, permissions } = await requirePermission(slug, 'communities.oversee');
+  const { actor, permissions } = await accessForPage(slug, 'communities.oversee');
   const me = { userId: actor.userId };
   const [communities, queue, held] = await Promise.all([
     listCommunitiesForOversight(me, slug),

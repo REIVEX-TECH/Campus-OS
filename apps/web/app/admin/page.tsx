@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { buttonVariants, Card } from '@campusos/ui';
+import { EnterTenantButton } from '@/app/_components/admin/enter-tenant-button';
 import { platformAdmin } from '@/lib/auth';
+import { grantModalLabels } from '@/lib/grant-labels';
 import { translator, type MessageKey, type Translate } from '@/lib/i18n';
 import { getTenantRegistry, tenantConfigSources } from '@/lib/tenants';
 
@@ -48,12 +50,12 @@ export default async function PlatformAdmin() {
       </div>
       <ul className="flex flex-col gap-2">
         {tenants.map((tenant) => (
-          <li key={tenant.slug}>
+          <li key={tenant.slug} className="flex items-stretch gap-2">
             <Link
               href={`/admin/tenants/${tenant.slug}`}
-              className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="block flex-1 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Card className="ios-pressable flex items-center justify-between gap-4 p-4">
+              <Card className="ios-pressable flex h-full items-center justify-between gap-4 p-4">
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-base font-semibold">{tenant.displayName}</span>
                   <span className="text-xs text-muted-foreground">{tenant.slug}</span>
@@ -63,6 +65,14 @@ export default async function PlatformAdmin() {
                 </span>
               </Card>
             </Link>
+            <div className="flex items-center">
+              <EnterTenantButton
+                tenantSlug={tenant.slug}
+                tenantName={tenant.displayName}
+                enterLabel={t('platform.grant.enter')}
+                labels={grantModalLabels(t)}
+              />
+            </div>
           </li>
         ))}
       </ul>

@@ -2,7 +2,7 @@ import { Button, Card, Field, Input } from '@campusos/ui';
 import { getAdminRooms } from '@/lib/admin-rooms';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { SignOutButton } from '@/app/_components/sign-out-button';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { translator } from '@/lib/i18n';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -19,7 +19,7 @@ export default async function AdminRoomsPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
-  const { permissions } = await requirePermission(slug, 'manage-rooms');
+  const { permissions } = await accessForPage(slug, 'manage-rooms');
   const base = await tenantBase(slug);
 
   const admin = getAdminRooms(slug);

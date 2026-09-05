@@ -20,6 +20,7 @@
     "./members": "./src/members.ts",
     "./analytics": "./src/analytics.ts",
     "./platform": "./src/platform.ts",
+    "./grants": "./src/grants.ts",
     "./tenants": "./src/tenants.ts",
     "./role-templates": "./src/role-templates.ts",
     "./standing": "./src/standing.ts"

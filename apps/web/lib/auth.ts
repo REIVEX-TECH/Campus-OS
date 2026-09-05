@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { isPlatformAdmin } from '@campusos/module-identity/platform';
 import { effectivePermissions } from '@campusos/module-identity/rbac';
 import type { Permission, PermissionSet } from '@campusos/core';
-import { resolveSession, type Actor } from '@campusos/module-identity/sessions';
+import {
+  resolveSession,
+  resolveSessionActor,
+  type Actor,
+} from '@campusos/module-identity/sessions';
 
 /**
  * Who is signed in, for server components and route handlers.
@@ -40,6 +44,16 @@ export function sessionCookieOptions(expiresAt: Date) {
 export async function currentActor(): Promise<Actor | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return resolveSession(token);
+}
+
+/** The current session as {userId, sessionId}, for re-entering a platform grant
+ * (withGrantedTenant needs the session id). Null if signed out. */
+export async function currentPlatformActor(): Promise<{
+  userId: string;
+  sessionId: string;
+} | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return resolveSessionActor(token);
 }
 
 /**
