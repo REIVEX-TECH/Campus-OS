@@ -209,7 +209,17 @@ export async function revokeSession(token: string | undefined): Promise<void> {
     await withActor(userId, (tx) =>
       tx.execute(sql`select auth_revoke_grants_for_session(${sessionId}::uuid)`),
     );
-  } catch {
-    // best-effort; see above
+  } catch (error) {
+    // Best-effort, but never silent: log loudly so a broken cleanup (a missing
+    // migration once hid behind an empty catch) is visible in the server logs.
+    // No PII: the pg code and message only, not the user or session.
+    const e = error as { code?: unknown; message?: unknown };
+    console.error(
+      JSON.stringify({
+        event: 'session_grant_cleanup_failed',
+        pgCode: typeof e.code === 'string' ? e.code : null,
+        message: typeof e.message === 'string' ? e.message : String(error),
+      }),
+    );
   }
 }
