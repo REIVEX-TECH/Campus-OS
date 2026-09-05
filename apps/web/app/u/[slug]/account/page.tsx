@@ -13,7 +13,6 @@ import { PageShell } from '@/app/_components/page-shell';
 import { communitiesEnabled } from '@/lib/communities';
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { GetVerified } from '@/app/_components/get-verified';
-import { getVerifiedLabels } from '@/lib/verify-labels';
 import { currentActor } from '@/lib/auth';
 import { firstAdminSection } from '@/lib/admin-sections';
 import { translator } from '@/lib/i18n';
@@ -181,7 +180,7 @@ export default async function AccountPage({ params }: Params) {
                   </p>
                 ) : null}
                 <div>
-                  <GetVerified tenant={slug} labels={getVerifiedLabels(t)} />
+                  <GetVerified />
                 </div>
               </>
             )}

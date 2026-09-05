@@ -6,6 +6,7 @@ import { relativeTime } from '@/lib/format';
 import type { MessageKey, Translate } from '@/lib/i18n';
 import { CommentComposer } from './comment-composer';
 import { CommentNode, type CommentLabels } from './comment-node';
+import { VerifyGateInline } from '@/app/_components/get-verified';
 
 const SORTS: CommentSort[] = ['best', 'top', 'new', 'old', 'controversial'];
 
@@ -221,9 +222,12 @@ export function CommentThread({
             labels={composerLabels}
           />
         </div>
-      ) : hint ? (
-        <p className="px-1 text-sm text-muted-foreground">{hint}</p>
-      ) : null}
+      ) : (
+        <div className="flex flex-col items-start gap-2 px-1">
+          {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+          <VerifyGateInline />
+        </div>
+      )}
 
       {roots.length === 0 ? (
         <p className="px-1 text-sm text-muted-foreground">{t('comments.none')}</p>
