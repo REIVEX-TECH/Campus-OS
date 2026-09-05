@@ -492,6 +492,21 @@ export const en = {
   'account.verification.errorRate': 'Too many requests recently. Try again later.',
   'account.verification.errorVerified': 'You are already verified.',
   'account.verification.errorGeneric': 'That did not go through. You can try again.',
+  'verify.getVerified': 'Get verified',
+  'verify.modalHeading': 'Get verified',
+  'verify.modalIntro':
+    'Verifying tells your university who you are, so you can take part: post, comment, and vote in communities.',
+  'verify.howHeading': 'How it works',
+  'verify.howDomain':
+    'If you signed in with your university email, you are verified automatically.',
+  'verify.howRequest':
+    'Otherwise, send your name and roll number below and an administrator checks it against the university records.',
+  'verify.close': 'Close',
+  'verify.prompt.heading': 'Get verified to take part',
+  'verify.prompt.body':
+    'You are signed in but not yet verified. Verify to post, comment, and vote in this university.',
+  'verify.prompt.dismiss': 'Dismiss',
+  'verify.gate.post': 'You need to be a verified member to post here.',
   'account.admin.open': 'Open the university admin',
 
   'admin.verification.heading': 'Verification',

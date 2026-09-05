@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { communityBySlug, permissionsIn } from '@campusos/module-communities/communities';
+import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { JoinButton } from '@/app/_components/communities/join-button';
+import { GetVerified } from '@/app/_components/get-verified';
+import { getVerifiedLabels } from '@/lib/verify-labels';
 import { listFlairs } from '@campusos/module-communities/flairs';
 import { listRules, needsRulesAcceptance } from '@campusos/module-communities/rules';
 import { RulesGate } from '@/app/_components/communities/rules-gate';
@@ -51,6 +54,10 @@ export default async function SubmitPage({ params }: Params) {
   const settings = communitiesSettings(tenant);
   const perms = await permissionsIn(actor, slug, community.id);
   const canPost = perms.has('communities.post');
+  // If posting is blocked because the person is an unverified member, the wall
+  // says so and offers verification right here, rather than a bare "not allowed".
+  const blockedMembership = canPost ? null : await membershipFor(actor.userId, slug);
+  const needsVerify = blockedMembership !== null && !isVerified(blockedMembership);
   const flairs = canPost ? await listFlairs(slug, community.id) : [];
   const mustAccept = canPost && (await needsRulesAcceptance(actor, slug, community.id));
   const rules = mustAccept ? await listRules(slug, community.id) : [];
@@ -97,6 +104,12 @@ export default async function SubmitPage({ params }: Params) {
               labels={postFormLabels(t, 'create')}
             />
           </div>
+        ) : needsVerify ? (
+          <EmptyState title={t('verify.gate.post')}>
+            <div className="pt-2">
+              <GetVerified tenant={slug} labels={getVerifiedLabels(t)} />
+            </div>
+          </EmptyState>
         ) : (
           <EmptyState title={t('communities.error.not_allowed')}>
             {community.visibility === 'public' ? (

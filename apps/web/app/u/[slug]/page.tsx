@@ -3,11 +3,16 @@ import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTenantRegistry } from '@/lib/tenants';
+import { isVerified, membershipFor } from '@campusos/module-identity/membership';
+import { isVerifyPromptDismissed } from '@campusos/module-identity/verification';
+import { currentActor } from '@/lib/auth';
 import { JsonLd } from '@/app/_components/json-ld';
 import { LogoMark } from '@/app/_components/logo-mark';
 import { ModuleIcon } from '@/app/_components/module-icon';
 import { PageShell } from '@/app/_components/page-shell';
+import { VerifyPromptCard } from '@/app/_components/verify-prompt-card';
 import { translator, type MessageKey } from '@/lib/i18n';
+import { getVerifiedLabels } from '@/lib/verify-labels';
 import { universityLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
 import { MODULES } from '@/lib/modules';
@@ -33,6 +38,18 @@ export default async function TenantHome({ params }: Params) {
   const base = await tenantBase(slug);
   const host = (await headers()).get('host') ?? '';
   const tenantUrl = `${baseUrlFromHost(host)}${base}`;
+
+  // A gentle, dismissible nudge for a signed-in member who is not yet verified.
+  // Dismissal is remembered per account, and a verified person never sees it.
+  const actor = await currentActor();
+  let showVerifyPrompt = false;
+  if (actor) {
+    const membership = await membershipFor(actor.userId, slug);
+    showVerifyPrompt =
+      membership !== null &&
+      !isVerified(membership) &&
+      !(await isVerifyPromptDismissed(actor.userId, slug));
+  }
 
   const live = MODULES.filter((m) => !m.soon);
   // The rail card: who this is, what is here, and what it costs to read. It
@@ -70,6 +87,18 @@ export default async function TenantHome({ params }: Params) {
           <h1 className="text-2xl font-bold tracking-tight sm:text-4xl">{tenant.displayName}</h1>
           <p className="max-w-prose text-muted-foreground">{tenant.seo.description}</p>
         </header>
+
+        {showVerifyPrompt ? (
+          <VerifyPromptCard
+            tenant={slug}
+            labels={{
+              heading: t('verify.prompt.heading'),
+              body: t('verify.prompt.body'),
+              dismiss: t('verify.prompt.dismiss'),
+              getVerified: getVerifiedLabels(t),
+            }}
+          />
+        ) : null}
 
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-3">
           {MODULES.map((m) => (
