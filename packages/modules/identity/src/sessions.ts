@@ -189,11 +189,27 @@ export async function revokeSession(token: string | undefined): Promise<void> {
     ...(await getDb().execute(sql`select * from auth_resolve_session(${hashToken(token)})`)),
   ];
   const row = rows[0] as { user_id?: string; session_id?: string } | undefined;
-  if (!row?.user_id) return;
-  await withActor(row.user_id, (tx) =>
+  if (!row?.user_id || !row.session_id) return;
+  const userId = row.user_id;
+  const sessionId = row.session_id;
+  // Primary and security-critical: end the session. It commits on its own so the
+  // secondary grant cleanup below can never abort it and leave the token live.
+  await withActor(userId, (tx) =>
     tx
       .update(sessions)
       .set({ revokedAt: new Date() })
-      .where(and(eq(sessions.id, row.session_id!), isNull(sessions.revokedAt))),
+      .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt))),
   );
+  // Secondary, best-effort: revoke any platform grant bound to this session so it
+  // is actually closed (0021), not just left unusable. Deliberately swallowed:
+  // the session is already revoked above, and the grant is unusable regardless
+  // via auth_assume_tenant_grant's session-liveness join, so a cleanup failure
+  // must not fail the sign-out. A no-op for the vast majority of sessions.
+  try {
+    await withActor(userId, (tx) =>
+      tx.execute(sql`select auth_revoke_grants_for_session(${sessionId}::uuid)`),
+    );
+  } catch {
+    // best-effort; see above
+  }
 }
