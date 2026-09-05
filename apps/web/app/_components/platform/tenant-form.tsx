@@ -26,8 +26,6 @@ export type TenantFormLabels = {
   primaryColor: string;
   logoPath: string;
   aliases: string;
-  adminEmails: string;
-  adminEmailsHint: string;
   enabledModules: string;
   seoTitleTemplate: string;
   seoDescription: string;
@@ -52,7 +50,6 @@ type Values = {
   primaryColor: string;
   logoPath: string;
   aliases: string;
-  adminEmails: string;
   enabledModules: string;
   seoTitleTemplate: string;
   seoDescription: string;
@@ -85,7 +82,6 @@ function fromConfig(c: TenantConfig): Values {
     primaryColor: sixDigit(c.branding.colors.primary),
     logoPath: c.branding.logoPath,
     aliases: list(c.aliases),
-    adminEmails: list(c.adminEmails),
     enabledModules: list(c.enabledModules),
     seoTitleTemplate: c.seo.titleTemplate,
     seoDescription: c.seo.description,
@@ -108,7 +104,6 @@ function toConfig(base: TenantConfig, v: Values): TenantConfig {
       logoPath: v.logoPath.trim(),
     },
     aliases: unlist(v.aliases),
-    adminEmails: unlist(v.adminEmails),
     enabledModules: unlist(v.enabledModules),
     seo: {
       ...base.seo,
@@ -266,14 +261,6 @@ export function TenantForm({
       </section>
 
       <section className="ios-card grid grid-cols-1 gap-4 rounded-2xl p-4">
-        <Field label={labels.adminEmails} hint={labels.adminEmailsHint}>
-          <textarea
-            className={area}
-            value={v.adminEmails}
-            onChange={(e) => set('adminEmails', e.target.value)}
-            autoComplete="off"
-          />
-        </Field>
         <Field label={labels.enabledModules} hint={labels.listHint}>
           <input
             className={field}

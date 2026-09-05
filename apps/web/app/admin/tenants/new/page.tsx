@@ -18,7 +18,6 @@ const BLANK: TenantConfig = {
   branding: { colors: { primary: '#0b5d3b' }, logoPath: '/tenants/logo.svg' },
   allowedEmailDomains: [],
   joinMode: 'domain',
-  adminEmails: [],
   enabledModules: ['timetable'],
   moduleSettings: {},
   seo: { titleTemplate: '%s · CampusOS', description: '', keywords: [], aliases: [] },

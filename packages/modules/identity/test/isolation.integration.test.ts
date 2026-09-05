@@ -33,12 +33,7 @@ import {
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
-import {
-  ensureConfiguredAdmin,
-  ensureDomainMembership,
-  isVerified,
-  membershipFor,
-} from '../src/membership';
+import { ensureDomainMembership, isVerified, membershipFor } from '../src/membership';
 import {
   can,
   effectivePermissions,
@@ -779,47 +774,35 @@ async function platform(subject: string) {
   return actor;
 }
 
-async function adminIn(tenant: string, subject: string) {
-  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-  const membership = await ensureConfiguredAdmin(actor, {
-    slug: tenant,
-    adminEmails: [`${subject}@gmail.com`],
-  });
-  expect(membership?.role).toBe('tenant_admin');
-  return actor;
+/**
+ * Seed a tenant_admin membership + role as the owner, the way the roles UI grants
+ * one under a grant. Replaces the retired ensureConfiguredAdmin for tests that
+ * just need a resident administrator.
+ */
+async function seedTenantAdmin(userId: string, tenant: string): Promise<void> {
+  await runAsMigrationRole(
+    `select auth_sync_tenant_roles('${tenant}')`,
+    `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+       values ('${tenant}', '${userId}', 'tenant_admin', 'active', now(), 'admin')
+       on conflict (tenant_id, user_id) do update
+         set role = 'tenant_admin',
+             verified_at = coalesce(tenant_memberships.verified_at, now()),
+             verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+       where m.tenant_id = '${tenant}' and m.user_id = '${userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
 }
 
-describe('configured admins', () => {
-  it('makes a listed address a verified tenant admin, off the domain', async () => {
-    const admin = await adminIn('aaa', 'adm-1');
-    const membership = await membershipFor(admin.userId, 'aaa');
-    expect(membership).toMatchObject({ role: 'tenant_admin', status: 'active' });
-    expect(membership!.verificationMethod).toBe('config');
-    expect(membership!.verifiedAt).toBeInstanceOf(Date);
-  });
-
-  it('upgrades an existing student rather than duplicating', async () => {
-    const actor = await findOrCreateUser({ subject: 'adm-2', email: 'up@aaa.edu' });
-    await ensureDomainMembership(actor, {
-      slug: 'aaa',
-      joinMode: 'domain',
-      allowedEmailDomains: ['aaa.edu'],
-    });
-    await ensureConfiguredAdmin(actor, { slug: 'aaa', adminEmails: ['UP@AAA.EDU'] });
-    const rows = await withActor(actor.userId, (tx) => tx.select().from(tenantMemberships));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.role).toBe('tenant_admin');
-  });
-
-  it('touches nobody who is not listed, and never downgrades', async () => {
-    const admin = await adminIn('aaa', 'adm-3');
-    expect(await ensureConfiguredAdmin(admin, { slug: 'aaa', adminEmails: [] })).toBeNull();
-    expect((await membershipFor(admin.userId, 'aaa'))!.role).toBe('tenant_admin');
-    const other = await findOrCreateUser({ subject: 'adm-4', email: 'plain@gmail.com' });
-    expect(await ensureConfiguredAdmin(other, { slug: 'aaa', adminEmails: ['x@y.z'] })).toBeNull();
-    expect(await membershipFor(other.userId, 'aaa')).toBeNull();
-  });
-});
+async function adminIn(tenant: string, subject: string) {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+  await seedTenantAdmin(actor.userId, tenant);
+  expect((await membershipFor(actor.userId, tenant))?.role).toBe('tenant_admin');
+  return actor;
+}
 
 describe('migrating configured admins to memberships (0023)', () => {
   // The one-time, owner-run migration that turns each config adminEmails address
@@ -1142,7 +1125,7 @@ describe('roles and permissions', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
 
@@ -1320,7 +1303,7 @@ describe('members, and the roles a tenant defines', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
 
@@ -1609,7 +1592,7 @@ describe('activity timing', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
   async function marks(userId: string) {
@@ -2036,10 +2019,7 @@ describe('tenant grants (cross-tenant platform administration)', () => {
       subject: 'aaa-resident',
       email: 'aaa-resident@gmail.com',
     });
-    await ensureConfiguredAdmin(resident, {
-      slug: 'aaa',
-      adminEmails: ['aaa-resident@gmail.com'],
-    });
+    await seedTenantAdmin(resident.userId, 'aaa');
     const seen = await tenantGrantsFor(resident.userId, 'aaa');
     expect(seen.map((g) => g.reason)).toContain('entered aaa for the record');
 

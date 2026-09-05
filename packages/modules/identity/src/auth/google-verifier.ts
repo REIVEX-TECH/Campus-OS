@@ -39,11 +39,12 @@ interface FirebaseClaims {
  * The one provider this deployment accepts.
  *
  * Firebase issues tokens for every method a project has enabled, all signed by
- * the same keys and all carrying `email_verified`. Admin is granted by matching
- * an address against the tenant's `adminEmails`, so any other enabled provider
- * that could assert a verified address would be a second door into the admin
- * area. Only Google is offered in the UI, so only Google is accepted here, and
- * enabling another method in the Firebase console cannot quietly open one.
+ * the same keys and all carrying `email_verified`. A verified address drives
+ * domain self-verification (membership) and the platform bootstrap
+ * (SUPERADMIN_EMAILS), so any other enabled provider that could assert a verified
+ * address would be a second door into those. Only Google is offered in the UI, so
+ * only Google is accepted here, and enabling another method in the Firebase
+ * console cannot quietly open one.
  */
 const SIGN_IN_PROVIDER = 'google.com';
 

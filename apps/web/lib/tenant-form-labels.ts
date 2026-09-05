@@ -14,8 +14,6 @@ export function tenantFormLabels(t: Translate, submit: string, done: string): Te
     primaryColor: t('platform.admin.field.primaryColor'),
     logoPath: t('platform.admin.field.logoPath'),
     aliases: t('platform.admin.field.aliases'),
-    adminEmails: t('platform.admin.field.adminEmails'),
-    adminEmailsHint: t('platform.admin.field.adminEmailsHint'),
     enabledModules: t('platform.admin.field.enabledModules'),
     seoTitleTemplate: t('platform.admin.field.seoTitleTemplate'),
     seoDescription: t('platform.admin.field.seoDescription'),

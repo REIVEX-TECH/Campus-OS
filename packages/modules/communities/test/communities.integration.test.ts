@@ -12,10 +12,7 @@ import {
   runBaseMigrations,
 } from '@campusos/db/migrate';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
-import {
-  ensureConfiguredAdmin,
-  ensureDomainMembership,
-} from '@campusos/module-identity/membership';
+import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { grantRole } from '@campusos/module-identity/rbac';
 import { liftStanding, setStanding, standingFor } from '@campusos/module-identity/standing';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
@@ -148,10 +145,24 @@ async function member(subject: string, tenant = 'aaa') {
   return actor;
 }
 
-/** A tenant administrator, through the configured list. */
+/** A tenant administrator, seeded as the owner (the config-admin path is retired). */
 async function admin(subject: string, tenant = 'aaa') {
   const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-  await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+  await runAsMigrationRole(
+    `select auth_sync_tenant_roles('${tenant}')`,
+    `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+       values ('${tenant}', '${actor.userId}', 'tenant_admin', 'active', now(), 'admin')
+       on conflict (tenant_id, user_id) do update
+         set role = 'tenant_admin',
+             verified_at = coalesce(tenant_memberships.verified_at, now()),
+             verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+       where m.tenant_id = '${tenant}' and m.user_id = '${actor.userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
   return actor;
 }
 
@@ -2739,7 +2750,6 @@ describe('definer grant hygiene', () => {
     auth_effective_community_permissions: 'app',
     auth_effective_permissions: 'app',
     auth_grant_admin_for_txn: 'app',
-    auth_grant_configured_admin: 'app',
     auth_grant_platform_admin: 'app',
     auth_handle_is_reserved: 'app',
     auth_join_as_student: 'app',
