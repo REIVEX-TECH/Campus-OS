@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withActorInTenant, withTenant } from '@campusos/db';
@@ -2800,5 +2803,58 @@ describe('definer grant hygiene', () => {
     const present = new Set(rows.map((r) => r.proname));
     const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
     expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
+  });
+
+  it('db-grants re-applied after migrate never re-opens an owner-only definer', async (ctx) => {
+    if (!split) return ctx.skip();
+    // db-grants.sql bills itself re-runnable and the production role-split runbook
+    // re-applies it after migrating. Its function-grant loop must exclude SECURITY
+    // DEFINER functions; a blanket `GRANT EXECUTE ON ALL FUNCTIONS ... TO
+    // campusos_app` would re-grant the owner-only definers by name and re-open the
+    // hole (communities 0011). Run the real file's loop against this
+    // already-migrated database, as the owner, and prove every definer's app
+    // EXECUTE still matches its declared intent.
+    const grants = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        '..',
+        'scripts',
+        'db-grants.sql',
+      ),
+      'utf8',
+    );
+    // Check the SQL, not the comments (which name the anti-pattern to explain it).
+    const sqlOnly = grants.replace(/--.*$/gm, '');
+    expect(
+      sqlOnly,
+      'db-grants must not blanket-grant EXECUTE on all functions to the app',
+    ).not.toMatch(/grant\s+execute\s+on\s+all\s+functions[^;]*campusos_app/i);
+    const loop = sqlOnly.match(/DO \$\$[\s\S]*?\$\$;/);
+    expect(
+      loop,
+      'db-grants must grant function EXECUTE via a definer-excluding loop',
+    ).not.toBeNull();
+
+    await runAsMigrationRole(loop![0]);
+
+    const rows = [
+      ...(await getDb().execute(
+        sql`select p.proname,
+                   has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
+            from pg_proc p
+            where p.pronamespace = 'public'::regnamespace and p.prosecdef`,
+      )),
+    ] as { proname: string; app_can_execute: boolean }[];
+    const mismatches = rows
+      .filter((r) => r.proname in DEFINER_INTENT)
+      .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
+      .map(
+        (r) =>
+          `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
+      );
+    expect(mismatches, 're-applying db-grants changed a definer EXECUTE grant').toEqual([]);
   });
 });
