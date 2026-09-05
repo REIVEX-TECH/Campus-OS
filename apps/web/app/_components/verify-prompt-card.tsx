@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { GetVerified, type GetVerifiedLabels } from './get-verified';
+import { GetVerified } from './get-verified';
 
 /**
  * The gentle, dismissible "get verified" card on the tenant home.
@@ -16,7 +16,6 @@ export type VerifyPromptLabels = {
   heading: string;
   body: string;
   dismiss: string;
-  getVerified: GetVerifiedLabels;
 };
 
 export function VerifyPromptCard({
@@ -72,7 +71,7 @@ export function VerifyPromptCard({
         </button>
       </div>
       <div>
-        <GetVerified tenant={tenant} labels={labels.getVerified} />
+        <GetVerified />
       </div>
     </section>
   );

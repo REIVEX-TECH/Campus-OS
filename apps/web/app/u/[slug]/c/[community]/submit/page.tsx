@@ -5,7 +5,6 @@ import { communityBySlug, permissionsIn } from '@campusos/module-communities/com
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { JoinButton } from '@/app/_components/communities/join-button';
 import { GetVerified } from '@/app/_components/get-verified';
-import { getVerifiedLabels } from '@/lib/verify-labels';
 import { listFlairs } from '@campusos/module-communities/flairs';
 import { listRules, needsRulesAcceptance } from '@campusos/module-communities/rules';
 import { RulesGate } from '@/app/_components/communities/rules-gate';
@@ -107,7 +106,7 @@ export default async function SubmitPage({ params }: Params) {
         ) : needsVerify ? (
           <EmptyState title={t('verify.gate.post')}>
             <div className="pt-2">
-              <GetVerified tenant={slug} labels={getVerifiedLabels(t)} />
+              <GetVerified />
             </div>
           </EmptyState>
         ) : (

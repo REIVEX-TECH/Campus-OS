@@ -12,7 +12,6 @@ import { ModuleIcon } from '@/app/_components/module-icon';
 import { PageShell } from '@/app/_components/page-shell';
 import { VerifyPromptCard } from '@/app/_components/verify-prompt-card';
 import { translator, type MessageKey } from '@/lib/i18n';
-import { getVerifiedLabels } from '@/lib/verify-labels';
 import { universityLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
 import { MODULES } from '@/lib/modules';
@@ -95,7 +94,6 @@ export default async function TenantHome({ params }: Params) {
               heading: t('verify.prompt.heading'),
               body: t('verify.prompt.body'),
               dismiss: t('verify.prompt.dismiss'),
-              getVerified: getVerifiedLabels(t),
             }}
           />
         ) : null}
