@@ -20,6 +20,7 @@
     "communities:archive": "tsx scripts/communities-archive.ts",
     "communities:karma": "tsx scripts/communities-karma.ts",
     "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
+    "admins:migrate": "tsx scripts/migrate-configured-admins.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",
     "backfill:rooms": "tsx scripts/backfill-rooms.ts",

@@ -2759,6 +2759,7 @@ describe('definer grant hygiene', () => {
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.
     auth_attach_role_internal: 'owner',
+    auth_migrate_configured_admin: 'owner',
     audit_log_stamp_grant: 'owner',
     communities_karma_recompute: 'owner',
   };
