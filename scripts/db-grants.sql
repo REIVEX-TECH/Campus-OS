@@ -24,7 +24,40 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO campusos_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO campusos_app;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO campusos_app;
+
+-- EXECUTE is granted here ONLY on plain (non-definer) functions. Every SECURITY
+-- DEFINER function decides its own access in its migration: an app-callable
+-- definer GRANTs itself to campusos_app there, and an owner-only definer (e.g.
+-- communities_karma_recompute, auth_attach_role_internal) deliberately withholds
+-- it with a REVOKE ... FROM PUBLIC and a by-name revoke.
+--
+-- A blanket `GRANT EXECUTE ON ALL FUNCTIONS ... TO campusos_app` is a hazard on a
+-- RE-RUN: run once the schema already exists (this file bills itself re-runnable,
+-- and the production role-split runbook includes it after migrating), it silently
+-- re-grants EXECUTE by name on every owner-only definer, and nothing revokes it
+-- again -- re-opening exactly the privilege holes those migrations closed. So
+-- definers are excluded here. The DEFINER_INTENT invariant test enforces the
+-- matching promise (every app-callable definer grants itself explicitly), and an
+-- integration test re-applies this loop after migrating to prove the exclusion
+-- holds. prokind is restricted to plain and window functions: `GRANT EXECUTE ON
+-- FUNCTION` errors on a PROCEDURE (which needs ON PROCEDURE/ROUTINE), and under
+-- ON_ERROR_STOP that would abort the whole file, so procedures are skipped as the
+-- old `GRANT EXECUTE ON ALL FUNCTIONS` did.
+DO $$
+DECLARE
+  fn regprocedure;
+BEGIN
+  FOR fn IN
+    SELECT p.oid::regprocedure
+    FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND NOT p.prosecdef
+      AND p.prokind IN ('f', 'w')
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO campusos_app', fn);
+  END LOOP;
+END
+$$;
 
 -- Tables the owner creates later (every future migration) are usable by the
 -- application without anyone remembering to come back here.
