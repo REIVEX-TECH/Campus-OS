@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { liftStanding, setStanding } from '@campusos/module-identity/standing';
-import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
 import { isSameOrigin } from '@/lib/same-origin';
+import { tenantWriteContext } from '@/lib/tenant-access';
 import { getTenantRegistry } from '@/lib/tenants';
 
 /**
@@ -48,15 +48,21 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'invalid' }, { status: 400 });
   const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
   if (!tenant) return Response.json({ error: 'not_found' }, { status: 404 });
-  const gate = await permitted(tenant.slug, 'restrict-members');
-  if (!gate) return Response.json({ error: 'not_found' }, { status: 404 });
+  const write = await tenantWriteContext(tenant.slug, 'restrict-members');
+  if (!write) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const { userId, status, reason, minutes } = parsed.data;
-  const actor = { userId: gate.actor.userId };
+  const actor = { userId: write.actor.userId };
   const result =
     status === 'active'
-      ? await liftStanding(actor, tenant.slug, userId)
-      : await setStanding(actor, tenant.slug, userId, { status, reason: reason ?? '', minutes });
+      ? await liftStanding(actor, tenant.slug, userId, write.access)
+      : await setStanding(
+          actor,
+          tenant.slug,
+          userId,
+          { status, reason: reason ?? '', minutes },
+          write.access,
+        );
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: STATUS[result.error] ?? 400 });
   }

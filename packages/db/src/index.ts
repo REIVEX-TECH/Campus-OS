@@ -8,6 +8,8 @@ export {
   withGrantedTenant,
   withPlatformGrant,
   withTenant,
+  withTenantMutation,
   type PlatformGrant,
   type TenantTransaction,
+  type TenantWriteContext,
 } from './tenant-context';

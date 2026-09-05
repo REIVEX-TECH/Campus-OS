@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { auditTenantAdminAction } from '@campusos/module-identity/grants';
 import { getAdminRooms } from '@/lib/admin-rooms';
-import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { relativeRedirect } from '@/lib/redirects';
 import { isSameOrigin } from '@/lib/same-origin';
+import { tenantWriteContext } from '@/lib/tenant-access';
 import { tenantBaseForHost } from '@/lib/tenant-routing';
 
 /**
@@ -26,7 +27,8 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   if (!rateLimit(`admin-rename-building:${clientKey(request.headers)}`, 60, 60_000)) {
     return new Response('Too Many Requests', { status: 429 });
   }
-  if (!(await permitted(slug, 'manage-rooms'))) return new Response('Not Found', { status: 404 });
+  const write = await tenantWriteContext(slug, 'manage-rooms');
+  if (!write) return new Response('Not Found', { status: 404 });
 
   const form = await request.formData();
   const parsed = schema.safeParse({ buildingId: form.get('buildingId'), name: form.get('name') });
@@ -37,5 +39,14 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
     parsed.data.name,
   );
   if (!updated) return relativeRedirect(`${base}?error=1`);
+  // No 0019 definer audits a tenant-isolated building write; under a grant, leave
+  // the grant-attributable trail by hand (use row + grant-stamped audit line).
+  if (write.access.via === 'grant') {
+    await auditTenantAdminAction(write.actor.userId, slug, write.access, {
+      action: 'rooms.building_renamed',
+      targetType: 'building',
+      targetId: parsed.data.buildingId,
+    });
+  }
   return relativeRedirect(`${base}?renamedBuilding=${encodeURIComponent(updated.name)}`);
 }

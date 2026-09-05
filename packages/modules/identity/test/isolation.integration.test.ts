@@ -1901,6 +1901,33 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect(bbb.size).toBe(0);
   });
 
+  it('drives an identity mutation through the definer under a grant, and refuses self-promotion (2c)', async () => {
+    const p = await platformActor('grant-write');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to manage roles', async () => undefined);
+    const access = { via: 'grant' as const, sessionId: p.sessionId };
+    // The mutation runs in the granted transaction (withTenantMutation -> the
+    // 0019 definer sees the use row). Self-promotion is still refused by the
+    // not-self-under-grant containment, even through the seam write path.
+    const selfGrant = await grantRole(
+      { userId: p.userId },
+      'aaa',
+      p.userId,
+      'tenant_admin',
+      access,
+    );
+    expect(selfGrant.ok).toBe(false);
+    expect(await membershipFor(p.userId, 'aaa')).toBeNull();
+  });
+
+  it('a grant for one tenant cannot drive a write into another (withTenantMutation guard)', async () => {
+    const p = await platformActor('grant-write2');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    const access = { via: 'grant' as const, sessionId: p.sessionId };
+    await expect(
+      grantRole({ userId: p.userId }, 'bbb', p.userId, 'tenant_admin', access),
+    ).rejects.toThrow(/tenant grant does not match/);
+  });
+
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
