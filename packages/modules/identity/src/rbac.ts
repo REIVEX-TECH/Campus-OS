@@ -238,3 +238,38 @@ export async function revokeRole(
 export async function ownPermissions(userId: string, tenantId: string): Promise<PermissionSet> {
   return withActor(userId, async () => effectivePermissions(userId, tenantId));
 }
+
+export interface FoundMember {
+  userId: string;
+  handle: string;
+  isVerified: boolean;
+  roles: string[];
+}
+
+/**
+ * Find a member of this tenant by their email, for the roles UI.
+ *
+ * A privileged read (auth_find_member_by_email, 0026): manage-roles required, it
+ * resolves an email ONLY to a member of THIS tenant (nothing for a stranger or a
+ * cross-tenant account), and returns the handle and role keys, never the email.
+ * Runs in the write context so a platform admin's grant is assumed and the
+ * definer's authority check resolves; a resident admin uses their own membership.
+ */
+export async function findMemberByEmail(
+  actor: { userId: string },
+  tenantId: string,
+  email: string,
+  access?: TenantWriteContext,
+): Promise<FoundMember | null> {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select user_id, handle, is_verified, roles
+            from auth_find_member_by_email(${tenantId}, ${email})`,
+      )),
+    ] as { user_id: string; handle: string; is_verified: boolean; roles: string[] }[];
+    return row
+      ? { userId: row.user_id, handle: row.handle, isVerified: row.is_verified, roles: row.roles }
+      : null;
+  });
+}

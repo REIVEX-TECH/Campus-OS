@@ -2325,3 +2325,85 @@ async function joinPolicyPlatformActor(
   const live = rows.find((r) => r.revokedAt === null);
   return { userId: actor.userId, sessionId: live!.id };
 }
+
+describe('finding a member by email (0026)', () => {
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `select auth_sync_tenant_roles('bbb')`,
+    );
+  });
+
+  async function findByEmail(callerId: string, tenant: string, email: string) {
+    const rows = [
+      ...(await withActor(callerId, (tx) =>
+        tx.execute(
+          sql`select user_id, handle, is_verified, roles
+              from auth_find_member_by_email(${tenant}, ${email})`,
+        ),
+      )),
+    ] as { user_id: string; handle: string; is_verified: boolean; roles: string[] }[];
+    return rows[0];
+  }
+
+  async function domainMember(email: string, handle: string): Promise<string> {
+    const id = await createUser(email, handle);
+    await ensureDomainMembership(
+      { userId: id, email },
+      { slug: 'aaa', joinMode: 'domain', allowedEmailDomains: ['aaa.edu'] },
+    );
+    return id;
+  }
+
+  it('an admin finds a member of this tenant by email, case-insensitively', async () => {
+    const finder = await adminIn('aaa', 'finder-1');
+    const member = await domainMember('target@aaa.edu', 'Target_Member_0001');
+    const row = await findByEmail(finder.userId, 'aaa', '  TARGET@AAA.EDU ');
+    expect(row?.user_id).toBe(member);
+    expect(row?.handle).toBe('Target_Member_0001');
+    expect(row?.is_verified).toBe(true);
+    expect(row?.roles).toContain('student');
+  });
+
+  it('returns nothing for a non-member or unknown email (no cross-tenant enumeration)', async () => {
+    const finder = await adminIn('aaa', 'finder-2');
+    await createUser('stranger@aaa.edu', 'Stranger_Acct_0002'); // account, no membership in aaa
+    expect(await findByEmail(finder.userId, 'aaa', 'stranger@aaa.edu')).toBeUndefined();
+    expect(await findByEmail(finder.userId, 'aaa', 'nobody@nowhere.edu')).toBeUndefined();
+  });
+
+  it('refuses a caller without manage-roles', async () => {
+    const member = await domainMember('plain@aaa.edu', 'Plain_Member_0003');
+    const target = await domainMember('t2@aaa.edu', 'Target_Two_0004');
+    expect(target).toBeTruthy();
+    // A student holds no manage-roles: the definer returns nothing even for a real member.
+    expect(await findByEmail(member, 'aaa', 't2@aaa.edu')).toBeUndefined();
+  });
+
+  it('a platform admin under a grant finds a member, and a grant for another tenant does not', async () => {
+    const member = await domainMember('grantfind@aaa.edu', 'Grant_Find_0005');
+    const p = await joinPolicyPlatformActor('find-grant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to grant an admin', async () => undefined);
+    const found = await withGrantedTenant(p, async (tx) => {
+      const rows = [
+        ...(await tx.execute(
+          sql`select user_id from auth_find_member_by_email('aaa', 'grantfind@aaa.edu')`,
+        )),
+      ] as { user_id: string }[];
+      return rows[0]?.user_id;
+    });
+    expect(found).toBe(member);
+    // The authz keys on the grant tenant: under an aaa grant, a lookup for bbb is
+    // unauthorized and yields nothing.
+    const crossTenant = await withGrantedTenant(
+      p,
+      async (tx) =>
+        [
+          ...(await tx.execute(
+            sql`select user_id from auth_find_member_by_email('bbb', 'grantfind@aaa.edu')`,
+          )),
+        ].length,
+    );
+    expect(crossTenant).toBe(0);
+  });
+});
