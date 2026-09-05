@@ -20,8 +20,9 @@ export default async function AdminIndex({ params }: { params: Promise<{ slug: s
 
   const access = await tenantAccess(slug);
   if (access.kind === 'anon') redirect(`${base}/signin`);
-  // A platform admin with no grant for this tenant opens one from /admin.
-  if (access.kind === 'redirect') redirect(`/admin?enter=${encodeURIComponent(slug)}`);
+  // A platform admin whose grant for this tenant is not active reopens from /admin.
+  if (access.kind === 'redirect')
+    redirect(`/admin?grant=expired&tenant=${encodeURIComponent(slug)}`);
   const first = firstAdminSection(access.permissions);
   if (first) redirect(`${base}${first.path}`);
   notFound();

@@ -1948,6 +1948,18 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect(code).toBe('self');
   });
 
+  it('bounds a granted transaction with a 10s statement_timeout (piece 3)', async () => {
+    const p = await platformActor('grant-timeout');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to check the bound', async () => undefined);
+    const timeout = await withGrantedTenant(p, async (tx) => {
+      const [row] = [...(await tx.execute(sql`show statement_timeout`))] as {
+        statement_timeout: string;
+      }[];
+      return row?.statement_timeout;
+    });
+    expect(timeout).toBe('10s');
+  });
+
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
