@@ -148,6 +148,13 @@
       "when": 1756800020000,
       "tag": "0020_definer_grant_hygiene",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1756800021000,
+      "tag": "0021_grant_session_end",
+      "breakpoints": true
     }
   ]
 }

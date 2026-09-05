@@ -1844,6 +1844,43 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect(log.filter((r) => r.tenantId === 'aaa' && r.actorUserId === p.userId)).toHaveLength(1);
   });
 
+  it('signing out revokes the grant, so a fresh session opens cleanly (0021)', async () => {
+    const p = await platformActor('grant-signout');
+    await withPlatformGrant(p, 'aaa', 'entered to read a report', async () => undefined);
+    // Usable while the session lives.
+    expect(await permsUnderGrant(p, 'aaa')).toEqual(expect.arrayContaining(['manage-members']));
+
+    // Sign out: the session ends AND the grant is revoked (not merely unusable).
+    await revokeSession(p.token);
+
+    // Unusable: re-entering the grant on the revoked session raises.
+    await expect(permsUnderGrant(p, 'aaa')).rejects.toThrow(/no open tenant grant/);
+
+    // Actually closed: a brand new session for the SAME admin opens a new grant
+    // with no lingering 'a tenant grant is already open' (55006). If sign-out had
+    // only made the old grant unusable, this open would raise.
+    const actor = await findOrCreateUser({
+      subject: 'grant-signout',
+      email: 'grant-signout@example.com',
+    });
+    await issueSession(actor);
+    const liveRows = await withActor(actor.userId, (tx) =>
+      tx
+        .select({ id: sessions.id, revokedAt: sessions.revokedAt })
+        .from(sessions)
+        .where(eq(sessions.userId, actor.userId)),
+    );
+    const live = liveRows.find((r) => r.revokedAt === null);
+    const p2 = { userId: actor.userId, sessionId: live!.id };
+    const grant2 = await withPlatformGrant(
+      p2,
+      'aaa',
+      'entered again after signing in',
+      async (_tx, g) => g,
+    );
+    expect(grant2.tenantId).toBe('aaa');
+  });
+
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
