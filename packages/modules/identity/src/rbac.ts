@@ -197,9 +197,10 @@ export async function grantRole(
   // in `roles` and treat it as grantable.
   if (isCommunityRole(roleKey)) return { ok: false, reason: 'no_such_role' };
   // The write, and every check — manage-roles, no-power-above-your-own, the
-  // platform exemption that keeps communities.unmask grantable, and the "not
-  // yourself under a grant" containment — is `auth_set_membership_role` (0019);
-  // the application role can no longer write membership_roles directly.
+  // platform exemption that keeps communities.unmask grantable (reachable only
+  // under a live grant, 0029), and the "not yourself under a grant" containment —
+  // is `auth_set_membership_role` (0019); the application role can no longer write
+  // membership_roles directly.
   const outcome = await withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const [row] = [
       ...(await tx.execute(
