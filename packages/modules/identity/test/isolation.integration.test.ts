@@ -1463,15 +1463,57 @@ describe('members, and the roles a tenant defines', () => {
       reason: 'above_own',
     });
     expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(false);
-    // The platform administrator who defined it may grant it, or it would be a
-    // permission nobody could ever hold.
+    // Nor may a platform admin acting OFF-grant: the exemption that keeps
+    // communities.unmask assignable is gated on a live grant (0029), so in a
+    // tenant they do not reside in and hold no grant for, they have no reach.
     expect(await grantRole(p, 'aaa', s.userId, 'trust-office')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(false);
+    // Under an audited grant, the platform administrator who defined it may grant
+    // it -- the one way communities.unmask is ever handed out.
+    await issueSession(p);
+    const [psession] = await withActor(p.userId, (tx) =>
+      tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, p.userId)),
+    );
+    const grantAccess = { via: 'grant' as const, sessionId: psession!.id };
+    await withPlatformGrant(
+      { userId: p.userId, sessionId: psession!.id },
+      'aaa',
+      'seeding the trust office role',
+      async () => undefined,
+    );
+    expect(await grantRole(p, 'aaa', s.userId, 'trust-office', grantAccess)).toEqual({
       ok: true,
       changed: true,
     });
     expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(true);
     // A role carrying only what the administrator already holds still grants.
     expect(await grantRole(a, 'aaa', s.userId, 'teacher')).toEqual({ ok: true, changed: true });
+  });
+
+  it('refuses a platform admin an off-grant self-escalation, and any off-grant role write (0029)', async () => {
+    // The escalation the composed review found: off-grant, a platform admin could
+    // self-join a tenant and then self-promote, because auth_set_membership_role
+    // read platform_roles directly (keyed on app.user_id) instead of the grant use
+    // row, and its self-target refusal fired only under a grant. Both write paths
+    // are closed now. The floor self-join stays allowed -- it is the floor for
+    // anyone -- but the promotion is refused, and so is installing a role on
+    // another member, because off-grant the platform exemption is unreachable.
+    const p = await platform('escalate-plat');
+    const victim = await member('escalate-victim');
+    await withActor(p.userId, (tx) => tx.execute(sql`select auth_join_as_student('aaa')`));
+    expect(await grantRole(p, 'aaa', p.userId, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect((await effectivePermissions(p.userId, 'aaa')).has('manage-roles')).toBe(false);
+    expect(await grantRole(p, 'aaa', victim.userId, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect((await membershipFor(p.userId, 'aaa'))?.role).toBe('student');
   });
 
   it("keeps one tenant's grants out of another, and the definitions shared", async () => {

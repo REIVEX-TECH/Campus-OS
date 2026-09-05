@@ -204,6 +204,13 @@
       "when": 1756800028000,
       "tag": "0028_drop_migrate_configured_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1756800029000,
+      "tag": "0029_set_membership_role_grant_containment",
+      "breakpoints": true
     }
   ]
 }
