@@ -169,6 +169,13 @@
       "when": 1756800023000,
       "tag": "0023_migrate_configured_admins",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1756800024000,
+      "tag": "0024_join_policy",
+      "breakpoints": true
     }
   ]
 }

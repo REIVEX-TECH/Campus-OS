@@ -5,7 +5,12 @@ import { ADMIN_SECTIONS, firstAdminSection, visibleAdminSections } from '@/lib/a
 describe('admin sections', () => {
   it('shows only the sections a permission opens, in display order', () => {
     const p = new PermissionSet(['view-analytics', 'manage-members']);
-    expect(visibleAdminSections(p).map((s) => s.key)).toEqual(['members', 'analytics']);
+    // manage-members opens both the members list and the join-policy editor.
+    expect(visibleAdminSections(p).map((s) => s.key)).toEqual([
+      'members',
+      'join-policy',
+      'analytics',
+    ]);
   });
 
   it('sends /admin to the first section the person may open', () => {

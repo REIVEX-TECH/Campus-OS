@@ -11,7 +11,14 @@ import type { MessageKey } from './i18n';
  */
 
 export type AdminSectionKey =
-  'verification' | 'members' | 'roles' | 'rooms' | 'analytics' | 'communities' | 'platform-access';
+  | 'verification'
+  | 'members'
+  | 'join-policy'
+  | 'roles'
+  | 'rooms'
+  | 'analytics'
+  | 'communities'
+  | 'platform-access';
 
 export interface AdminSection {
   key: AdminSectionKey;
@@ -33,6 +40,15 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     permission: 'manage-members',
     path: '/admin/members',
     label: 'admin.nav.members',
+  },
+  {
+    // Who may auto-join, and how. Membership governance, gated on manage-members;
+    // the write itself goes through a definer that also accepts a platform admin
+    // under a grant, so a visiting admin can set it without a tenant membership.
+    key: 'join-policy',
+    permission: 'manage-members',
+    path: '/admin/join-policy',
+    label: 'admin.nav.joinPolicy',
   },
   { key: 'roles', permission: 'manage-roles', path: '/admin/roles', label: 'admin.nav.roles' },
   { key: 'rooms', permission: 'manage-rooms', path: '/admin/rooms', label: 'admin.nav.rooms' },
