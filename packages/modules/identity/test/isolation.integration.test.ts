@@ -1928,6 +1928,26 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     ).rejects.toThrow(/tenant grant does not match/);
   });
 
+  it('auth_write_standing self-check keys on the grant row, not the forgeable app.user_id (0022)', async () => {
+    const p = await platformActor('grant-standing-forge');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to manage standing', async () => undefined);
+    const other = await createUser('other-standing@aaa.test', 'other_standing_h');
+    const code = await withGrantedTenant(p, async (tx) => {
+      // Forge app.user_id to someone else mid-transaction; the use-row still
+      // names the real grant admin. Targeting the grant admin must still be
+      // refused as self. Without the fix (self-check on app.user_id), the forged
+      // id would slip past and fall through to a permission refusal instead.
+      await tx.execute(sql`select set_config('app.user_id', ${other}::text, true)`);
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_write_standing('aaa', ${p.userId}::uuid, 'restricted', 'x', null) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('self');
+  });
+
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
