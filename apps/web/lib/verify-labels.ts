@@ -1,4 +1,4 @@
-import type { GetVerifiedLabels } from '@/app/_components/get-verified';
+import type { GetVerifiedLabels } from '@/app/_components/verify-gate';
 import type { Translate } from './i18n';
 
 /** The "Get verified" button + modal strings, once, for every place it appears. */
