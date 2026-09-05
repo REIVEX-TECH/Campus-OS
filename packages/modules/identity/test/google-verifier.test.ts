@@ -27,10 +27,10 @@ describe('identityFromClaims', () => {
   });
 
   it('refuses every other Firebase provider', () => {
-    // Admin is granted by matching an address against the tenant's adminEmails,
-    // so a second provider able to assert a verified address would be a second
-    // door into the admin area. Enabling one in the Firebase console must not
-    // quietly open it.
+    // A verified address drives domain self-verification and the platform
+    // bootstrap, so a second provider able to assert a verified address would be a
+    // second door into them. Enabling one in the Firebase console must not quietly
+    // open it.
     for (const provider of ['password', 'anonymous', 'github.com', 'custom', 'facebook.com']) {
       expect(() =>
         identityFromClaims(google({ firebase: { sign_in_provider: provider } })),

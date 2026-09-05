@@ -160,28 +160,21 @@ Now finish step 2's migrate + seed (they need this `.env`).
 
 ## 3b. Tenant admins 🟩 CAMPUSOS-LOCAL
 
-Who administers a tenant is declared in its config, in code:
-
-```ts
-// tenants/lgu/tenant.config.ts
-adminEmails: ['someone@lgu.edu.pk'],
-```
-
-At sign in, a listed address (matched on the Google verified email) becomes a
-verified `tenant_admin` member of that tenant. It is an upgrade only: removing an
-address from the list does not remove the role, which is a manual step
-(`update tenant_memberships set role = 'student' where ...`). Tenant admins reach
-their queue at `https://{slug}.<tenant base>/admin/verification`, or `/admin`,
-which sends them there when they hold the role.
+`tenant_admin` is a granted role, not a config value. A database-editable value
+must never decide who is an administrator, so there is no `adminEmails` list. The
+first administrator of a tenant is granted by a platform administrator: enter the
+tenant on a grant, open `/u/{slug}/admin/roles`, and grant `tenant_admin` to the
+person by their email once they have signed in at least once. An existing tenant
+admin can then grant others the same way. Removing the role is the same UI in
+reverse. Tenant admins reach their queue at
+`https://{slug}.<tenant base>/admin/verification`, or `/admin`, which sends them
+there when they hold the role.
 
 There is no admin secret of any kind. The old shared password login was retired
 once this role could reach everything it gated: the session cookie is an opaque
 token stored hashed, nothing is signed, and nothing in the environment opens the
 admin area. If an older `.env` on the VPS still carries the old variable, delete
 the line; it is read by nothing.
-
-This list moves to database backed tenant configuration when platform
-administration lands; until then a change here is a deploy.
 
 ## 4. Build and run under pm2 🟩 CAMPUSOS-LOCAL
 

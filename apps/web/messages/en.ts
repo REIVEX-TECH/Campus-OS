@@ -50,9 +50,6 @@ export const en = {
   'platform.admin.field.primaryColor': 'Accent colour',
   'platform.admin.field.logoPath': 'Logo path',
   'platform.admin.field.aliases': 'Slug aliases',
-  'platform.admin.field.adminEmails': 'Administrator emails',
-  'platform.admin.field.adminEmailsHint':
-    'Each becomes an administrator of this university at their next sign in. Never shown anywhere.',
   'platform.admin.field.enabledModules': 'Enabled modules',
   'platform.admin.field.seoTitleTemplate': 'Title template (must contain %s)',
   'platform.admin.field.seoDescription': 'Description',

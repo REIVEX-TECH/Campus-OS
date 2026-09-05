@@ -12,8 +12,10 @@ Status: see `docs/platform-admin-status.md` for what is built and what is not.
 - A tenant admin is a `tenant_memberships` row with `role = 'tenant_admin'`.
   One role per person per tenant, enforced by a unique index on
   `(tenant_id, user_id)`, and the role is a bare text column.
-- Who gets that role is decided by `adminEmails` in the tenant's **file** config,
-  which means granting an admin is a deploy.
+- Who gets that role is granted through the roles UI (a platform admin under a
+  grant, or an existing tenant admin), audited. It is no longer a config value:
+  `adminEmails` was retired (converted once by migration 0023, then removed in
+  0025), because a database-editable value must never decide who is an admin.
 - Every admin surface asks the same question, "are you tenant_admin here", so
   every capability is all or nothing: whoever can rename a room can also approve
   a verification.
@@ -269,10 +271,11 @@ are shaped to receive it.
   transaction as the work, so an unlogged cross-tenant action cannot exist: if
   the log fails, the action rolls back. `audit_log` is already append-only at the
   database level, with a trigger that refuses updates and deletes.
-- **Assigning tenant admins** replaces `adminEmails`. The file list is read once
-  during migration to seed the existing grants, then retired. Creating a tenant
-  and appointing its first administrator are one act: a tenant with nobody who
-  can administer it is a tenant nobody can finish setting up.
+- **Assigning tenant admins** has replaced `adminEmails`. The file list was read
+  once (migration 0023) to seed the existing admins as real memberships, then the
+  field and its sign-in seeding were removed (0025). Creating a tenant and
+  appointing its first administrator are one act: a tenant with nobody who can
+  administer it is a tenant nobody can finish setting up.
 
 The security review of this design is the gate before any of it is written.
 
