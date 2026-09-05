@@ -116,8 +116,12 @@ test('the semester combobox is searchable and keyboard-operable', async ({ page 
   const semester = page.getByRole('combobox', { name: 'Semester' });
   await expect(semester).toBeVisible();
 
-  // Opening it lists the terms; typing filters them.
+  // Opening it lists the terms; typing filters them. Wait for the combobox to be
+  // focused before pressing keys: on a cold runner the click can land before the
+  // control is hydrated, and keys pressed then go nowhere (the picker never
+  // navigates). Focus is the ready signal, so the keyboard drive is not a race.
   await semester.click();
+  await expect(semester).toBeFocused();
   await expect(page.getByRole('option').first()).toBeVisible();
 
   // Arrow + Enter picks a term, closes the listbox, and writes ?term to the URL.
@@ -166,7 +170,10 @@ test('the timetable page remembers what you looked at, even signed out', async (
   // they can land in the same millisecond, so "newest first" does not settle
   // their order and the first row is not reliably the one just viewed.
   await panel.locator(`a[href*="section=${section}"]`).click();
-  await page.waitForURL((url) => url.searchParams.get('section') === section);
+  // Poll the URL rather than waitForURL: a soft navigation never fires the
+  // 'load' event waitForURL waits for by default, which is the cold-CI flake.
+  await expect(page).toHaveURL(/section=/, { timeout: 15_000 });
+  expect(new URL(page.url()).searchParams.get('section')).toBe(section);
 
   // And it is the reader's to forget.
   await page.goto('/u/lgu/timetable');
