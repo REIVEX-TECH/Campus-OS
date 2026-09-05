@@ -28,9 +28,8 @@ const BANNED = [
   /auth_grant_configured_admin/,
 ];
 
-// Live code only. `auth_migrate_configured_admin` (the owner-only 0023 conversion
-// tool) is a different name and is not banned. Module src dirs are discovered, not
-// hardcoded, so a future module cannot reintroduce the path unscanned.
+// Live code only. Module src dirs are discovered, not hardcoded, so a future
+// module cannot reintroduce the path unscanned.
 function moduleSrcDirs(): string[] {
   const found: string[] = [];
   for (const parent of ['packages', join('packages', 'modules')]) {

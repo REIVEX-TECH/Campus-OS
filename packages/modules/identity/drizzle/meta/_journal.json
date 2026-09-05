@@ -197,6 +197,13 @@
       "when": 1756800027000,
       "tag": "0027_verify_prompt_dismissed",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1756800028000,
+      "tag": "0028_drop_migrate_configured_admin",
+      "breakpoints": true
     }
   ]
 }
