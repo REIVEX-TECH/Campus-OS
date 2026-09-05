@@ -1,60 +1,80 @@
-# fix(communities): run the integration guards that skipIf silently disabled
+# fix(communities): revoke karma recompute from PUBLIC, and run the guards that caught it
+
+Two linked changes: a live privilege fix, and the reason it went unnoticed.
+
+## The hole
+
+`communities_karma_recompute(text)` is owner-only by design — it deletes and
+rebuilds a tenant's karma and reads every author, anonymous included; its only
+caller (`recomputeKarma`) uses the owner connection. But it was reachable by the
+application role in production:
+
+- `0006` created it `SECURITY DEFINER` and never revoked `FROM PUBLIC`.
+- `scripts/db-grants.sql` runs `ALTER DEFAULT PRIVILEGES … GRANT EXECUTE ON
+FUNCTIONS TO campusos_app`, so it was also granted to the app by name at
+  creation.
+- `0010` revoked only the by-name grant. The ambient **PUBLIC** EXECUTE stayed,
+  so `has_function_privilege('campusos_app', …, 'execute')` remained **true** —
+  the app role could invoke the rebuild.
+
+The canonical owner-only pattern (`auth_attach_role_internal`, 0019) is _both_
+revokes; `0010` did one. `0011` adds the missing `REVOKE … FROM PUBLIC` (and
+re-asserts the by-name revoke), completing the lock.
+
+## Why it was latent — the guards never ran
 
 Three `it.skipIf(!split)(...)` tests in the communities integration suite have
-never run. `split` is `let split = false` set to `true` only inside `beforeAll`,
-but Vitest evaluates the `skipIf` argument at **collection** time — before any
-`beforeAll` — so `!split` is always `true` and each test registers as
+never executed. `split` is `let split = false` set to `true` only inside
+`beforeAll`, but Vitest evaluates the `skipIf` argument at **collection** time —
+before any `beforeAll` — so `!split` is always `true` and each registers as
 permanently skipped. Proven with a minimal repro: a control `it` asserting
-`split === true` at run time passes while its `it.skipIf(!split)` sibling is
-skipped.
+`split === true` at run time passes while its `it.skipIf(!split)` sibling skips.
 
-The three dormant guards are load-bearing:
+The dormant guards are load-bearing:
 
-- **`DEFINER_INTENT`** — the invariant that every public `SECURITY DEFINER`
-  function is declared app- or owner-callable and that its actual EXECUTE grant
-  matches. This is the 2b-hardening centerpiece CLAUDE.md §6/§8 leans on; a
-  boundary enforced by a test that does not run is a convention, not a boundary.
-- **karma rebuild beyond the application's reach** (RLS / owner-only definer).
-- **the application role cannot read `author_id`** (RLS, anonymous authorship).
+- **`DEFINER_INTENT`** — every public `SECURITY DEFINER` is declared app/owner
+  and its actual EXECUTE grant matches. This is the guard that would have caught
+  the karma hole (and it did, the moment it ran): `communities_karma_recompute:
+intent=owner but app_can_execute=true`.
+- **karma rebuild beyond the application's reach** — asserts the app is refused
+  when it calls `communities_karma_recompute`.
+- **the application role cannot read `author_id`** (anonymous authorship RLS).
 
-That the `DEFINER_INTENT` guard was off is why `auth_revoke_grants_for_session`
-(identity 0021) and `auth_migrate_configured_admin` (identity 0023) reached main
-undeclared without failing CI.
+A boundary enforced by a test that does not run is a convention, not a boundary.
 
-## Changes (`packages/modules/communities/test/communities.integration.test.ts`)
+## Changes
 
-- Convert the three `it.skipIf(!split)(...)` tests to plain `it(...)` that skip at
-  **run time** (`if (!split) return ctx.skip();`), after `beforeAll` has set
-  `split`. Verified in Vitest 3.2.7 that a run-time-set flag then gates correctly.
-- Declare the two definers the now-live `DEFINER_INTENT` guard would otherwise
-  flag as undeclared: `auth_revoke_grants_for_session: 'app'` (identity 0021
-  grants EXECUTE to `campusos_app`; called from the sign-out path) — and
-  `auth_migrate_configured_admin: 'owner'` was already added with 0023.
-
-The full set of public `SECURITY DEFINER` functions the guard's database
-contains (base + identity + communities) was enumerated and matched against the
-map: 31 functions, 31 entries, no undeclared and none stale. The guard now
-actually checks each one's EXECUTE grant against its declared intent.
+- `packages/modules/communities/drizzle/0011_karma_recompute_revoke_public.sql`
+  (+ `meta/_journal.json` idx 11) — `REVOKE ALL ON FUNCTION
+communities_karma_recompute(text) FROM PUBLIC` plus the split-guarded by-name
+  revoke. Owner keeps EXECUTE by ownership; the one-time backfill in 0006 runs at
+  migration time as the owner and is unaffected.
+- `packages/modules/communities/test/communities.integration.test.ts` — convert
+  the three `it.skipIf(!split)(...)` tests to run-time skips
+  (`if (!split) return ctx.skip();`), so they actually run on a split database.
+  Declare the two definers the now-live `DEFINER_INTENT` guard would otherwise
+  flag as undeclared: `auth_revoke_grants_for_session: 'app'` (identity 0021) —
+  `auth_migrate_configured_admin: 'owner'` was already added with 0023. The full
+  public-definer set the guard's database contains (base + identity +
+  communities) was enumerated against the map: 31 functions, 31 entries, none
+  undeclared or stale.
 
 ## Data & migration impact
 
-No schema change. Test-only.
+Migration `0011` (communities). Revokes a privilege only; no schema change,
+backwards-compatible, no rollback needed (re-granting would reopen the hole).
 
 ## Tests
 
-The change is to the integration suite itself. These guards run against a split
-Postgres in CI (they self-skip on an unsplit database, now correctly at run
-time):
+The activated guards ARE the verification: on a split Postgres, CI green here
+means `communities_karma_recompute` is no longer app-executable and every public
+definer's EXECUTE grant matches its declared intent.
 
 ```bash
 pnpm -C packages/modules/communities test:integration
 ```
 
-CI green here now means the three guards genuinely executed — in particular that
-every public definer's EXECUTE grant matches its declared owner/app intent.
-
 ## Follow-ups
 
-- If the now-live `DEFINER_INTENT` guard ever reports a _mismatch_ (an actual
-  grant contradicting the declared intent), that is a real privilege finding to
-  fix at the SQL, not a declaration to adjust.
+- If the now-live `DEFINER_INTENT` guard ever reports a _mismatch_, treat it as a
+  real privilege finding to fix at the SQL, not a declaration to adjust — as here.
