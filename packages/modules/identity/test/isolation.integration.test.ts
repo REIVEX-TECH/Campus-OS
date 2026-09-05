@@ -605,10 +605,14 @@ describe('row security invariants', () => {
     // admin under policies; never read by a definer function. No FORCE so the
     // owner can write it; the application owns nothing, so RLS binds it anyway.
     tenant_configs: false,
-    // Read by the grant definers (0018) as the owner, so FORCE must be off, or
-    // auth_under_tenant_grant and the resolver would see nothing and the
-    // subtraction would fail OPEN. The app cannot write them: the uses table has
-    // no policy and the grants table's writes are revoked from the app role.
+    // Read AND written by the grant definers (0018 open/assume/revoke, and 0021
+    // auth_revoke_grants_for_session) as the OWNER, so FORCE must stay off, or
+    // those definers would be filtered to nothing: auth_under_tenant_grant and
+    // the resolver would see no use row and the subtraction would fail OPEN, and
+    // the revoke UPDATEs would silently touch zero rows. Do NOT flip this to
+    // FORCE in a hardening pass; it would break every grant definer at once. The
+    // app cannot write them regardless: the uses table has no policy and the
+    // grants table's writes are revoked from the app role.
     platform_tenant_grants: false,
     platform_grant_uses: false,
   };
