@@ -18,13 +18,24 @@ export const dynamic = 'force-dynamic';
  * else the same page as before, a heading and the way in, and nothing that
  * says an admin area exists behind it.
  */
-export default async function PlatformAdmin() {
+export default async function PlatformAdmin({
+  searchParams,
+}: {
+  searchParams: Promise<{ grant?: string; tenant?: string }>;
+}) {
   const t = translator('en');
   const admin = await platformAdmin();
   if (!admin) return <Placeholder t={t} />;
 
   const [registry, sources] = await Promise.all([getTenantRegistry(), tenantConfigSources()]);
   const tenants = registry.all();
+
+  // A grant that ended mid-session redirects here with a typed signal; name the
+  // tenant so the way back in is obvious. Informational: it clears on navigation.
+  const sp = await searchParams;
+  const expired = sp.grant === 'expired';
+  const expiredTenant =
+    expired && sp.tenant ? (registry.resolveBySlug(sp.tenant)?.displayName ?? null) : null;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 p-6">
@@ -34,6 +45,17 @@ export default async function PlatformAdmin() {
           {t('platform.admin.tenantsIntro')}
         </p>
       </header>
+
+      {expired ? (
+        <div className="ios-card flex flex-col gap-1 rounded-2xl p-4" role="status">
+          <span className="text-sm font-semibold">{t('platform.grant.expired.heading')}</span>
+          <span className="text-sm text-muted-foreground">
+            {expiredTenant
+              ? t('platform.grant.expired.body', { tenant: expiredTenant })
+              : t('platform.grant.expired.bodyGeneric')}
+          </span>
+        </div>
+      ) : null}
 
       <nav className="flex flex-wrap gap-3 text-sm">
         <Link href="/admin/roles" className="font-medium text-primary hover:underline">

@@ -27,9 +27,9 @@ import { currentActor, currentPlatformActor } from '@/lib/auth';
  *  - MEMBER: the actor's own membership in this tenant.
  *
  * There is no silent fallback in either direction. A grant whose tenant is NOT
- * this slug, or an absent/expired grant for a platform admin who is not a member
- * here, is a redirect to /admin?enter={slug} (open one on purpose), never a quiet
- * drop to the member path. A member with no grant simply resolves as a member.
+ * this slug, or an absent/expired/timed-out grant for a platform admin who is not
+ * a member here, is a typed redirect to /admin?grant=expired (reopen on purpose),
+ * never a quiet drop to the member path. A member with no grant resolves as a member.
  */
 
 export type TenantAccess = { kind: 'grant'; grant: TenantAccessGrant } | { kind: 'member' };
@@ -64,6 +64,13 @@ function isNoOpenGrant(error: unknown): boolean {
   );
 }
 
+/** A granted statement that ran past the 10s bound (statement_timeout). Treated
+ * like a vanished grant: the request cannot complete under the grant, so it ends
+ * at the reopen banner rather than a raw 500. */
+function isStatementTimeout(error: unknown): boolean {
+  return (error as { code?: unknown })?.code === '57014';
+}
+
 /** Enter the actor's open grant, but only accept it for THIS slug. Returns the
  * granted resolution, or null when there is no usable grant for this slug (no
  * open grant, or an open grant for a different tenant). */
@@ -89,9 +96,13 @@ async function tryGrant(
       };
     });
   } catch (error) {
-    // A grant for another tenant, or none at all, both mean "no grant for this
-    // slug" here; the mismatch transaction rolls back, so no stray use row.
-    if (error instanceof GrantTenantMismatch || isNoOpenGrant(error)) return null;
+    // A grant for another tenant, none at all, or one that expired/timed out
+    // mid-request all mean "no usable grant for this slug"; the caller turns that
+    // into the typed reopen redirect. The mismatch transaction rolls back, so no
+    // stray use row.
+    if (error instanceof GrantTenantMismatch || isNoOpenGrant(error) || isStatementTimeout(error)) {
+      return null;
+    }
     throw error;
   }
 }
@@ -112,12 +123,16 @@ const resolveAccess = cache(async (slug: string): Promise<Resolved> => {
   return { kind: 'member', actor, permissions };
 });
 
-function enterRedirect(slug: string): never {
-  redirect(`/admin?enter=${encodeURIComponent(slug)}`);
+function grantEndedRedirect(slug: string): never {
+  // A platform admin reached a granted surface with no active grant for it: it
+  // expired, timed out, or was closed mid-session (the normal entry is opening a
+  // grant from /admin, which lands them inside). Send them back with a typed
+  // signal so /admin shows a clear "reopen" banner, never a bare 404 or a 500.
+  redirect(`/admin?grant=expired&tenant=${encodeURIComponent(slug)}`);
 }
 
 /** The resolved access for a slug, all cases exposed. The bare /admin entry uses
- * this to branch (anon to sign in, redirect to enter, otherwise route by the
+ * this to branch (anon to sign in, redirect to reopen, otherwise route by the
  * permission set); most pages use accessForPage instead. Resolved once per
  * request and shared with the layout. */
 export async function tenantAccess(slug: string): Promise<PageAccess> {
@@ -130,7 +145,7 @@ export async function tenantAccess(slug: string): Promise<PageAccess> {
  */
 export async function tenantAccessContext(slug: string): Promise<TenantAccess> {
   const r = await resolveAccess(slug);
-  if (r.kind === 'redirect') enterRedirect(slug);
+  if (r.kind === 'redirect') grantEndedRedirect(slug);
   if (r.kind === 'anon') notFound();
   return r.kind === 'grant' ? { kind: 'grant', grant: r.grant } : { kind: 'member' };
 }
@@ -171,7 +186,7 @@ export async function accessForPage(
   permission: Permission,
 ): Promise<{ actor: Actor; permissions: PermissionSet; access: TenantAccess }> {
   const r = await resolveAccess(slug);
-  if (r.kind === 'redirect') enterRedirect(slug);
+  if (r.kind === 'redirect') grantEndedRedirect(slug);
   if (r.kind === 'anon') notFound();
   if (!r.permissions.has(permission)) notFound();
   const access: TenantAccess =

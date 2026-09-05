@@ -100,6 +100,11 @@ export const en = {
   'platform.grant.error.reason_too_short': 'The reason needs at least 12 characters.',
   'platform.grant.error.unknown_tenant': 'That university does not exist.',
   'platform.grant.error.forbidden': 'You cannot do that.',
+  'platform.grant.expired.heading': 'Your access ended',
+  'platform.grant.expired.body':
+    'Your grant for {tenant} is no longer active. Open it again below to continue.',
+  'platform.grant.expired.bodyGeneric':
+    'Your grant is no longer active. Open a university again below to continue.',
 
   'timetable.heading': 'Timetable',
   'timetable.viewTimetable': 'View timetable',

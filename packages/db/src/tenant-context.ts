@@ -54,6 +54,15 @@ export function withActorInTenant<T>(
   });
 }
 
+/**
+ * Every granted transaction is bounded to 10s. A cross-tenant admin action is a
+ * short, interactive write; nothing long-running (a crawl, a bulk import) should
+ * ever run under a grant, so if a granted statement hits this, that is a design
+ * smell to fix, not a limit to raise. Transaction-local (`SET LOCAL`), so it
+ * never leaks to the next query on the pooled connection.
+ */
+const GRANTED_STATEMENT_TIMEOUT = sql`set local statement_timeout = '10000ms'`;
+
 /** What opening a platform tenant grant returns: the grant, its tenant, and when it ends. */
 export interface PlatformGrant {
   grantId: string;
@@ -85,6 +94,7 @@ export function withPlatformGrant<T>(
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true)`);
+    await tx.execute(GRANTED_STATEMENT_TIMEOUT);
     const rows = [
       ...(await tx.execute(
         sql`select grant_id, tenant_id, expires_at, reason
@@ -159,6 +169,7 @@ export function withGrantedTenant<T>(
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true)`);
+    await tx.execute(GRANTED_STATEMENT_TIMEOUT);
     const rows = [
       ...(await tx.execute(
         sql`select grant_id, tenant_id, expires_at, reason
