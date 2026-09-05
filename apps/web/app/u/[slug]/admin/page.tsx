@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { firstAdminSection } from '@/lib/admin-sections';
-import { currentPermissions } from '@/lib/auth';
+import { tenantAccess } from '@/lib/tenant-access';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
 
@@ -18,9 +18,11 @@ export default async function AdminIndex({ params }: { params: Promise<{ slug: s
   await requireTenant(slug); // unknown tenant -> 404, same as the rest of the tenant tree
   const base = await tenantBase(slug);
 
-  const permissions = await currentPermissions(slug);
-  if (!permissions) redirect(`${base}/signin`);
-  const first = firstAdminSection(permissions);
+  const access = await tenantAccess(slug);
+  if (access.kind === 'anon') redirect(`${base}/signin`);
+  // A platform admin with no grant for this tenant opens one from /admin.
+  if (access.kind === 'redirect') redirect(`/admin?enter=${encodeURIComponent(slug)}`);
+  const first = firstAdminSection(access.permissions);
   if (first) redirect(`${base}${first.path}`);
   notFound();
 }

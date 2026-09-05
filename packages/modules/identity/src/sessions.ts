@@ -163,6 +163,29 @@ export async function resolveSession(token: string | undefined): Promise<Actor |
 }
 
 /**
+ * Like `resolveSession`, but returns the session id alongside the user id, for
+ * the one caller that needs it: re-entering a platform grant bound to a session
+ * (`withGrantedTenant`). Kept separate so the public `Actor` never carries the
+ * session id. Returns null unless the token resolves to a live session of an
+ * active user; `auth_resolve_session` already excludes revoked/expired sessions.
+ */
+export async function resolveSessionActor(
+  token: string | undefined,
+): Promise<{ userId: string; sessionId: string } | null> {
+  if (!token) return null;
+  const rows = [
+    ...(await getDb().execute(sql`select * from auth_resolve_session(${hashToken(token)})`)),
+  ];
+  const row = rows[0] as { user_id?: string; session_id?: string } | undefined;
+  if (!row?.user_id || !row.session_id) return null;
+  const [user] = await withActor(row.user_id, (tx) =>
+    tx.select({ status: users.status }).from(users).where(eq(users.id, row.user_id!)),
+  );
+  if (!user || user.status !== 'active') return null;
+  return { userId: row.user_id, sessionId: row.session_id };
+}
+
+/**
  * Record that a session is still in use, at most once an hour. Writing on every
  * request would make each page load a write for no extra information.
  */

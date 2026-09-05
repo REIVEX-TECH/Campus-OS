@@ -6,7 +6,7 @@ import { listRoles } from '@campusos/module-identity/rbac';
 import { AdminNav } from '@/app/_components/admin/admin-nav';
 import { RoleList } from '@/app/_components/admin/role-list';
 import { PageShell } from '@/app/_components/page-shell';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { roleDisplayName } from '@/lib/role-names';
@@ -42,7 +42,7 @@ export default async function AdminRolesPage({ params }: Params) {
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const { actor, permissions } = await requirePermission(slug, 'manage-roles');
+  const { actor, permissions } = await accessForPage(slug, 'manage-roles');
 
   const roles = await listRoles(actor.userId, slug);
   const permissionLabels = Object.fromEntries(

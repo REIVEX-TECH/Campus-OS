@@ -119,11 +119,24 @@ export function withPlatformGrant<T>(
  */
 export function withGrantedTenant<T>(
   actor: { userId: string; sessionId: string },
-  fn: (tx: TenantTransaction) => Promise<T>,
+  fn: (tx: TenantTransaction, grant: PlatformGrant) => Promise<T>,
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true)`);
-    await tx.execute(sql`select auth_assume_tenant_grant(${actor.sessionId}::uuid)`);
-    return fn(tx);
+    const rows = [
+      ...(await tx.execute(
+        sql`select grant_id, tenant_id, expires_at, reason
+            from auth_assume_tenant_grant(${actor.sessionId}::uuid)`,
+      )),
+    ] as { grant_id: string; tenant_id: string; expires_at: string | Date; reason: string }[];
+    const row = rows[0];
+    if (!row) throw new Error('auth_assume_tenant_grant returned no row');
+    const grant: PlatformGrant = {
+      grantId: row.grant_id,
+      tenantId: row.tenant_id,
+      expiresAt: row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at),
+      reason: row.reason,
+    };
+    return fn(tx, grant);
   });
 }
