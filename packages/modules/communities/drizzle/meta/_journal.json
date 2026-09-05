@@ -78,6 +78,13 @@
       "when": 1756800110000,
       "tag": "0010_karma_recompute_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1756800111000,
+      "tag": "0011_karma_recompute_revoke_public",
+      "breakpoints": true
     }
   ]
 }

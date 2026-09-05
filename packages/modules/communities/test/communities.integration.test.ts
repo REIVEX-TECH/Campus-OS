@@ -211,7 +211,8 @@ describe('row security invariants', () => {
     }
   });
 
-  it.skipIf(!split)('keeps the karma rebuild beyond the application’s reach', async () => {
+  it('keeps the karma rebuild beyond the application’s reach', async (ctx) => {
+    if (!split) return ctx.skip();
     // The owner's default privileges GRANT EXECUTE ON FUNCTIONS to the
     // application, so a definer meant for the owner alone has to be revoked
     // from it BY NAME; the repository's usual REVOKE ... FROM PUBLIC leaves
@@ -436,7 +437,8 @@ describe('the anonymity model', () => {
     return post.value.id;
   }
 
-  it.skipIf(!split)('does not let the application role read author_id at all', async () => {
+  it('does not let the application role read author_id at all', async (ctx) => {
+    if (!split) return ctx.skip();
     const owner = await member('col-owner');
     await expect(
       withActorInTenant(owner.userId, 'aaa', (tx) =>
@@ -2741,6 +2743,7 @@ describe('definer grant hygiene', () => {
     auth_open_tenant_grant: 'app',
     auth_resolve_session: 'app',
     auth_resolve_user_by_subject: 'app',
+    auth_revoke_grants_for_session: 'app',
     auth_revoke_tenant_grant: 'app',
     auth_set_membership_role: 'app',
     auth_sync_tenant_roles: 'app',
@@ -2764,40 +2767,38 @@ describe('definer grant hygiene', () => {
     communities_karma_recompute: 'owner',
   };
 
-  it.skipIf(!split)(
-    'grants each definer EXECUTE to the app exactly as its declared intent says',
-    async () => {
-      const rows = [
-        ...(await getDb().execute(
-          sql`select p.proname,
+  it('grants each definer EXECUTE to the app exactly as its declared intent says', async (ctx) => {
+    if (!split) return ctx.skip();
+    const rows = [
+      ...(await getDb().execute(
+        sql`select p.proname,
                    has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
             from pg_proc p
             where p.pronamespace = 'public'::regnamespace and p.prosecdef`,
-        )),
-      ] as { proname: string; app_can_execute: boolean }[];
+      )),
+    ] as { proname: string; app_can_execute: boolean }[];
 
-      // No definer may exist without a declared intent: a new one forces a choice.
-      const undeclared = rows.map((r) => r.proname).filter((n) => !(n in DEFINER_INTENT));
-      expect(
-        undeclared,
-        'undeclared SECURITY DEFINER functions — add them to DEFINER_INTENT',
-      ).toEqual([]);
+    // No definer may exist without a declared intent: a new one forces a choice.
+    const undeclared = rows.map((r) => r.proname).filter((n) => !(n in DEFINER_INTENT));
+    expect(
+      undeclared,
+      'undeclared SECURITY DEFINER functions — add them to DEFINER_INTENT',
+    ).toEqual([]);
 
-      // And the actual grant must match the declared intent, both directions: an
-      // owner-only definer must not be app-executable, an app one must be.
-      const mismatches = rows
-        .filter((r) => r.proname in DEFINER_INTENT)
-        .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
-        .map(
-          (r) =>
-            `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
-        );
-      expect(mismatches, 'a definer whose EXECUTE grant does not match its intent').toEqual([]);
+    // And the actual grant must match the declared intent, both directions: an
+    // owner-only definer must not be app-executable, an app one must be.
+    const mismatches = rows
+      .filter((r) => r.proname in DEFINER_INTENT)
+      .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
+      .map(
+        (r) =>
+          `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
+      );
+    expect(mismatches, 'a definer whose EXECUTE grant does not match its intent').toEqual([]);
 
-      // Guard against the map rotting: every declared name must exist.
-      const present = new Set(rows.map((r) => r.proname));
-      const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
-      expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
-    },
-  );
+    // Guard against the map rotting: every declared name must exist.
+    const present = new Set(rows.map((r) => r.proname));
+    const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
+    expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
+  });
 });
