@@ -169,10 +169,18 @@ test('the timetable page remembers what you looked at, even signed out', async (
   // By href, not by position: the cascade above records several sections and
   // they can land in the same millisecond, so "newest first" does not settle
   // their order and the first row is not reliably the one just viewed.
-  await panel.locator(`a[href*="section=${section}"]`).click();
-  // Poll the URL rather than waitForURL: a soft navigation never fires the
-  // 'load' event waitForURL waits for by default, which is the cold-CI flake.
-  await expect(page).toHaveURL(/section=/, { timeout: 15_000 });
+  const recent = panel.locator(`a[href*="section=${section}"]`);
+  // The panel is client rendered from localStorage after hydration, so on a cold
+  // runner the first click can land before the Link's router handler is attached
+  // and the soft navigation never fires (the URL stays on the bare picker). Retry
+  // the click until the URL carries the section, rather than waiting longer on a
+  // single click that already raced hydration. Poll the URL, not waitForURL: a
+  // soft navigation never fires the 'load' event waitForURL waits for by default.
+  await expect(async () => {
+    if (new URL(page.url()).searchParams.get('section') === section) return;
+    await recent.click({ timeout: 2_000 });
+    await expect(page).toHaveURL(new RegExp(`section=${section}`), { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
   expect(new URL(page.url()).searchParams.get('section')).toBe(section);
 
   // And it is the reader's to forget.
