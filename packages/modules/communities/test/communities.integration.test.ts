@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { withActorInTenant, withTenant } from '@campusos/db';
+import { withActorInTenant, withPlatformGrant, withTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
@@ -17,7 +17,7 @@ import { grantRole } from '@campusos/module-identity/rbac';
 import { liftStanding, setStanding, standingFor } from '@campusos/module-identity/standing';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
 import { createRoleTemplate } from '@campusos/module-identity/role-templates';
-import { findOrCreateUser } from '@campusos/module-identity/sessions';
+import { findOrCreateUser, issueSession } from '@campusos/module-identity/sessions';
 import { communityPermissions, tenantPermissions } from '../src/access';
 import { commentsForPost, createComment } from '../src/comments';
 import {
@@ -572,10 +572,32 @@ describe('the anonymity model', () => {
       ok: false,
       reason: 'above_own',
     });
+    // Nor may a platform admin acting OFF-grant: the exemption that keeps
+    // communities.unmask assignable is gated on a live grant (identity 0029).
     expect(await grantRole(superAdmin, 'aaa', tenantAdmin.userId, 'trust-and-safety')).toEqual({
-      ok: true,
-      changed: true,
+      ok: false,
+      reason: 'not_allowed',
     });
+    // Under an audited platform grant, they may assign it -- the one path
+    // communities.unmask is ever handed out.
+    await issueSession(superAdmin);
+    const [sessionRow] = [
+      ...(await withActorInTenant(superAdmin.userId, 'aaa', (tx) =>
+        tx.execute(sql`select id from sessions where user_id = ${superAdmin.userId} limit 1`),
+      )),
+    ] as { id: string }[];
+    await withPlatformGrant(
+      { userId: superAdmin.userId, sessionId: sessionRow!.id },
+      'aaa',
+      'seeding trust and safety',
+      async () => undefined,
+    );
+    expect(
+      await grantRole(superAdmin, 'aaa', tenantAdmin.userId, 'trust-and-safety', {
+        via: 'grant',
+        sessionId: sessionRow!.id,
+      }),
+    ).toEqual({ ok: true, changed: true });
 
     // With the permission but no report: still no.
     expect(
