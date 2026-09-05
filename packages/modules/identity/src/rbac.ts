@@ -1,5 +1,11 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withTenantMutation,
+  type TenantTransaction,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { PermissionSet, isCommunityRole, isPermission, type Permission } from '@campusos/core';
 import { syncTenantRoles } from './role-templates';
@@ -184,6 +190,7 @@ export async function grantRole(
   tenantId: string,
   memberUserId: string,
   roleKey: string,
+  access?: TenantWriteContext,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal }> {
   // Community roles attach per community, never to a tenant membership, and are
   // rejected here before the definer, which would otherwise find the synced row
@@ -193,7 +200,7 @@ export async function grantRole(
   // platform exemption that keeps communities.unmask grantable, and the "not
   // yourself under a grant" containment — is `auth_set_membership_role` (0019);
   // the application role can no longer write membership_roles directly.
-  const outcome = await withActorInTenant(actor.userId, tenantId, async (tx) => {
+  const outcome = await withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const [row] = [
       ...(await tx.execute(
         sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, true) as code`,
@@ -212,11 +219,12 @@ export async function revokeRole(
   tenantId: string,
   memberUserId: string,
   roleKey: string,
+  access?: TenantWriteContext,
 ): Promise<
   { ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal | 'last_admin' }
 > {
   if (isCommunityRole(roleKey)) return { ok: false, reason: 'no_such_role' };
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const [row] = [
       ...(await tx.execute(
         sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, false) as code`,

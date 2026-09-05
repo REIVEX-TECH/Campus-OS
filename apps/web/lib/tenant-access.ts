@@ -1,7 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { notFound, redirect } from 'next/navigation';
-import { withGrantedTenant } from '@campusos/db';
+import { withGrantedTenant, type TenantWriteContext } from '@campusos/db';
 import { PermissionSet, type Permission } from '@campusos/core';
 import {
   effectivePermissions,
@@ -133,6 +133,31 @@ export async function tenantAccessContext(slug: string): Promise<TenantAccess> {
   if (r.kind === 'redirect') enterRedirect(slug);
   if (r.kind === 'anon') notFound();
   return r.kind === 'grant' ? { kind: 'grant', grant: r.grant } : { kind: 'member' };
+}
+
+/**
+ * For an admin mutation (route handler): the actor and the write context to pass
+ * into the identity mutation, or null when the caller may not write here.
+ *
+ * The permission is checked in the resolved context (grant or member); the 0019
+ * definer re-checks it and applies the not-self-under-grant containment, so this
+ * is the first of two checks. Returning `via: 'grant'` makes the mutation carry
+ * the grant use row into the definer; there is no silent member fallback (a
+ * platform admin with no grant for this slug, and no membership, is null / 404).
+ */
+export async function tenantWriteContext(
+  slug: string,
+  permission: Permission,
+): Promise<{ actor: Actor; access: TenantWriteContext } | null> {
+  const r = await resolveAccess(slug);
+  if (r.kind === 'anon' || r.kind === 'redirect') return null;
+  if (!r.permissions.has(permission)) return null;
+  if (r.kind === 'grant') {
+    const pa = await currentPlatformActor();
+    if (!pa) return null; // a grant implies a live session; defensive
+    return { actor: r.actor, access: { via: 'grant', sessionId: pa.sessionId } };
+  }
+  return { actor: r.actor, access: { via: 'member' } };
 }
 
 /**

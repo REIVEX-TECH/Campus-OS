@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { withActor } from '@campusos/db';
+import { withActor, withTenantMutation, type TenantWriteContext } from '@campusos/db';
+import { recordAudit } from './audit';
 
 /**
  * Revoke (close) a platform tenant grant, as the acting user.
@@ -17,5 +18,30 @@ export async function revokeTenantGrant(
 ): Promise<void> {
   await withActor(actorUserId, (tx) =>
     tx.execute(sql`select auth_revoke_tenant_grant(${grantId}::uuid, ${reason ?? null})`),
+  );
+}
+
+/**
+ * Record one audit line for a tenant-admin action in the resolved write context.
+ *
+ * For mutations that do NOT go through a 0019 definer (a tenant-isolated write
+ * such as a room rename), this leaves the grant-attributable trail the definer
+ * paths get for free: run under `withTenantMutation`, so a grant stamps its use
+ * row and the `audit_log_stamp_grant` trigger stamps the line with the grant id.
+ * Callers use it for the grant path, so god-mode access is always logged.
+ */
+export async function auditTenantAdminAction(
+  actorUserId: string,
+  tenantId: string,
+  access: TenantWriteContext,
+  entry: {
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    meta?: Record<string, string | number | boolean | null>;
+  },
+): Promise<void> {
+  await withTenantMutation(actorUserId, tenantId, access, (tx) =>
+    recordAudit(tx, { actorUserId, tenantId, ...entry }),
   );
 }

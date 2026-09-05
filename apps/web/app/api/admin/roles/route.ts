@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { getTenantRegistry } from '@/lib/tenants';
 import { grantRole, revokeRole } from '@campusos/module-identity/rbac';
-import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
 import { isSameOrigin } from '@/lib/same-origin';
+import { tenantWriteContext } from '@/lib/tenant-access';
 
 /**
  * Give a member a role, or take one away.
@@ -34,15 +34,15 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
-  const manager = tenant ? await permitted(tenant.slug, 'manage-roles') : null;
-  if (!tenant || !manager) return Response.json({ error: 'not_found' }, { status: 404 });
+  const write = tenant ? await tenantWriteContext(tenant.slug, 'manage-roles') : null;
+  if (!tenant || !write) return Response.json({ error: 'not_found' }, { status: 404 });
 
-  const actor = { userId: manager.actor.userId };
+  const actor = { userId: write.actor.userId };
   const { userId, roleKey, action } = parsed.data;
   const result =
     action === 'grant'
-      ? await grantRole(actor, tenant.slug, userId, roleKey)
-      : await revokeRole(actor, tenant.slug, userId, roleKey);
+      ? await grantRole(actor, tenant.slug, userId, roleKey, write.access)
+      : await revokeRole(actor, tenant.slug, userId, roleKey, write.access);
   if (!result.ok) {
     if (result.reason === 'last_admin') {
       return Response.json({ error: 'last_admin' }, { status: 409 });

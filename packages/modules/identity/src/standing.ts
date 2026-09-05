@@ -1,5 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withTenantMutation,
+  type TenantTransaction,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { canInTransaction } from './rbac';
 import { tenantMemberships } from './schema/identity';
@@ -113,6 +119,7 @@ export async function setStanding(
   tenantId: string,
   memberUserId: string,
   input: StandingInput,
+  access?: TenantWriteContext,
 ): Promise<Result<{ standing: StandingRecord }, StandingRefusal>> {
   const reason = input.reason.trim();
   if (reason.length < 3 || reason.length > 300) return err('invalid');
@@ -121,7 +128,7 @@ export async function setStanding(
   }
   if (memberUserId === actor.userId) return err('self');
   const until = input.minutes ? new Date(Date.now() + input.minutes * 60_000) : null;
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     // The write is a definer (0019): the application role can no longer write
     // tenant_memberships. It re-checks restrict-members, refuses self and the
     // last active administrator, and audits. We map its code and read the row
@@ -143,8 +150,9 @@ export async function liftStanding(
   actor: { userId: string },
   tenantId: string,
   memberUserId: string,
+  access?: TenantWriteContext,
 ): Promise<Result<{ changed: boolean }, StandingRefusal>> {
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const current = await standingInTransaction(tx, memberUserId, tenantId);
     // A stranger's row is good standing too; distinguish "no membership" so the
     // caller still gets not_found, matching the previous behaviour.
