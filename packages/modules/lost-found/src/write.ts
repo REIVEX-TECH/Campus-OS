@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { withActorInTenant, type TenantTransaction } from '@campusos/db';
+import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
+import { isVerifiedMember } from './access';
 import { lostFoundItemPhotos, lostFoundItems } from './schema/lost-found';
 import type { LostFoundSettings } from './manifest';
 import type { ItemKind, ItemSummary } from './items';
@@ -12,23 +13,6 @@ export type PhotoRefusal = 'not_found' | 'too_many_photos';
 
 /** Items one person may create in a rolling hour. */
 const ITEMS_PER_HOUR = 10;
-
-/** Verified, active (or lapsed-standing) member of this tenant, read in-tx. */
-async function isVerifiedMember(
-  tx: TenantTransaction,
-  userId: string,
-  tenantId: string,
-): Promise<boolean> {
-  const rows = [
-    ...(await tx.execute(sql`
-      select 1 from tenant_memberships
-      where user_id = ${userId}::uuid and tenant_id = ${tenantId}
-        and verified_at is not null
-        and (status = 'active' or (standing_until is not null and standing_until <= now()))
-      limit 1`)),
-  ];
-  return rows.length > 0;
-}
 
 export async function createItem(
   actor: { userId: string },
