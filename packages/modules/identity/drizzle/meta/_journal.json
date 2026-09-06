@@ -211,6 +211,13 @@
       "when": 1756800029000,
       "tag": "0029_set_membership_role_grant_containment",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1756800030000,
+      "tag": "0030_verification_request_details",
+      "breakpoints": true
     }
   ]
 }

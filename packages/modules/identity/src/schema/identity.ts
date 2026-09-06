@@ -243,9 +243,6 @@ export const verificationRequests = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** pending | approved | rejected */
     status: text('status').notNull().default('pending'),
-    fullName: text('full_name'),
-    rollNumber: text('roll_number'),
-    note: text('note'),
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt,
@@ -259,6 +256,28 @@ export const verificationRequests = pgTable(
       .where(sql`${t.status} = 'pending'`),
   ],
 );
+
+/**
+ * The identity details a person submits with a verification request: their real
+ * name, roll number and an optional note, kept off the tenant-wide-readable
+ * request row (0030). Own-row RLS for the requester; admin reads go only through
+ * `auth_pending_verification_requests`, gated on approve-verifications, and a
+ * trigger purges the row the moment its request leaves 'pending'.
+ */
+export const verificationRequestDetails = pgTable('verification_request_details', {
+  requestId: uuid('request_id')
+    .primaryKey()
+    .references(() => verificationRequests.id, { onDelete: 'cascade' }),
+  tenantId: text('tenant_id')
+    .notNull()
+    .references(() => universities.slug, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  fullName: text('full_name').notNull(),
+  rollNumber: text('roll_number').notNull(),
+  note: text('note'),
+});
 
 /**
  * A tenant's roles. Two tenants may both have a role keyed `moderator` meaning
