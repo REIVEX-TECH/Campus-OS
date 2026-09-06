@@ -15,6 +15,13 @@
       "when": 1756800201000,
       "tag": "0001_lost_found_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756800202000,
+      "tag": "0002_lost_found_moderation",
+      "breakpoints": true
     }
   ]
 }

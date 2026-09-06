@@ -117,7 +117,35 @@ export const lostFoundClaimMessages = pgTable(
   (t) => [index('lf_claim_messages_claim_idx').on(t.claimId, t.createdAt)],
 );
 
+/**
+ * A report on an item or a claim. Own-row for the reporter (RLS); moderators
+ * read the queue and resolve through definers gated on lostfound.moderate
+ * (drizzle/0002).
+ */
+export const lostFoundReports = pgTable(
+  'lf_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id').notNull(),
+    /** 'lf_item' | 'lf_claim' */
+    targetType: text('target_type').notNull(),
+    targetId: uuid('target_id').notNull(),
+    reporterId: uuid('reporter_id').notNull(),
+    reason: text('reason').notNull(),
+    note: text('note'),
+    /** 'open' | 'resolved' */
+    status: text('status').notNull().default('open'),
+    /** 'removed' | 'dismissed' */
+    resolution: text('resolution'),
+    resolvedBy: uuid('resolved_by'),
+    resolvedAt: tz('resolved_at'),
+    createdAt,
+  },
+  (t) => [index('lf_reports_queue_idx').on(t.tenantId, t.status, t.createdAt)],
+);
+
 export type LostFoundItem = typeof lostFoundItems.$inferSelect;
 export type LostFoundItemPhoto = typeof lostFoundItemPhotos.$inferSelect;
 export type LostFoundClaim = typeof lostFoundClaims.$inferSelect;
 export type LostFoundClaimMessage = typeof lostFoundClaimMessages.$inferSelect;
+export type LostFoundReport = typeof lostFoundReports.$inferSelect;

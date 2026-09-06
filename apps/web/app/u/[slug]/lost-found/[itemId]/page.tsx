@@ -5,6 +5,7 @@ import { itemById } from '@campusos/module-lost-found/items';
 import { claimThread, listClaimsForItem } from '@campusos/module-lost-found/claims';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { ClaimArea, type ClaimLabels } from '@/app/_components/lost-found/claim-area';
+import { ReportButton, type ReportLabels } from '@/app/_components/lost-found/report-button';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
@@ -124,6 +125,21 @@ export default async function LostFoundItemPage({ params, searchParams }: PagePr
       withdrawn: t('lostFound.claim.status.withdrawn'),
     },
   };
+  const reportLabels: ReportLabels = {
+    button: t('lostFound.report.button'),
+    intro: t('lostFound.report.intro'),
+    reasons: [
+      { value: 'spam', label: t('lostFound.report.reason.spam') },
+      { value: 'inappropriate', label: t('lostFound.report.reason.inappropriate') },
+      { value: 'scam', label: t('lostFound.report.reason.scam') },
+      { value: 'other', label: t('lostFound.report.reason.other') },
+    ],
+    notePlaceholder: t('lostFound.report.notePlaceholder'),
+    send: t('lostFound.report.send'),
+    sending: t('lostFound.report.sending'),
+    done: t('lostFound.report.done'),
+    failed: t('lostFound.report.failed'),
+  };
 
   return (
     <PageShell>
@@ -220,7 +236,19 @@ export default async function LostFoundItemPage({ params, searchParams }: PagePr
             selectedClaimId={selectedClaimId}
             thread={thread}
             labels={claimLabels}
+            reportLabels={reportLabels}
           />
+        ) : null}
+
+        {actor && !isReporter ? (
+          <div className="px-1">
+            <ReportButton
+              tenant={slug}
+              targetType="lf_item"
+              targetId={item.id}
+              labels={reportLabels}
+            />
+          </div>
         ) : null}
       </article>
     </PageShell>
