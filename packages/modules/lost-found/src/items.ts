@@ -48,6 +48,24 @@ export interface ItemDetail {
   photos: ItemPhoto[];
 }
 
+export interface BuildingOption {
+  id: string;
+  name: string;
+}
+
+/** The tenant's buildings, for the optional building field on the post form. */
+export async function listBuildings(tenantId: string): Promise<BuildingOption[]> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select id, name from buildings
+        where tenant_id = ${tenantId} and deleted_at is null
+        order by name asc`)),
+    ] as Array<{ id: string; name: string }>;
+    return rows.map((r) => ({ id: r.id, name: r.name }));
+  });
+}
+
 export interface BrowseFilters {
   kind?: ItemKind;
   category?: string;
