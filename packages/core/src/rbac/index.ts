@@ -37,6 +37,9 @@ export const PERMISSIONS = [
   // Lost & Found. Moderation only — posting and claiming are gated on verified
   // membership, not a role permission.
   'lostfound.moderate',
+  // Direct messages. Moderation only — messaging is gated on membership and the
+  // tenant's who-can-message setting, not a role permission.
+  'messages.moderate',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

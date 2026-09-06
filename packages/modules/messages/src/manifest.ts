@@ -47,7 +47,9 @@ export const manifest: ModuleManifest = defineManifest({
   // blocks, not a role permission (any verified member may message). The only
   // role permission is moderation, added to the enforced catalogue and the
   // tenant_admin template with the moderation migration that checks it.
-  permissions: [],
+  permissions: [
+    { id: 'messages.moderate', description: 'Read reported messages and resolve message reports' },
+  ],
   settingsSchema,
   migrations: { folder: migrationsFolder, table: migrationsTable },
   jobs: [],

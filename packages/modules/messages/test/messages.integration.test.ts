@@ -22,6 +22,7 @@ import {
   thread,
   unreadCount,
 } from '../src/service';
+import { moderationQueue, reportMessage, resolveReports } from '../src/moderation';
 
 /**
  * Direct messages against a real Postgres: a conversation and its messages are
@@ -92,6 +93,27 @@ async function open(a: { userId: string }, b: { userId: string }, tenant = 'aaa'
   const res = await startConversation(a, tenant, b.userId, settings);
   if (!res.ok) throw new Error(`start failed: ${res.error}`);
   return res.value.id;
+}
+
+/** A verified tenant administrator (holds messages.moderate), seeded as the owner. */
+async function admin(subject: string, tenant = 'aaa') {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+  await runAsMigrationRole(
+    `select auth_sync_tenant_roles('${tenant}')`,
+    `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+       values ('${tenant}', '${actor.userId}', 'tenant_admin', 'active', now(), 'admin')
+       on conflict (tenant_id, user_id) do update
+         set role = 'tenant_admin',
+             verified_at = coalesce(tenant_memberships.verified_at, now()),
+             verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+       where m.tenant_id = '${tenant}' and m.user_id = '${actor.userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
+  return actor;
 }
 
 describe('direct messages RLS', () => {
@@ -270,6 +292,64 @@ describe('direct messages service', () => {
     expect(await deleteForEveryone(a, 'aaa', other.value.id, settings)).toMatchObject({
       ok: false,
       error: 'too_late',
+    });
+  });
+});
+
+describe('direct messages moderation', () => {
+  it('reports a message with a snapshot a moderator reads, and resolves it', async () => {
+    if (!split) return;
+    const a = await member('dm-mod-a');
+    const b = await member('dm-mod-b');
+    const id = await open(a, b);
+    await sendMessage(a, 'aaa', id, { body: 'before' }, settings);
+    const bad = await sendMessage(a, 'aaa', id, { body: 'the bad one' }, settings);
+    await sendMessage(b, 'aaa', id, { body: 'after' }, settings);
+    if (!bad.ok) throw new Error('send failed');
+
+    // b reports a's message; the snapshot carries the words and the context.
+    expect(await reportMessage(b, 'aaa', bad.value.id, 'harassment', 'not ok')).toMatchObject({
+      ok: true,
+      value: { reported: true },
+    });
+    // One per reporter per message.
+    expect(await reportMessage(b, 'aaa', bad.value.id, 'harassment', null)).toMatchObject({
+      ok: true,
+      value: { reported: false },
+    });
+
+    // A non-moderator (either participant) sees an empty queue (definer-gated).
+    expect((await moderationQueue(a, 'aaa')).length).toBe(0);
+    expect((await moderationQueue(b, 'aaa')).length).toBe(0);
+
+    // A moderator sees the report and its snapshot, though they are not a participant.
+    const mod = await admin('dm-mod-adm');
+    const queue = await moderationQueue(mod, 'aaa');
+    const mine = queue.find((r) => r.messageId === bad.value.id);
+    expect(mine?.snapshot.message?.body).toBe('the bad one');
+    expect(mine?.snapshot.context.map((m) => m.body)).toEqual(['before', 'the bad one', 'after']);
+
+    // A non-moderator cannot resolve; a moderator removes it (tombstoned) and the queue clears.
+    expect((await resolveReports(b, 'aaa', bad.value.id, 'removed')).ok).toBe(true);
+    expect((await moderationQueue(mod, 'aaa')).length).toBe(1); // b's resolve did nothing
+    expect((await resolveReports(mod, 'aaa', bad.value.id, 'removed')).ok).toBe(true);
+    expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
+    // The message is now a tombstone in the thread.
+    const seen = (await thread(a, 'aaa', id))?.messages.find((m) => m.id === bad.value.id);
+    expect(seen).toMatchObject({ deleted: true, body: '' });
+  });
+
+  it('refuses a report on a message the reporter cannot see', async () => {
+    if (!split) return;
+    const a = await member('dm-mod2-a');
+    const b = await member('dm-mod2-b');
+    const outsider = await member('dm-mod2-out');
+    const id = await open(a, b);
+    const m = await sendMessage(a, 'aaa', id, { body: 'private' }, settings);
+    if (!m.ok) throw new Error('send failed');
+    expect(await reportMessage(outsider, 'aaa', m.value.id, 'spam', null)).toMatchObject({
+      ok: false,
+      error: 'not_found',
     });
   });
 });
