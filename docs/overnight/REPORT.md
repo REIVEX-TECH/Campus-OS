@@ -41,6 +41,7 @@ PR adding/altering RLS, a SECURITY DEFINER, or a privilege grant).
 | PR   | What                                                                                                          | Merge SHA | §6                |
 | ---- | ------------------------------------------------------------------------------------------------------------- | --------- | ----------------- |
 | #161 | richer profile (member-since, Admin badge, karma split, Edit link, handle links) + a post-history privacy fix | `6ec3aaf` | no (query filter) |
+| #169 | polish: link handles to profiles on the blocked list (the last plain-text people-list)                        | `6e4e51c` | no                |
 
 ### Block 3 — Direct messages (new module, NOT yet enabled)
 
@@ -68,7 +69,7 @@ new work to apply is: identity 0031–0032, all of lost-found, and messages.
 
 ```bash
 cd /srv/campusos
-git pull            # main at #162/#163
+git pull            # main includes all overnight work (through #169)
 pnpm install --frozen-lockfile
 pnpm build
 ```

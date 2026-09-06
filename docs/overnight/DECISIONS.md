@@ -202,9 +202,11 @@ at the bottom of each block.
   primary staff signal) ships now. Logged as a follow-up.
 - **Handles/avatars now link to the profile at the public people-lists** (the
   community members roster and the rail's moderators list); post cards, comment
-  threads and L&F already linked. A few secondary surfaces (the notifications
-  actor avatar, the blocked list, admin rosters) still do not link — a minor
-  follow-up.
+  threads and L&F already linked. The blocked list was the last plain-text
+  people-list and now links too (#169). The notifications actor deliberately does
+  NOT link: the whole row is already a `Link` to the post, so a nested profile
+  `<a>` would be invalid HTML. Admin rosters stay unlinked by design (they carry
+  their own reveal/role actions, not a public-profile jump).
 
 ## Block 3 — Direct messages (new module)
 
