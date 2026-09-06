@@ -28,6 +28,15 @@ export function resetObjectStore(): void {
 }
 
 /**
+ * The public URL a browser fetches an object from. Pure — needs no configured
+ * store — so a page can build a photo URL without a data directory. Served by
+ * nginx in production and the /media route in development.
+ */
+export function mediaUrl(key: string): string {
+  return `/media/${key}`;
+}
+
+/**
  * A fresh pair of keys for one photo — a display variant and its thumbnail —
  * sharing an unguessable UUID and fanned out one level to keep directories
  * small. Both are WebP. Callers store both keys.

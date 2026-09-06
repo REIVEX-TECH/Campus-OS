@@ -3,4 +3,4 @@
 // separate entry point, `@campusos/media/image`, so importing the store never
 // pulls sharp into a bundle.
 export { LocalFsStore } from './fs-store';
-export { getObjectStore, newImageKeys, resetObjectStore } from './store';
+export { getObjectStore, mediaUrl, newImageKeys, resetObjectStore } from './store';

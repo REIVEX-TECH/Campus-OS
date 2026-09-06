@@ -32,6 +32,7 @@
     "@campusos/db": "workspace:*",
     "@campusos/module-communities": "workspace:*",
     "@campusos/module-identity": "workspace:*",
+    "@campusos/module-lost-found": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
     "@commitlint/cli": "^19.6.1",
