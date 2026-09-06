@@ -9,6 +9,7 @@
     "./manifest": "./src/manifest.ts",
     "./schema": "./src/schema/index.ts",
     "./service": "./src/service.ts",
+    "./moderation": "./src/moderation.ts",
     "./input": "./src/input.ts"
   },
   "scripts": {

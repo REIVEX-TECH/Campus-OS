@@ -112,6 +112,11 @@ beforeAll(async () => {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'lost-found', 'drizzle'),
     '__drizzle_migrations_lost_found',
   );
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'messages', 'drizzle'),
+    '__drizzle_migrations_messages',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
@@ -2847,6 +2852,11 @@ describe('definer grant hygiene', () => {
     // or resolves reports across users (the M1/M2 moderator-definer pattern).
     auth_lf_report_queue: 'app',
     auth_lf_resolve_reports: 'app',
+    // Direct-messages moderation: app-callable, each self-gates on messages.moderate
+    // (via auth_effective_permissions), then reads the report queue (with the
+    // message snapshot) or resolves reports across participants.
+    auth_msg_report_queue: 'app',
+    auth_msg_resolve_reports: 'app',
     // Owner-only: a maintenance script, an internal helper of other definers, or
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.
