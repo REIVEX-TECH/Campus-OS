@@ -5,12 +5,26 @@ import { ADMIN_SECTIONS, firstAdminSection, visibleAdminSections } from '@/lib/a
 describe('admin sections', () => {
   it('shows only the sections a permission opens, in display order', () => {
     const p = new PermissionSet(['view-analytics', 'manage-members']);
-    // manage-members opens both the members list and the join-policy editor.
+    // manage-members opens the members list, the join-policy editor, and the
+    // (read-only) roles catalogue. Assigning roles is platform-only now (identity
+    // 0032), so the roles nav is gated on manage-members, not manage-roles.
     expect(visibleAdminSections(p).map((s) => s.key)).toEqual([
       'members',
       'join-policy',
+      'roles',
       'analytics',
     ]);
+  });
+
+  it('shows a resident admin the roles catalogue but never keys it on manage-roles', () => {
+    // A resident admin holds manage-members but not manage-roles, and still sees
+    // the roles section (read-only); the grant control on the page is what checks
+    // manage-roles, so it is absent for them.
+    const resident = new PermissionSet(['manage-members']);
+    expect(visibleAdminSections(resident).map((s) => s.key)).toContain('roles');
+    expect(resident.has('manage-roles')).toBe(false);
+    const roles = ADMIN_SECTIONS.find((s) => s.key === 'roles');
+    expect(roles?.permission).toBe('manage-members');
   });
 
   it('sends /admin to the first section the person may open', () => {

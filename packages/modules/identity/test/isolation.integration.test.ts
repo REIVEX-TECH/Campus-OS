@@ -824,6 +824,61 @@ async function adminIn(tenant: string, subject: string) {
   return actor;
 }
 
+/**
+ * Attach a role to a member directly, as the owner, for test SETUP where the
+ * point is that the member HOLDS the role, not the assignment path. The member
+ * must already have a tenant_membership. (Assigning through the app is
+ * platform-only now; use grantUnderGrant to exercise that path.)
+ */
+async function seedRole(userId: string, tenant: string, roleKey: string): Promise<void> {
+  await runAsMigrationRole(
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = '${roleKey}'
+       where m.tenant_id = '${tenant}' and m.user_id = '${userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
+}
+
+let grantorSeq = 0;
+
+/**
+ * Assign or revoke a role the only way the app allows it now: a platform admin
+ * under a live, audited grant for the tenant. A fresh platform actor per call
+ * (one open grant per admin at a time).
+ */
+async function underGrant(
+  tenant: string,
+  fn: (actor: { userId: string }, access: { via: 'grant'; sessionId: string }) => Promise<unknown>,
+): Promise<unknown> {
+  const p = await platform(`under-grant-${(grantorSeq += 1)}`);
+  await issueSession(p);
+  const [ps] = await withActor(p.userId, (tx) =>
+    tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, p.userId)),
+  );
+  const access = { via: 'grant' as const, sessionId: ps!.id };
+  await withPlatformGrant(
+    { userId: p.userId, sessionId: ps!.id },
+    tenant,
+    'assigning a role in a test',
+    async () => undefined,
+  );
+  return fn({ userId: p.userId }, access);
+}
+
+function grantUnderGrant(tenant: string, targetUserId: string, roleKey: string) {
+  return underGrant(tenant, (actor, access) =>
+    grantRole(actor, tenant, targetUserId, roleKey, access),
+  ) as ReturnType<typeof grantRole>;
+}
+
+function revokeUnderGrant(tenant: string, targetUserId: string, roleKey: string) {
+  return underGrant(tenant, (actor, access) =>
+    revokeRole(actor, tenant, targetUserId, roleKey, access),
+  ) as ReturnType<typeof revokeRole>;
+}
+
 describe('verification requests', () => {
   it('lets a person ask once, see their own, and change nothing', async () => {
     const user = await findOrCreateUser({ subject: 'req-1', email: 'req1@gmail.com' });
@@ -1226,7 +1281,10 @@ describe('roles and permissions', () => {
       ]),
     );
     expect(list.every((r) => r.isSystem)).toBe(true);
-    expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-roles');
+    // Role assignment is platform-only now (0032): tenant_admin manages members
+    // but no longer carries manage-roles.
+    expect(list.find((r) => r.key === 'tenant_admin')!.permissions).toContain('manage-members');
+    expect(list.find((r) => r.key === 'tenant_admin')!.permissions).not.toContain('manage-roles');
     expect(list.find((r) => r.key === 'student')!.permissions.sort()).toEqual([
       'communities.create',
       'post',
@@ -1236,9 +1294,10 @@ describe('roles and permissions', () => {
   it('resolves an administrator to every permission and a student to one', async () => {
     const a = await admin('rbac-admin');
     const s = await member('rbac-student');
-    expect(
-      (await effectivePermissions(a.userId, 'aaa')).hasAll('manage-roles', 'view-analytics'),
-    ).toBe(true);
+    const adminPermissions = await effectivePermissions(a.userId, 'aaa');
+    expect(adminPermissions.hasAll('manage-members', 'view-analytics')).toBe(true);
+    // Assigning roles is platform-only now (0032), so even a resident admin lacks it.
+    expect(adminPermissions.has('manage-roles')).toBe(false);
     const studentPermissions = await effectivePermissions(s.userId, 'aaa');
     expect(studentPermissions.toArray().sort()).toEqual(['communities.create', 'post']);
     expect(studentPermissions.has('manage-roles')).toBe(false);
@@ -1252,8 +1311,8 @@ describe('roles and permissions', () => {
   it('never leaks a permission across tenants', async () => {
     // The whole point: power in one university is not power in another.
     const a = await admin('rbac-cross');
-    expect(await can(a.userId, 'aaa', 'manage-roles')).toBe(true);
-    expect(await can(a.userId, 'bbb', 'manage-roles')).toBe(false);
+    expect(await can(a.userId, 'aaa', 'manage-members')).toBe(true);
+    expect(await can(a.userId, 'bbb', 'manage-members')).toBe(false);
     expect((await effectivePermissions(a.userId, 'bbb')).size).toBe(0);
   });
 
@@ -1276,7 +1335,7 @@ describe('roles and permissions', () => {
       'post',
     ]);
 
-    expect(await grantRole(a, 'aaa', s.userId, 'tenant_admin')).toEqual({
+    expect(await grantUnderGrant('aaa', s.userId, 'tenant_admin')).toEqual({
       ok: true,
       changed: true,
     });
@@ -1286,7 +1345,7 @@ describe('roles and permissions', () => {
     expect(await rolesForMember(a.userId, 'aaa', s.userId)).toEqual(['student', 'tenant_admin']);
 
     // Granting the same role again is a no op rather than an error.
-    expect(await grantRole(a, 'aaa', s.userId, 'tenant_admin')).toEqual({
+    expect(await grantUnderGrant('aaa', s.userId, 'tenant_admin')).toEqual({
       ok: true,
       changed: false,
     });
@@ -1304,38 +1363,52 @@ describe('roles and permissions', () => {
       ok: false,
       reason: 'not_allowed',
     });
-    // rolesForMember is gated the same way: an admin reads a member's roles, a
-    // plain student cannot read anyone's off tenant-context RLS.
+    // A resident administrator, too, no longer holds manage-roles: assigning
+    // roles is platform-only now (0032), so both directions are refused.
+    expect(await grantRole(a, 'aaa', other.userId, 'tenant_admin')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect(await revokeRole(a, 'aaa', other.userId, 'student')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    // rolesForMember stays open to a resident admin: it is gated on manage-members
+    // (which they keep), not manage-roles. A plain student reads nothing.
     expect(await rolesForMember(a.userId, 'aaa', other.userId)).toEqual(['student']);
     expect(await rolesForMember(s.userId, 'aaa', other.userId)).toEqual([]);
   });
 
   it('refuses an unknown role and an unknown member', async () => {
-    const a = await admin('rbac-unknown');
+    // Reached only past the manage-roles gate, so the grantor is a platform admin
+    // under a grant (the only path that assigns roles now).
     const s = await member('rbac-unknown-member');
-    expect(await grantRole(a, 'aaa', s.userId, 'root')).toEqual({
+    expect(await grantUnderGrant('aaa', s.userId, 'root')).toEqual({
       ok: false,
       reason: 'no_such_role',
     });
-    expect(await grantRole(a, 'aaa', '00000000-0000-0000-0000-000000000000', 'student')).toEqual({
-      ok: false,
-      reason: 'no_such_member',
-    });
+    expect(await grantUnderGrant('aaa', '00000000-0000-0000-0000-000000000000', 'student')).toEqual(
+      {
+        ok: false,
+        reason: 'no_such_member',
+      },
+    );
   });
 
   it('will not let a tenant remove its last administrator', async () => {
     const a = await admin('rbac-last');
-    expect(await revokeRole(a, 'aaa', a.userId, 'tenant_admin')).toEqual({
+    // Even the platform, under a grant, cannot revoke the only administrator.
+    expect(await revokeUnderGrant('aaa', a.userId, 'tenant_admin')).toEqual({
       ok: false,
       reason: 'last_admin',
     });
-    const second = await member('rbac-last-second');
-    await grantRole(a, 'aaa', second.userId, 'tenant_admin');
-    expect(await revokeRole(a, 'aaa', a.userId, 'tenant_admin')).toEqual({
+    await admin('rbac-last-second');
+    expect(await revokeUnderGrant('aaa', a.userId, 'tenant_admin')).toEqual({
       ok: true,
       changed: true,
     });
-    expect(await can(a.userId, 'aaa', 'manage-roles')).toBe(false);
+    // a is no longer an administrator, so they lose the admin permission set.
+    expect(await can(a.userId, 'aaa', 'manage-members')).toBe(false);
   });
 
   it('keeps the role tables unreadable without a tenant context', async () => {
@@ -1358,18 +1431,23 @@ describe('roles and permissions', () => {
   });
 
   it('leaves an audit line for every role change', async () => {
-    const a = await admin('rbac-audit');
     const s = await member('rbac-audit-member');
-    await grantRole(a, 'aaa', s.userId, 'teacher');
-    await revokeRole(a, 'aaa', s.userId, 'teacher');
+    // Assignment is platform-only, so the change is made under a grant; the audit
+    // line lands against the tenant regardless of who the grantor is.
+    await grantUnderGrant('aaa', s.userId, 'teacher');
+    await revokeUnderGrant('aaa', s.userId, 'teacher');
+    const a = await admin('rbac-audit');
     const trail = await withActorInTenant(a.userId, 'aaa', (tx) =>
-      tx.select().from(auditLog).where(eq(auditLog.actorUserId, a.userId)),
+      tx.select().from(auditLog).where(eq(auditLog.tenantId, 'aaa')),
     );
-    const actions = trail.map((r) => r.action);
-    expect(actions).toContain('role.granted');
-    expect(actions).toContain('role.revoked');
+    const roleRows = trail.filter(
+      (r) => r.action === 'role.granted' || r.action === 'role.revoked',
+    );
+    expect(roleRows.map((r) => r.action)).toEqual(
+      expect.arrayContaining(['role.granted', 'role.revoked']),
+    );
     expect(
-      JSON.stringify(trail.map((r) => [r.action, r.targetType, r.targetId, r.meta])),
+      JSON.stringify(roleRows.map((r) => [r.action, r.targetType, r.targetId, r.meta])),
     ).not.toContain('@');
   });
 });
@@ -1511,7 +1589,7 @@ describe('members, and the roles a tenant defines', () => {
       permissions: ['manage-members', 'restrict-members'],
     });
     expect(created.ok).toBe(true);
-    await grantRole(a, 'aaa', s.userId, 'member-manager');
+    await seedRole(s.userId, 'aaa', 'member-manager');
     expect(
       await setStanding(s, 'aaa', a.userId, { status: 'restricted', reason: 'The boss' }),
     ).toEqual({ ok: false, error: 'last_admin' });
@@ -1549,7 +1627,7 @@ describe('members, and the roles a tenant defines', () => {
       expect((await listRoles(p.userId, tenant)).map((r) => r.key)).toContain('course-rep');
     }
 
-    await grantRole(a, 'aaa', s.userId, 'course-rep');
+    await seedRole(s.userId, 'aaa', 'course-rep');
     expect((await effectivePermissions(s.userId, 'aaa')).hasAll('post', 'moderate')).toBe(true);
     // Changing the definition changes what the holder may do, everywhere at once.
     expect(await setRoleTemplatePermissions(p, 'course-rep', ['view-analytics'])).toEqual({
@@ -1603,9 +1681,11 @@ describe('members, and the roles a tenant defines', () => {
       permissions: ['communities.unmask'],
     });
     expect(made.ok).toBe(true);
+    // A resident administrator cannot assign roles at all now (platform-only), so
+    // trust-office is refused before the above-your-own-head check is even reached.
     expect(await grantRole(a, 'aaa', s.userId, 'trust-office')).toEqual({
       ok: false,
-      reason: 'above_own',
+      reason: 'not_allowed',
     });
     expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(false);
     // Nor may a platform admin acting OFF-grant: the exemption that keeps
@@ -1634,8 +1714,13 @@ describe('members, and the roles a tenant defines', () => {
       changed: true,
     });
     expect((await effectivePermissions(s.userId, 'aaa')).has('communities.unmask')).toBe(true);
-    // A role carrying only what the administrator already holds still grants.
-    expect(await grantRole(a, 'aaa', s.userId, 'teacher')).toEqual({ ok: true, changed: true });
+    // Even a role carrying only what the administrator already holds is refused to
+    // a resident: assignment is platform-only. The platform, under a grant, may.
+    expect(await grantRole(a, 'aaa', s.userId, 'teacher')).toEqual({
+      ok: false,
+      reason: 'not_allowed',
+    });
+    expect(await grantUnderGrant('aaa', s.userId, 'teacher')).toEqual({ ok: true, changed: true });
   });
 
   it('refuses a platform admin an off-grant self-escalation, and any off-grant role write (0029)', async () => {
@@ -1670,14 +1755,15 @@ describe('members, and the roles a tenant defines', () => {
     expect((await listRoleTemplates()).map((t) => t.key)).toContain('only-once');
     // ...but a grant in one tenant is not a grant in the other.
     const s = await member('role-iso-student', 'aaa');
-    expect(await grantRole(b, 'bbb', s.userId, 'only-once')).toEqual({
+    // Reached past the manage-roles gate (platform under a grant for bbb): the
+    // member is in aaa, so bbb sees no such member.
+    expect(await grantUnderGrant('bbb', s.userId, 'only-once')).toEqual({
       ok: false,
       reason: 'no_such_member',
     });
   });
 
   it("lets a role of the tenant's own approve verifications, and nothing more", async () => {
-    const a = await admin('appr-admin');
     const approver = await member('appr-approver');
     const bystander = await member('appr-bystander');
     const asker = await findOrCreateUser({ subject: 'appr-asker', email: 'appr-asker@gmail.com' });
@@ -1693,7 +1779,7 @@ describe('members, and the roles a tenant defines', () => {
 
     const p = await platform('appr-platform');
     await createRoleTemplate(p, { name: 'Registrar', permissions: ['approve-verifications'] });
-    await grantRole(a, 'aaa', approver.userId, 'registrar');
+    await seedRole(approver.userId, 'aaa', 'registrar');
     const pending = await listPendingRequests(approver, 'aaa');
     expect(pending.ok && pending.value.some((r) => r.id === asked.value.id)).toBe(true);
     expect(await decideRequest(approver, 'aaa', asked.value.id, 'approve')).toMatchObject({
