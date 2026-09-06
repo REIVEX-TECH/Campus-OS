@@ -2796,6 +2796,11 @@ describe('definer grant hygiene', () => {
     communities_karma_vote: 'app',
     communities_notify: 'app',
     communities_unmask: 'app',
+    // Lost & Found moderation: app-callable, each self-gates on lostfound.moderate
+    // (via auth_effective_permissions) inside the body, then reads the report queue
+    // or resolves reports across users (the M1/M2 moderator-definer pattern).
+    auth_lf_report_queue: 'app',
+    auth_lf_resolve_reports: 'app',
     // Owner-only: a maintenance script, an internal helper of other definers, or
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.
