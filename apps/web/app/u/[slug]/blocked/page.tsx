@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { listBlocked } from '@campusos/module-communities/blocks';
 import { BlockButton } from '@/app/_components/communities/block-button';
@@ -58,13 +59,18 @@ export default async function BlockedPage({ params }: Params) {
           <ul className="ios-card flex flex-col rounded-2xl p-2">
             {blocked.map((b) => (
               <li key={b.userId} className="flex items-center gap-3 rounded-xl px-2 py-2">
-                <IdentityAvatar seed={b.avatarSeed} label={b.handle} size={32} />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="truncate text-sm font-medium">{b.handle}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('blocked.since', { date: when.format(b.since) })}
-                  </p>
-                </div>
+                <Link
+                  href={`${base}/people/${b.handle}`}
+                  className="ios-pressable flex min-w-0 flex-1 items-center gap-3 rounded-xl hover:bg-muted"
+                >
+                  <IdentityAvatar seed={b.avatarSeed} label={b.handle} size={32} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="truncate text-sm font-medium">{b.handle}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('blocked.since', { date: when.format(b.since) })}
+                    </p>
+                  </div>
+                </Link>
                 <BlockButton
                   tenant={slug}
                   userId={b.userId}
