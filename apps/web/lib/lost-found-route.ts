@@ -55,6 +55,9 @@ export const LOST_FOUND_STATUS: Record<string, number> = {
   rate_limited: 429,
   not_found: 404,
   too_many_photos: 409,
+  own_item: 409,
+  not_open: 409,
+  exists: 409,
 };
 
 export function refusalResponse(reason: string): Response {

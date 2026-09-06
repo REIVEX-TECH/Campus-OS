@@ -2,9 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { mediaUrl } from '@campusos/media';
 import { itemById } from '@campusos/module-lost-found/items';
+import { claimThread, listClaimsForItem } from '@campusos/module-lost-found/claims';
+import { isVerified, membershipFor } from '@campusos/module-identity/membership';
+import { ClaimArea, type ClaimLabels } from '@/app/_components/lost-found/claim-area';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
+import { currentActor } from '@/lib/auth';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { categoryLabel, requireLostFound } from '@/lib/lost-found';
 import { pageMetadata } from '@/lib/metadata';
@@ -15,6 +19,7 @@ import { tenantBase } from '@/lib/tenant-url';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string; itemId: string }> };
+type PageProps = Params & { searchParams: Promise<{ claim?: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, itemId } = await params;
@@ -28,14 +33,16 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   });
 }
 
-/** One item: its photos, details and the pseudonymous reporter. */
-export default async function LostFoundItemPage({ params }: Params) {
+/** One item: its photos, details, the pseudonymous reporter, and its claims. */
+export default async function LostFoundItemPage({ params, searchParams }: PageProps) {
   const { slug, itemId } = await params;
   const tenant = await requireTenant(slug);
   requireLostFound(tenant);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const item = await itemById(slug, itemId);
+  const actor = await currentActor();
+  const query = await searchParams;
 
   const backLink = (
     <Link href={`${base}/lost-found`} className="text-sm font-medium text-primary">
@@ -60,6 +67,63 @@ export default async function LostFoundItemPage({ params }: Params) {
     month: 'short',
     day: 'numeric',
   });
+
+  // Claim area: what this viewer may do and see. RLS returns to the reporter
+  // every claim on the item, to a claimant only their own, and to anyone else
+  // nothing; the page maps that to props for the client component.
+  const isReporter = actor?.userId === item.reporterId;
+  const rawClaims = actor ? await listClaimsForItem(actor, slug, itemId) : [];
+  const claims = rawClaims.map((c) => ({
+    id: c.id,
+    claimantHandle: c.claimantHandle,
+    status: c.status,
+    message: c.message,
+    isOwn: c.claimantId === actor?.userId,
+  }));
+  const hasOpenOwnClaim = rawClaims.some(
+    (c) => c.claimantId === actor?.userId && c.status === 'pending',
+  );
+  const verified = actor ? isVerified(await membershipFor(actor.userId, slug)) : false;
+  const canClaim =
+    Boolean(actor) && verified && !isReporter && item.status === 'open' && !hasOpenOwnClaim;
+  const needsVerify =
+    Boolean(actor) && !verified && !isReporter && item.status === 'open' && !hasOpenOwnClaim;
+  const selectedClaimId =
+    query.claim && claims.some((c) => c.id === query.claim) ? query.claim : null;
+  const thread = selectedClaimId
+    ? (await claimThread(actor!, slug, selectedClaimId)).map((m) => ({
+        id: m.id,
+        senderHandle: m.senderHandle,
+        body: m.body,
+        isOwn: m.senderId === actor?.userId,
+      }))
+    : [];
+  const claimLabels: ClaimLabels = {
+    button: t('lostFound.claim.button'),
+    intro: t('lostFound.claim.intro'),
+    messagePlaceholder: t('lostFound.claim.messagePlaceholder'),
+    open: t('lostFound.claim.open'),
+    opening: t('lostFound.claim.opening'),
+    claimsHeading: t('lostFound.claim.claimsHeading'),
+    noClaims: t('lostFound.claim.noClaims'),
+    yourClaim: t('lostFound.claim.yourClaim'),
+    confirm: t('lostFound.claim.confirm'),
+    reject: t('lostFound.claim.reject'),
+    withdraw: t('lostFound.claim.withdraw'),
+    working: t('lostFound.claim.working'),
+    thread: t('lostFound.claim.thread'),
+    send: t('lostFound.claim.send'),
+    sending: t('lostFound.claim.sending'),
+    resolvedNote: t('lostFound.claim.resolvedNote'),
+    notVerified: t('lostFound.claim.notVerified'),
+    failed: t('lostFound.claim.failed'),
+    status: {
+      pending: t('lostFound.claim.status.pending'),
+      approved: t('lostFound.claim.status.approved'),
+      denied: t('lostFound.claim.status.denied'),
+      withdrawn: t('lostFound.claim.status.withdrawn'),
+    },
+  };
 
   return (
     <PageShell>
@@ -142,6 +206,22 @@ export default async function LostFoundItemPage({ params }: Params) {
             </>
           ) : null}
         </dl>
+
+        {actor ? (
+          <ClaimArea
+            base={base}
+            tenant={slug}
+            itemId={item.id}
+            itemStatus={item.status}
+            isReporter={isReporter}
+            canClaim={canClaim}
+            needsVerify={needsVerify}
+            claims={claims}
+            selectedClaimId={selectedClaimId}
+            thread={thread}
+            labels={claimLabels}
+          />
+        ) : null}
       </article>
     </PageShell>
   );

@@ -8,6 +8,13 @@
       "when": 1756800200000,
       "tag": "0000_lost_found",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1756800201000,
+      "tag": "0001_lost_found_claims",
+      "breakpoints": true
     }
   ]
 }

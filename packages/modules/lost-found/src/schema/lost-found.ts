@@ -80,5 +80,44 @@ export const lostFoundItemPhotos = pgTable(
   (t) => [index('lf_item_photos_item_idx').on(t.itemId, t.position)],
 );
 
+/**
+ * A claim on an item: the claimant asserting it is theirs (lost) or theirs to
+ * collect (found), and the private thread with the reporter. Unlike items,
+ * claims are NOT tenant-wide readable — RLS confines them to the claimant, the
+ * item's reporter, and moderators (drizzle/0001). One open claim per person per
+ * item (a partial unique index).
+ */
+export const lostFoundClaims = pgTable(
+  'lf_claims',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id').notNull(),
+    itemId: uuid('item_id').notNull(),
+    claimantId: uuid('claimant_id').notNull(),
+    message: text('message').notNull(),
+    /** 'pending' | 'approved' | 'denied' | 'withdrawn' */
+    status: text('status').notNull().default('pending'),
+    decidedAt: tz('decided_at'),
+    deletedAt: tz('deleted_at'),
+    createdAt,
+  },
+  (t) => [index('lf_claims_item_idx').on(t.tenantId, t.itemId, t.status, t.createdAt)],
+);
+
+export const lostFoundClaimMessages = pgTable(
+  'lf_claim_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id').notNull(),
+    claimId: uuid('claim_id').notNull(),
+    senderId: uuid('sender_id').notNull(),
+    body: text('body').notNull(),
+    createdAt,
+  },
+  (t) => [index('lf_claim_messages_claim_idx').on(t.claimId, t.createdAt)],
+);
+
 export type LostFoundItem = typeof lostFoundItems.$inferSelect;
 export type LostFoundItemPhoto = typeof lostFoundItemPhotos.$inferSelect;
+export type LostFoundClaim = typeof lostFoundClaims.$inferSelect;
+export type LostFoundClaimMessage = typeof lostFoundClaimMessages.$inferSelect;
