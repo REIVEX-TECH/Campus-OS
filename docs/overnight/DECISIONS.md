@@ -174,3 +174,34 @@ at the bottom of each block.
   permission flows through the role_permissions branch and is not excluded; 0032
   preserves that (only communities.unmask stays excluded, plus the new explicit
   manage-roles union).
+
+## Block 2 — Public profiles + karma
+
+- **`postsByAuthor` now filters community visibility (the one real fix).** It
+  excluded anonymous and removed posts but, unlike `commentsByAuthor`, did NOT
+  require the community to be public and live, so a signed post in a
+  private/restricted or dissolved community leaked onto the public profile. Added
+  `visibility = 'public'` + `deletedAt IS NULL` (an inner join now), mirroring
+  `readComments`, and a guarding test. This is a privacy fix, not a redesign.
+- **Member-since + Admin badge come from a read-safe identity function
+  (`memberPublicFacts`), composed in the web page.** §4: communities does not
+  read identity's tables; the web layer composes `profileByHandle` (communities)
+  with `memberPublicFacts` (identity). It runs in the tenant context (the tenant
+  policy admits the membership read) and derives `isAdmin` from the unforgeable
+  resolver (`auth_effective_permissions ... 'manage-members'`), so a granted admin
+  counts too, not only the seeded one. It returns only join-date + a boolean, no
+  name/email/verification.
+- **Karma is surfaced, not redesigned.** The page now shows the existing
+  post/comment split beside the total (both already on the `Karma` type); the
+  private anonymous delta stays own-only via `ownKarma`.
+- **The Message button is deferred to Block 3.** The messages module does not
+  exist yet; the Message action lands with it. Block/Report already exist on the
+  profile.
+- **The moderator badge is deferred; the Admin badge ships.** A per-community
+  moderator badge needs a cross-community role read; the tenant Admin badge (the
+  primary staff signal) ships now. Logged as a follow-up.
+- **Handles/avatars now link to the profile at the public people-lists** (the
+  community members roster and the rail's moderators list); post cards, comment
+  threads and L&F already linked. A few secondary surfaces (the notifications
+  actor avatar, the blocked list, admin rosters) still do not link — a minor
+  follow-up.
