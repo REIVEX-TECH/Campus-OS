@@ -18,6 +18,7 @@ export type ModuleIconName =
   | 'building'
   | 'shopping-bag'
   | 'message-circle'
+  | 'mail'
   | 'package-search'
   | 'car'
   | 'map';
@@ -67,6 +68,14 @@ export const MODULES: ModuleCard[] = [
     path: '/lost-found',
     soon: false,
     moduleId: 'lost-found',
+  },
+  {
+    key: 'messages',
+    needsIdentity: true,
+    icon: 'mail',
+    path: '/messages',
+    soon: false,
+    moduleId: 'messages',
   },
   { key: 'rides', needsIdentity: true, icon: 'car', soon: true },
   { key: 'map', icon: 'map', soon: true },

@@ -14,6 +14,8 @@ import {
   profileByHandle,
 } from '@campusos/module-communities/profiles';
 import { memberPublicFacts } from '@campusos/module-identity/membership';
+import { MessageButton } from '@/app/_components/messages/message-button';
+import { messagesEnabled } from '@/lib/messages';
 import { BlockButton } from '@/app/_components/communities/block-button';
 import { ReportPerson } from '@/app/_components/communities/report-person';
 import { PostCard } from '@/app/_components/communities/post-card';
@@ -146,6 +148,16 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
             >
               {t('profile.edit')}
             </Link>
+          ) : null}
+          {actor && !self && messagesEnabled(tenant) && !blocked ? (
+            <MessageButton
+              tenant={slug}
+              base={base}
+              userId={profile.userId}
+              label={t('messages.messageAction')}
+              busyLabel={t('messages.composer.sending')}
+              className="ios-pressable inline-flex h-9 items-center rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            />
           ) : null}
           {actor && !self ? (
             <BlockButton
