@@ -4,4 +4,5 @@ export * from './module/index';
 export * from './ingestion/index';
 export * from './auth/index';
 export * from './rbac/index';
+export * from './storage/index';
 export * from './time/format';

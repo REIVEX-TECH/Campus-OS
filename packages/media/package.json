@@ -1,18 +1,11 @@
 {
-  "name": "@campusos/core",
+  "name": "@campusos/media",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./tenant": "./src/tenant/index.ts",
-    "./ingestion": "./src/ingestion/index.ts",
-    "./module": "./src/module/index.ts",
-    "./auth": "./src/auth/index.ts",
-    "./rbac": "./src/rbac/index.ts",
-    "./storage": "./src/storage/index.ts",
-    "./time": "./src/time/format.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -20,7 +13,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "zod": "^3.24.1"
+    "@campusos/core": "workspace:*",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@campusos/config": "workspace:*",
