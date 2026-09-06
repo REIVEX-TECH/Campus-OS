@@ -26,6 +26,8 @@ export type SendRefusal =
 export interface ConversationSummary {
   id: string;
   otherUserId: string;
+  otherHandle: string | null;
+  otherAvatarSeed: string | null;
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
   unread: number;
@@ -44,6 +46,8 @@ export interface ThreadMessage {
 export interface Thread {
   id: string;
   otherUserId: string;
+  otherHandle: string | null;
+  otherAvatarSeed: string | null;
   otherLastReadAt: Date | null;
   messages: ThreadMessage[];
 }
@@ -175,25 +179,33 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
   return withActorInTenant(userId, tenantId, async (tx) => {
     const rows = [
       ...(await tx.execute(sql`
-        select c.id,
-               case when c.participant_a = ${userId}::uuid then c.participant_b else c.participant_a end as other,
-               c.last_message_at,
+        with mine as (
+          select c.id,
+                 case when c.participant_a = ${userId}::uuid then c.participant_b else c.participant_a end as other,
+                 c.last_message_at, c.created_at
+          from msg_conversations c
+          where c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid
+        )
+        select mine.id, mine.other, mine.last_message_at,
+               p.handle as other_handle, p.avatar_seed as other_avatar_seed,
                (select case when m.deleted_at is not null then null else m.body end
-                  from msg_messages m where m.conversation_id = c.id
+                  from msg_messages m where m.conversation_id = mine.id
                   order by m.created_at desc limit 1) as preview,
                (select count(*)::int from msg_messages m
                   left join msg_participant_state s
-                    on s.conversation_id = c.id and s.participant_id = ${userId}::uuid
-                  where m.conversation_id = c.id
+                    on s.conversation_id = mine.id and s.participant_id = ${userId}::uuid
+                  where m.conversation_id = mine.id
                     and m.sender_id <> ${userId}::uuid
                     and m.deleted_at is null
                     and (s.last_read_at is null or m.created_at > s.last_read_at)) as unread
-        from msg_conversations c
-        where c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid
-        order by c.last_message_at desc nulls last, c.created_at desc`)),
+        from mine
+        left join public_profiles p on p.user_id = mine.other
+        order by mine.last_message_at desc nulls last, mine.created_at desc`)),
     ] as Array<{
       id: string;
       other: string;
+      other_handle: string | null;
+      other_avatar_seed: string | null;
       last_message_at: string | Date | null;
       preview: string | null;
       unread: number | null;
@@ -201,6 +213,8 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
     return rows.map((r) => ({
       id: r.id,
       otherUserId: r.other,
+      otherHandle: r.other_handle,
+      otherAvatarSeed: r.other_avatar_seed,
       lastMessageAt: toDate(r.last_message_at),
       lastMessagePreview: r.preview,
       unread: r.unread ?? 0,
@@ -223,10 +237,19 @@ export async function thread(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(sql`
-        select id,
-               case when participant_a = ${actor.userId}::uuid then participant_b else participant_a end as other
-        from msg_conversations where id = ${conversationId}::uuid limit 1`)),
-    ] as { id: string; other: string }[];
+        select c.id,
+               case when c.participant_a = ${actor.userId}::uuid then c.participant_b else c.participant_a end as other,
+               p.handle as other_handle, p.avatar_seed as other_avatar_seed
+        from msg_conversations c
+        left join public_profiles p
+          on p.user_id = case when c.participant_a = ${actor.userId}::uuid then c.participant_b else c.participant_a end
+        where c.id = ${conversationId}::uuid limit 1`)),
+    ] as {
+      id: string;
+      other: string;
+      other_handle: string | null;
+      other_avatar_seed: string | null;
+    }[];
     if (!conv) return null;
     const [otherState] = [
       ...(await tx.execute(sql`
@@ -252,6 +275,8 @@ export async function thread(
     return {
       id: conv.id,
       otherUserId: conv.other,
+      otherHandle: conv.other_handle,
+      otherAvatarSeed: conv.other_avatar_seed,
       otherLastReadAt: otherState ? toDate(otherState.last_read_at) : null,
       messages: rows.map((m) => ({
         id: m.id,
