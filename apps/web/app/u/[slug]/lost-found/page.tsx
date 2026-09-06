@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listItems, type BrowseFilters, type ItemKind } from '@campusos/module-lost-found/items';
+import { can } from '@campusos/module-identity/rbac';
 import { ItemCard } from '@/app/_components/lost-found/item-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
+import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
 import { requireLostFound } from '@/lib/lost-found';
 import { pageMetadata } from '@/lib/metadata';
@@ -40,6 +42,8 @@ export default async function LostFoundPage({ params, searchParams }: PageProps)
   const base = await tenantBase(slug);
   const query = await searchParams;
   const kind = parseKind(query.kind);
+  const actor = await currentActor();
+  const isModerator = actor ? await can(actor.userId, slug, 'lostfound.moderate') : false;
 
   const filters: BrowseFilters = { status: 'open', ...(kind ? { kind } : {}) };
   const { items, nextCursor } = await listItems(slug, {
@@ -63,6 +67,11 @@ export default async function LostFoundPage({ params, searchParams }: PageProps)
         <p className="max-w-prose text-sm text-muted-foreground">{t('lostFound.intro')}</p>
       </div>
       <div className="flex items-center gap-3">
+        {isModerator ? (
+          <Link href={`${base}/lost-found/mod`} className="text-sm font-medium text-primary">
+            {t('lostFound.mod.link')}
+          </Link>
+        ) : null}
         <Link href={`${base}/lost-found/mine`} className="text-sm font-medium text-primary">
           {t('lostFound.mine')}
         </Link>

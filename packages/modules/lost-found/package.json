@@ -11,6 +11,7 @@
     "./items": "./src/items.ts",
     "./write": "./src/write.ts",
     "./claims": "./src/claims.ts",
+    "./moderation": "./src/moderation.ts",
     "./input": "./src/input.ts"
   },
   "scripts": {

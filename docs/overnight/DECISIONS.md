@@ -41,6 +41,20 @@ at the bottom of each block.
   shows the claimant theirs). A shared notifications concern — also required by the
   messages module — should be core infrastructure; flagged for the messages design
   and the report.
+- **L&F has its OWN moderation table (`lf_reports`), not communities' `reports`.**
+  Same §4 reasoning as notifications; reusing communities' polymorphic reports
+  table cross-module would couple the modules and needs its RLS to admit non-community
+  reports. The messages brief asks for the shared reports table — that argues for a
+  core/shared reports concern, recorded for the report; L&F stays self-contained.
+- **`lostfound.moderate` granted to tenant_admin via the L&F migration.**
+  `role_template_permissions` is the DB registry of role→permission (0013 already
+  lists cross-module perms; 1.5b edits it), so the L&F migration adds its row +
+  backfills existing tenant_admin roles. Only tenant_admin gets it.
+- **Grant-based L&F moderation not wired (edge case).** `moderationQueue`/
+  `removeItem` run in the member context, so a resident tenant_admin moderates; a
+  platform admin under a grant passes the page gate but the definer (membership
+  branch) returns empty. Threading the grant `access` through is a follow-up;
+  resident-admin moderation is the primary path.
 - **Posting/claiming are gated on verified membership, not a role permission.**
   Any verified member may post or claim (the approved design), so only
   `lostfound.moderate` is a role permission. It is added to the enforced

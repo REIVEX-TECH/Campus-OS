@@ -23,6 +23,7 @@ import {
   sendClaimMessage,
   withdrawClaim,
 } from '../src/claims';
+import { moderationQueue, removeItem, reportTarget } from '../src/moderation';
 
 /**
  * RLS for Lost & Found: an item is tenant-wide readable but writable only as
@@ -330,5 +331,61 @@ describe('lost & found claims', () => {
     expect(byId[ca.value.id]).toBe('approved');
     expect(byId[cb.value.id]).toBe('denied');
     expect((await withdrawClaim(b, 'aaa', cb.value.id)).ok).toBe(false);
+  });
+});
+
+describe('lost & found moderation', () => {
+  const settings = settingsSchema.parse({});
+
+  /** A verified tenant administrator, seeded as the owner (holds lostfound.moderate). */
+  async function admin(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('${tenant}')`,
+      `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+         values ('${tenant}', '${actor.userId}', 'tenant_admin', 'active', now(), 'admin')
+         on conflict (tenant_id, user_id) do update
+           set role = 'tenant_admin',
+               verified_at = coalesce(tenant_memberships.verified_at, now()),
+               verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+      `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+         select m.id, r.id, m.tenant_id, m.user_id
+         from tenant_memberships m
+         join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+         where m.tenant_id = '${tenant}' and m.user_id = '${actor.userId}'
+         on conflict (membership_id, role_id) do nothing`,
+    );
+    return actor;
+  }
+
+  it('queues reports for a moderator only, and removal resolves them', async () => {
+    if (!split) return;
+    const reporter = await member('lf-m-rep');
+    const created = await createItem(
+      reporter,
+      'aaa',
+      { kind: 'found', title: 'watch', category: 'other' },
+      settings,
+    );
+    if (!created.ok) throw new Error('create failed');
+    const itemId = created.value.id;
+
+    const flagger = await member('lf-m-flag');
+    expect((await reportTarget(flagger, 'aaa', 'lf_item', itemId, 'spam')).ok).toBe(true);
+
+    // A non-moderator sees an empty queue (the definer gates on lostfound.moderate).
+    expect((await moderationQueue(flagger, 'aaa')).length).toBe(0);
+
+    const mod = await admin('lf-m-mod');
+    expect((await moderationQueue(mod, 'aaa')).some((q) => q.targetId === itemId)).toBe(true);
+
+    // A non-moderator cannot remove.
+    expect((await removeItem(flagger, 'aaa', itemId, 'nope')).ok).toBe(false);
+
+    // The moderator removes: the item is gone from browse and the report resolved.
+    expect((await removeItem(mod, 'aaa', itemId, 'spam item')).ok).toBe(true);
+    expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
+    const browse = await listItems('aaa');
+    expect(browse.items.some((i) => i.id === itemId)).toBe(false);
   });
 });

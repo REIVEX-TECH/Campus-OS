@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { GetVerified } from '@/app/_components/get-verified';
+import { ReportButton, type ReportLabels } from '@/app/_components/lost-found/report-button';
 
 export interface ClaimLabels {
   button: string;
@@ -63,6 +64,7 @@ export function ClaimArea({
   selectedClaimId,
   thread,
   labels,
+  reportLabels,
 }: {
   base: string;
   tenant: string;
@@ -75,6 +77,7 @@ export function ClaimArea({
   selectedClaimId: string | null;
   thread: ThreadMessage[];
   labels: ClaimLabels;
+  reportLabels: ReportLabels;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState('');
@@ -218,6 +221,12 @@ export function ClaimArea({
                   >
                     {labels.thread}
                   </Link>
+                  <ReportButton
+                    tenant={tenant}
+                    targetType="lf_claim"
+                    targetId={claim.id}
+                    labels={reportLabels}
+                  />
                 </div>
 
                 {selected ? (

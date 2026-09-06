@@ -31,6 +31,9 @@ export const PERMISSIONS = [
   'communities.flairs',
   'communities.manage',
   'communities.transfer',
+  // Lost & Found. Moderation only — posting and claiming are gated on verified
+  // membership, not a role permission.
+  'lostfound.moderate',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
