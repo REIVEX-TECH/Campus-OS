@@ -2777,6 +2777,7 @@ describe('definer grant hygiene', () => {
     auth_handle_is_reserved: 'app',
     auth_join_as_student: 'app',
     auth_open_tenant_grant: 'app',
+    auth_pending_verification_requests: 'app',
     auth_resolve_session: 'app',
     auth_resolve_user_by_subject: 'app',
     auth_revoke_grants_for_session: 'app',
@@ -2801,6 +2802,7 @@ describe('definer grant hygiene', () => {
     auth_attach_role_internal: 'owner',
     audit_log_stamp_grant: 'owner',
     communities_karma_recompute: 'owner',
+    verification_request_details_purge: 'owner',
   };
 
   it('grants each definer EXECUTE to the app exactly as its declared intent says', async (ctx) => {

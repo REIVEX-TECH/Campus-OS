@@ -28,6 +28,7 @@ import {
   tenantMemberships,
   userRecents,
   users,
+  verificationRequestDetails,
   verificationRequests,
   verifyPromptDismissed,
 } from '../src/schema/identity';
@@ -597,6 +598,10 @@ describe('row security invariants', () => {
     audit_log: true,
     user_recents: true,
     verification_requests: true,
+    // Read across the tenant by auth_pending_verification_requests and purged by
+    // the verification_request_details_purge trigger, both owner-run, so FORCE is
+    // off; the app role stays bound to the own-row policy (0030).
+    verification_request_details: false,
     // Read by auth_effective_permissions, so FORCE must stay off.
     roles: false,
     role_permissions: false,
@@ -873,6 +878,32 @@ describe('verification requests', () => {
     }
     expect(await listPendingRequests(user, 'aaa')).toEqual({ ok: false, error: 'not_admin' });
   });
+
+  it('keeps the submitted PII off the tenant-wide row, readable only by its owner and gated admins (0030)', async () => {
+    const admin = await adminIn('aaa', 'adm-pii');
+    const user = await findOrCreateUser({ subject: 'pii-req', email: 'pii@gmail.com' });
+    const peer = await findOrCreateUser({ subject: 'pii-peer', email: 'pii-peer@gmail.com' });
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    expect(asked.ok).toBe(true);
+
+    // The PII is not a column on the tenant-wide-readable request row any more.
+    const [reqRow] = await withActor(user.userId, (tx) => tx.select().from(verificationRequests));
+    expect(Object.keys(reqRow ?? {})).not.toContain('fullName');
+
+    // A peer, placed in aaa's context, cannot read the requester's details: the
+    // detail table is own-row, so their tenant context yields nothing of the user's.
+    const seenByPeer = await withActorInTenant(peer.userId, 'aaa', (tx) =>
+      tx.select().from(verificationRequestDetails),
+    );
+    expect(seenByPeer.some((d) => d.userId === user.userId)).toBe(false);
+
+    // The requester reads their own; a gated admin reads it through the definer.
+    expect(
+      await withActor(user.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(1);
+    const pending = await listPendingRequests(admin, 'aaa');
+    expect(pending.ok && pending.value.some((r) => r.fullName === 'Ayesha Khan')).toBe(true);
+  });
 });
 
 describe('deciding requests', () => {
@@ -898,10 +929,14 @@ describe('deciding requests', () => {
     expect(membership!.verificationMethod).toBe('admin');
     expect(membership!.verifiedAt).toBeInstanceOf(Date);
 
-    // The details have done their one job.
+    // The details have done their one job: the request row keeps only its status
+    // and decider, and the detail row (0030) is purged by the trigger.
     const [row] = await withActor(user.userId, (tx) => tx.select().from(verificationRequests));
-    expect(row).toMatchObject({ status: 'approved', fullName: null, rollNumber: null, note: null });
+    expect(row).toMatchObject({ status: 'approved' });
     expect(row!.decidedBy).toBe(admin.userId);
+    expect(
+      await withActor(user.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(0);
   });
 
   it('approving someone with an unverified membership verifies it in place', async () => {
@@ -949,17 +984,16 @@ describe('deciding requests', () => {
     expect(decided).toMatchObject({ ok: true, value: { decision: 'reject' } });
     expect(await membershipFor(user.userId, 'aaa')).toBeNull();
     expect((await latestRequest(user.userId, 'aaa'))?.status).toBe('rejected');
-    const [row] = await withActor(user.userId, (tx) => tx.select().from(verificationRequests));
-    expect(row!.fullName).toBeNull();
+    // The detail row is purged by the trigger as the request leaves 'pending'.
+    expect(
+      await withActor(user.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(0);
   });
 
   it('never lets anyone decide their own request', async () => {
     const admin = await adminIn('aaa', 'adm-11');
     const [own] = await withActor(admin.userId, (tx) =>
-      tx
-        .insert(verificationRequests)
-        .values({ tenantId: 'aaa', userId: admin.userId, fullName: 'Me', rollNumber: '1' })
-        .returning(),
+      tx.insert(verificationRequests).values({ tenantId: 'aaa', userId: admin.userId }).returning(),
     );
     expect(await decideRequest(admin, 'aaa', own!.id, 'approve')).toEqual({
       ok: false,
@@ -1031,7 +1065,11 @@ describe('verifying by hand', () => {
     const [closed] = await withActor(waiting.userId, (tx) =>
       tx.select().from(verificationRequests),
     );
-    expect(closed).toMatchObject({ status: 'superseded', fullName: null, rollNumber: null });
+    expect(closed).toMatchObject({ status: 'superseded' });
+    // The detail row is purged by the trigger as the request leaves 'pending'.
+    expect(
+      await withActor(waiting.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(0);
     const pending = await listPendingRequests(admin, 'aaa');
     expect(pending.ok && pending.value.some((r) => r.userId === waiting.userId)).toBe(false);
     expect(await verifyMember(admin, 'aaa', '00000000-0000-0000-0000-000000000000')).toEqual({

@@ -80,10 +80,9 @@ export async function supersedePending(
       status: 'superseded',
       decidedBy: input.actorUserId,
       decidedAt: new Date(),
-      fullName: null,
-      rollNumber: null,
-      note: null,
     })
+    // The submitted details are purged by the 0030 trigger as the request leaves
+    // 'pending'; nothing to null out on the row itself any more.
     .where(
       and(
         eq(verificationRequests.tenantId, input.tenantId),

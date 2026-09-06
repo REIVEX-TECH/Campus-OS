@@ -10,7 +10,11 @@ import { getDb } from '@campusos/db/client';
 import { err, ok, type Result } from '@campusos/core';
 import { recordAudit } from './audit';
 import { isVerified, membershipFor, supersedePending } from './membership';
-import { verificationRequests, verifyPromptDismissed } from './schema/identity';
+import {
+  verificationRequestDetails,
+  verificationRequests,
+  verifyPromptDismissed,
+} from './schema/identity';
 import { canInTransaction } from './rbac';
 
 /**
@@ -129,9 +133,6 @@ export async function requestVerification(
         tenantId,
         userId,
         status: 'pending',
-        fullName: details.fullName,
-        rollNumber: details.rollNumber,
-        note: details.note ?? null,
       })
       .onConflictDoNothing({
         target: [verificationRequests.tenantId, verificationRequests.userId],
@@ -139,6 +140,19 @@ export async function requestVerification(
       })
       .returning();
     if (!row) return err('open_request');
+
+    // The identity details live in their own table, off the tenant-wide-readable
+    // request row (0030): written here as the requester under own-row RLS, read
+    // back only by an admin through auth_pending_verification_requests, and purged
+    // by a trigger the moment this request leaves 'pending'.
+    await tx.insert(verificationRequestDetails).values({
+      requestId: row.id,
+      tenantId,
+      userId,
+      fullName: details.fullName,
+      rollNumber: details.rollNumber,
+      note: details.note ?? null,
+    });
 
     await recordAudit(tx, {
       actorUserId: userId,
@@ -194,15 +208,13 @@ export async function listPendingRequests(
   return withActorInTenant(admin.userId, tenantId, async (tx) => {
     if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
       return err('not_admin');
+    // The details are off the request row (0030) in an own-row table; the admin
+    // read is a definer that re-checks approve-verifications and joins them.
     const rows = [
-      ...(await tx.execute(sql`
-        select r.id, r.user_id, p.handle, coalesce(p.avatar_seed, r.user_id::text) as avatar_seed,
-               r.full_name, r.roll_number, r.note, r.created_at
-        from verification_requests r
-        left join public_profiles p on p.user_id = r.user_id
-        where r.tenant_id = ${tenantId} and r.status = 'pending'
-        order by r.created_at asc
-        limit 100`)),
+      ...(await tx.execute(
+        sql`select id, user_id, handle, avatar_seed, full_name, roll_number, note, created_at
+            from auth_pending_verification_requests(${tenantId})`,
+      )),
     ] as {
       id: string;
       user_id: string;
@@ -280,11 +292,9 @@ export async function decideRequest(
         status: decision === 'approve' ? 'approved' : 'rejected',
         decidedBy: admin.userId,
         decidedAt: new Date(),
-        // Purged: the details have done their one job.
-        fullName: null,
-        rollNumber: null,
-        note: null,
       })
+      // The details have done their one job; the 0030 trigger purges them as this
+      // request leaves 'pending'.
       .where(eq(verificationRequests.id, request.id));
 
     await recordAudit(tx, {
