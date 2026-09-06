@@ -13,6 +13,7 @@ import {
   isBlocked,
   profileByHandle,
 } from '@campusos/module-communities/profiles';
+import { memberPublicFacts } from '@campusos/module-identity/membership';
 import { BlockButton } from '@/app/_components/communities/block-button';
 import { ReportPerson } from '@/app/_components/communities/report-person';
 import { PostCard } from '@/app/_components/communities/post-card';
@@ -87,13 +88,19 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
     : self && actor
       ? ownKarma(actor, slug)
       : publicKarma(slug, profile.userId);
-  const [posts, comments, karma, blocked, anonymous] = await Promise.all([
+  const [posts, comments, karma, blocked, anonymous, facts] = await Promise.all([
     tab === 'posts' ? postsByAuthor(slug, profile.userId) : Promise.resolve([]),
     tab === 'comments' ? commentsByAuthor(slug, profile.userId) : Promise.resolve([]),
     karmaPromise,
     actor && !self ? isBlocked(actor, slug, profile.userId) : Promise.resolve(false),
     tab === 'anonymous' && actor ? myAnonymousPosts(actor, slug) : Promise.resolve([]),
+    memberPublicFacts(slug, profile.userId),
   ]);
+  const memberSince = facts.memberSince
+    ? new Intl.DateTimeFormat(tenant.locale, { month: 'long', year: 'numeric' }).format(
+        facts.memberSince,
+      )
+    : null;
   const here = `${base}/people/${profile.handle}`;
   const tabs = ['posts', 'comments', ...(self ? (['anonymous'] as const) : [])] as const;
 
@@ -104,10 +111,21 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
           <IdentityAvatar seed={profile.avatarSeed} label={profile.handle} size={64} />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-            <h1 className="truncate text-2xl font-bold tracking-tight">{profile.handle}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-2xl font-bold tracking-tight">{profile.handle}</h1>
+              {facts.isAdmin ? (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  {t('profile.badge.admin')}
+                </span>
+              ) : null}
+            </div>
             {karma ? (
               <p className="text-sm text-muted-foreground">
                 {t('profile.karma', { count: karma.total })}
+                <span className="text-muted-foreground/80">
+                  {' · '}
+                  {t('profile.karmaSplit', { posts: karma.posts, comments: karma.comments })}
+                </span>
               </p>
             ) : null}
             {karma && 'publicTotal' in karma && karma.total !== karma.publicTotal ? (
@@ -115,7 +133,20 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
                 {t('profile.karmaPrivate', { count: karma.total - karma.publicTotal })}
               </p>
             ) : null}
+            {memberSince ? (
+              <p className="text-xs text-muted-foreground">
+                {t('profile.memberSince', { date: memberSince })}
+              </p>
+            ) : null}
           </div>
+          {self ? (
+            <Link
+              href={`${base}/account`}
+              className="ios-pressable inline-flex h-9 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {t('profile.edit')}
+            </Link>
+          ) : null}
           {actor && !self ? (
             <BlockButton
               tenant={slug}

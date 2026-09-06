@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
+import { withActor, withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
 import { recordAudit } from './audit';
 import { tenantMemberships, verificationRequests } from './schema/identity';
 
@@ -180,4 +180,45 @@ export async function membershipFor(userId: string, tenantId: string): Promise<M
       .where(and(eq(tenantMemberships.tenantId, tenantId), eq(tenantMemberships.userId, userId))),
   );
   return row ? toMembership(row) : null;
+}
+
+export interface MemberPublicFacts {
+  /** When they joined this tenant, for a "member since" line, or null if not a member. */
+  memberSince: Date | null;
+  /** Whether they carry an administrator's reach here — a public "Admin" badge. */
+  isAdmin: boolean;
+}
+
+/**
+ * The public-facing facts about a member of this tenant, for their profile:
+ * when they joined, and whether they are an administrator. Nothing sensitive —
+ * no name, email or verification status. Runs in the tenant context (the tenant
+ * policy admits the membership read), and the admin flag comes from the
+ * unforgeable resolver, so a granted admin counts too, not only the seeded one.
+ */
+export async function memberPublicFacts(
+  tenantId: string,
+  userId: string,
+): Promise<MemberPublicFacts> {
+  return withTenant(tenantId, async (tx) => {
+    const [membership] = [
+      ...(await tx.execute(sql`
+        select created_at from tenant_memberships
+        where tenant_id = ${tenantId} and user_id = ${userId}::uuid
+        limit 1`)),
+    ] as { created_at: string | Date }[];
+    const admin = [
+      ...(await tx.execute(sql`
+        select 1 from auth_effective_permissions(${userId}::uuid, ${tenantId})
+        where permission = 'manage-members' limit 1`)),
+    ];
+    return {
+      memberSince: membership
+        ? membership.created_at instanceof Date
+          ? membership.created_at
+          : new Date(membership.created_at)
+        : null,
+      isAdmin: admin.length > 0,
+    };
+  });
 }

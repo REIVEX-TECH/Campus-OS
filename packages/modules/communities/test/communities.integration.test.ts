@@ -2073,6 +2073,37 @@ describe('profiles and private lists', () => {
       signed.value.id,
     );
   });
+
+  it('keeps a signed post in a non-public community off the public profile', async () => {
+    // The profile must not become a way to see who posts in a restricted or
+    // private community. postsByAuthor filters community visibility, the same
+    // boundary commentsByAuthor already enforces.
+    const author = await member('pv-author');
+    const open = await community(author, 'Open Wing');
+    const closed = await createCommunity(
+      author,
+      'aaa',
+      { name: 'Closed Wing', visibility: 'restricted' },
+      settings,
+    );
+    if (!closed.ok) throw new Error('setup');
+    const seen = await createPost(
+      author,
+      'aaa',
+      open.id,
+      { kind: 'text', title: 'Seen words', body: '' },
+      settings,
+    );
+    const hidden = await createPost(
+      author,
+      'aaa',
+      closed.value.id,
+      { kind: 'text', title: 'Hidden words', body: '' },
+      settings,
+    );
+    if (!seen.ok || !hidden.ok) throw new Error('setup');
+    expect((await postsByAuthor('aaa', author.userId)).map((p) => p.title)).toEqual(['Seen words']);
+  });
 });
 
 describe('polish: rules acceptance, archive, held across the tenant', () => {
