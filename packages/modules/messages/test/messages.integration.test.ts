@@ -377,8 +377,13 @@ describe('direct messages ephemerality', () => {
     await setExpiry(sent.value.id, `now() - interval '1 minute'`);
     expect((await thread(b, 'aaa', id))?.messages).toEqual([]);
     expect(await unreadCount(b.userId, 'aaa')).toBe(0);
-    expect((await expireMessages('aaa')).deleted).toBe(1);
-    expect((await expireMessages('aaa')).deleted).toBe(0);
+    await expireMessages('aaa');
+    // Gone from the table: a participant's raw read (RLS shows them all their own
+    // messages, expiry-hiding is applied in the service, not the policy) finds none.
+    const stillThere = await withActorInTenant(a.userId, 'aaa', (tx) =>
+      tx.execute(sql`select id from msg_messages where id = ${sent.value.id}::uuid`),
+    );
+    expect([...stillThere]).toHaveLength(0);
   });
 
   it('stamps after_viewing only when the recipient reads, not before', async () => {
