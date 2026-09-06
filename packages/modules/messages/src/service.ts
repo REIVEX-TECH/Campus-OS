@@ -182,7 +182,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
                   from msg_messages m where m.conversation_id = c.id
                   order by m.created_at desc limit 1) as preview,
                (select count(*)::int from msg_messages m
-                  join msg_participant_state s
+                  left join msg_participant_state s
                     on s.conversation_id = c.id and s.participant_id = ${userId}::uuid
                   where m.conversation_id = c.id
                     and m.sender_id <> ${userId}::uuid
