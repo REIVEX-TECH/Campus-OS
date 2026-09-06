@@ -225,6 +225,13 @@
       "when": 1756800031000,
       "tag": "0031_member_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1756800032000,
+      "tag": "0032_platform_only_role_grants",
+      "breakpoints": true
     }
   ]
 }

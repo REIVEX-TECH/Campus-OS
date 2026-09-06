@@ -710,6 +710,8 @@ export const en = {
   'admin.roles.builtInNote': 'Built in roles cannot be changed.',
   'admin.roles.permissions': 'Permissions',
   'admin.roles.none': 'No permissions',
+  'admin.roles.platformManaged':
+    'Who holds which role is managed by the platform team. This page is read only for your university.',
   'admin.roles.save': 'Save',
   'admin.roles.saved': 'Saved.',
   'admin.roles.new': 'New role',

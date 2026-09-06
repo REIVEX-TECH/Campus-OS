@@ -54,4 +54,21 @@ describe('admin surfaces go through the tenant-access seam', () => {
       expect(re.test(src), `${file}: bypasses the seam (${why})`).toBe(false);
     }
   });
+
+  // Assigning tenant roles is platform-only (identity 0032): every /api/admin/roles
+  // write route gates the seam on `manage-roles`, which a resident tenant_admin does
+  // not hold, so the route 404s for them. A resident who forges the POST is refused
+  // here, before the definer. (The roles PAGE is manage-members and read-only for
+  // residents; only these write routes require manage-roles.)
+  const roleRoutes = files.filter((f) => /[\\/]api[\\/]admin[\\/]roles[\\/].*route\.ts$/.test(f));
+  it('keeps the roles write routes gated on manage-roles', () => {
+    expect(roleRoutes.length).toBeGreaterThanOrEqual(2);
+    for (const file of roleRoutes) {
+      const src = readFileSync(file, 'utf8');
+      expect(
+        /tenantWriteContext\([^)]*['"]manage-roles['"]\)/.test(src),
+        `${file}: must gate on manage-roles`,
+      ).toBe(true);
+    }
+  });
 });

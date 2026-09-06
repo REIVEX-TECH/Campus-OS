@@ -141,3 +141,36 @@ at the bottom of each block.
   email is shown here" was no longer true; both intros now say identity can be
   revealed and every reveal is logged, and that an approved request's name/number
   are kept (as the member's identity) while a rejected one's are discarded.
+
+## Block 1.5b — Only platform admins assign tenant roles
+
+- **`manage-roles` removed from the tenant_admin template, added back to the
+  grant branch explicitly.** Assigning a role (especially tenant_admin) is the
+  sharpest self-perpetuating power in a tenant; it is lifted to the platform
+  operator, who acts only under an audited, time-boxed grant. Migration 0032
+  deletes the template row and re-syncs every tenant (auth_sync_tenant_roles is a
+  full reconcile, so it strips the perm from every materialized tenant_admin
+  role). Because the grant branch of auth_effective_permissions derives a
+  visitor's perms from that same materialized role_permissions, the strip would
+  also take manage-roles from a platform admin under a grant, who must keep it
+  (the roles API gate checks it) so the resolver re-adds manage-roles EXPLICITLY
+  in the grant branch, keyed on the same unforgeable txid use-row, and only there.
+- **auth_set_membership_role (0029) is untouched.** A resident now fails its
+  manage-roles gate (returns not_allowed); a platform admin under a grant still
+  passes via the v_from_platform exemption keyed on the grant use-row. The
+  keep-one-admin and not-self-under-grant rules are unchanged and still hold.
+- **SYSTEM_ROLES.tenant_admin (TS) also drops manage-roles.** It is a code mirror
+  (display names + a catalogue test), not the DB seed source (0013's hardcoded
+  VALUES + migrations are), but keeping it honest matters; the core rbac test was
+  updated to expect the two reserved exclusions (unmask, manage-roles).
+- **The roles page is read-only for residents, gated on manage-members.** It was
+  gated on manage-roles, which residents lose so it would 404 for them. Now
+  manage-members opens the read-only catalogue; the grant-by-email control renders
+  only for a holder of manage-roles (a platform admin under a grant). The nav
+  entry moved to manage-members to match. Both /api/admin/roles write routes keep
+  their manage-roles gate (tenantWriteContext), so a resident who forges a POST is
+  404'd before the definer.
+- **No auth_effective_permissions change for view-member-identity.** 0031's
+  permission flows through the role_permissions branch and is not excluded; 0032
+  preserves that (only communities.unmask stays excluded, plus the new explicit
+  manage-roles union).

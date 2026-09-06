@@ -22,14 +22,16 @@ describe('the permission catalogue', () => {
 });
 
 describe('system roles', () => {
-  it('gives an administrator every permission there is', () => {
+  it('gives an administrator every permission there is, bar the two reserved ones', () => {
     // If a permission is added to the catalogue and not to this role, the
-    // tenant's own administrator silently cannot use the feature it guards.
+    // tenant's own administrator silently cannot use the feature it guards. The
+    // two exceptions are deliberate: unmasking an anonymous author, and assigning
+    // roles (platform-only, see identity 0032).
     expect([...SYSTEM_ROLES.tenant_admin.permissions].sort()).toEqual(
-      PERMISSIONS.filter((p) => p !== 'communities.unmask').sort(),
+      PERMISSIONS.filter((p) => p !== 'communities.unmask' && p !== 'manage-roles').sort(),
     );
-    // Unmasking an anonymous author is never a default.
     expect(SYSTEM_ROLES.tenant_admin.permissions).not.toContain('communities.unmask');
+    expect(SYSTEM_ROLES.tenant_admin.permissions).not.toContain('manage-roles');
   });
 
   it('gives an ordinary member nothing administrative', () => {

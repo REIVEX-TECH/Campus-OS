@@ -55,11 +55,15 @@ export function isPermission(value: string): value is Permission {
 export const SYSTEM_ROLES = {
   student: { name: 'Student', permissions: ['post', 'communities.create'] },
   teacher: { name: 'Teacher', permissions: ['post', 'communities.create'] },
-  // Everything except unmasking an anonymous author, which is never a default:
-  // a tenant grants it explicitly, and that grant is itself audited.
+  // Everything a resident administrator holds. Two permissions are deliberately
+  // NOT here: `communities.unmask` (de-anonymising an author is never a default; a
+  // tenant grants it explicitly, audited) and `manage-roles` (assigning tenant
+  // roles is platform-only, reached by a platform admin under an audited grant —
+  // see identity migration 0032). Both are still real permissions in the
+  // catalogue; a resident admin simply does not carry them.
   tenant_admin: {
     name: 'Administrator',
-    permissions: PERMISSIONS.filter((p) => p !== 'communities.unmask'),
+    permissions: PERMISSIONS.filter((p) => p !== 'communities.unmask' && p !== 'manage-roles'),
   },
 } as const satisfies Record<string, { name: string; permissions: readonly Permission[] }>;
 
