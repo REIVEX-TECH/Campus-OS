@@ -15,6 +15,14 @@ import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manife
 import { lostFoundItemPhotos, lostFoundItems } from '../src/schema/lost-found';
 import { listItems } from '../src/items';
 import { addItemPhoto, createItem, withdrawItem } from '../src/write';
+import {
+  claimThread,
+  confirmClaim,
+  listClaimsForItem,
+  openClaim,
+  sendClaimMessage,
+  withdrawClaim,
+} from '../src/claims';
 
 /**
  * RLS for Lost & Found: an item is tenant-wide readable but writable only as
@@ -254,5 +262,73 @@ describe('lost & found write service', () => {
     if (!another.ok) throw new Error('create failed');
     const notOwner = await withdrawItem(other, 'aaa', another.value.id);
     expect(notOwner.ok && notOwner.value.changed).toBe(false);
+  });
+});
+
+describe('lost & found claims', () => {
+  const settings = settingsSchema.parse({});
+
+  async function itemBy(reporter: { userId: string }, tenant = 'aaa') {
+    const res = await createItem(
+      reporter,
+      tenant,
+      { kind: 'found', title: 'wallet', category: 'other' },
+      settings,
+    );
+    if (!res.ok) throw new Error('create failed');
+    return res.value.id;
+  }
+
+  async function unverifiedUser(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await ensureDomainMembership(actor, domain(tenant));
+    return actor;
+  }
+
+  it('opens a claim only for a verified non-owner on an open item, once', async () => {
+    if (!split) return;
+    const reporter = await member('lf-c-rep');
+    const itemId = await itemBy(reporter);
+    expect((await openClaim(reporter, 'aaa', itemId, 'this is mine')).ok).toBe(false);
+    const unv = await unverifiedUser('lf-c-unv');
+    expect((await openClaim(unv, 'aaa', itemId, 'is it blue')).ok).toBe(false);
+    const claimant = await member('lf-c-cl');
+    expect((await openClaim(claimant, 'aaa', itemId, 'lost mine last tuesday')).ok).toBe(true);
+    expect((await openClaim(claimant, 'aaa', itemId, 'again please')).ok).toBe(false);
+  });
+
+  it('keeps a claim and its messages private to the two participants', async () => {
+    if (!split) return;
+    const reporter = await member('lf-c-rep2');
+    const itemId = await itemBy(reporter);
+    const claimant = await member('lf-c-cl2');
+    const opened = await openClaim(claimant, 'aaa', itemId, 'the black one');
+    if (!opened.ok) throw new Error('open failed');
+    const stranger = await member('lf-c-str');
+    expect((await listClaimsForItem(reporter, 'aaa', itemId)).length).toBe(1);
+    expect((await listClaimsForItem(claimant, 'aaa', itemId)).length).toBe(1);
+    expect((await listClaimsForItem(stranger, 'aaa', itemId)).length).toBe(0);
+    expect((await sendClaimMessage(claimant, 'aaa', opened.value.id, 'any luck')).ok).toBe(true);
+    expect((await sendClaimMessage(stranger, 'aaa', opened.value.id, 'give it')).ok).toBe(false);
+    expect((await claimThread(reporter, 'aaa', opened.value.id)).length).toBe(1);
+    expect((await claimThread(stranger, 'aaa', opened.value.id)).length).toBe(0);
+  });
+
+  it('reporter confirm resolves the item and denies the rest; a non-reporter cannot', async () => {
+    if (!split) return;
+    const reporter = await member('lf-c-rep3');
+    const itemId = await itemBy(reporter);
+    const a = await member('lf-c-a');
+    const b = await member('lf-c-b');
+    const ca = await openClaim(a, 'aaa', itemId, 'claim a');
+    const cb = await openClaim(b, 'aaa', itemId, 'claim b');
+    if (!ca.ok || !cb.ok) throw new Error('open failed');
+    expect((await confirmClaim(a, 'aaa', ca.value.id)).ok).toBe(false);
+    expect((await confirmClaim(reporter, 'aaa', ca.value.id)).ok).toBe(true);
+    const after = await listClaimsForItem(reporter, 'aaa', itemId);
+    const byId = Object.fromEntries(after.map((c) => [c.id, c.status]));
+    expect(byId[ca.value.id]).toBe('approved');
+    expect(byId[cb.value.id]).toBe('denied');
+    expect((await withdrawClaim(b, 'aaa', cb.value.id)).ok).toBe(false);
   });
 });
