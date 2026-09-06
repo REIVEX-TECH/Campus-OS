@@ -11,7 +11,7 @@ import { tenantWriteContext } from '@/lib/tenant-access';
  *
  * Cheap checks first on every caller, then 404 unless the caller holds
  * `view-member-identity` here; the definer re-checks and audits the look. A
- * tighter per-caller rate limit than a plain read — a reveal is a sensitive,
+ * tighter per-caller rate limit than a plain read: a reveal is a sensitive,
  * logged action, not something to sweep across the roster.
  */
 

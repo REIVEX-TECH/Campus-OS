@@ -662,7 +662,7 @@ export const en = {
   'admin.members.identityName': 'Name',
   'admin.members.identityRoll': 'Roll number',
   'admin.members.identityEmail': 'Sign-in email',
-  'admin.members.identityNone': 'No name on file — verified without submitting one.',
+  'admin.members.identityNone': 'No name on file. Verified without submitting one.',
   'admin.members.since': 'Member since {date}',
   'admin.members.you': 'You',
   'admin.members.suspended': 'Suspended',
