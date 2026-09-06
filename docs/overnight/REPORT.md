@@ -44,14 +44,17 @@ PR adding/altering RLS, a SECURITY DEFINER, or a privilege grant).
 
 ### Block 3 — Direct messages (new module, NOT yet enabled)
 
-| PR   | What                                                                               | Merge SHA | §6  |
-| ---- | ---------------------------------------------------------------------------------- | --------- | --- |
-| —    | design docs (`docs/design-messages.md`, `docs/design-calls.md`)                    | (in #162) | n/a |
-| #162 | module core: conversations/messages, participant RLS, send/read/edit/delete (0000) | `9627dcd` | yes |
-| #163 | moderation: report-with-snapshot + `messages.moderate` definers (0001)             | `eaf6f0e` | yes |
+| PR   | What                                                                                                              | Merge SHA | §6  |
+| ---- | ----------------------------------------------------------------------------------------------------------------- | --------- | --- |
+| —    | design docs (`docs/design-messages.md`, `docs/design-calls.md`)                                                   | (in #162) | n/a |
+| #162 | module core: conversations/messages, participant RLS, send/read/edit/delete (0000)                                | `9627dcd` | yes |
+| #163 | moderation: report-with-snapshot + `messages.moderate` definers (0001)                                            | `eaf6f0e` | yes |
+| #165 | UI: inbox + thread (optimistic composer, polling, read receipts, edit/delete/report) + the profile Message button | `f80ceb7` | no  |
 
-> The messages module backend is complete and CI-green, but has **no UI and is
-> enabled for no tenant** — see "Not done" below.
+> The messages module is **complete and CI-green for the default (non-ephemeral)
+> case**: send, read, edit, delete-for-everyone, moderation, sender-side blocks,
+> and the full UI. It is **enabled for no tenant** yet, and ephemerality + the
+> cleanup cron are not built — see "Not done" below.
 
 ---
 
@@ -223,7 +226,11 @@ select exists(select 1 from role_template_permissions
   Year>", karma total + split; own profile shows "Edit profile"; a member's post
   in a restricted community does not appear; handles in a community's members list
   and the moderators rail link to the profile.
-- **Messages**: backend only — no page yet.
+- **Messages**: fully built (inbox, thread, composer, moderation, profile Message
+  button) but **not enabled** for LGU. To try it before enabling, add `'messages'`
+  to LGU's `enabledModules` in a scratch build: from a profile, Message → send both
+  ways → read receipt appears → edit/delete → report → the moderator queue shows
+  the snapshot.
 
 ---
 
@@ -242,28 +249,34 @@ larger deferrals, all logged:
 
 ## Not done (the remaining messages work — safe to pick up in the morning)
 
-The messages **backend is complete and CI-green** (core + moderation, both §6),
-but the feature is **not enabled for any tenant** and has **no UI**. Remaining, in
-order, before flipping LGU on (§8 wants reporting + blocking + moderation all
-present at enablement):
+The messages module is **complete and CI-green** — core + moderation (both §6) +
+the full UI. What is left is a live-enable decision and two enhancements, none of
+them a blocker for the default (non-ephemeral) feature:
 
-1. **UI** — inbox (`/u/lgu/messages`) + thread (`/messages/[id]`): composer with
-   optimistic send, 3s thread / 15s inbox polling, read receipts, edit/delete
-   controls, a report control ("Reporting saves a copy for moderators"), the
-   sidebar unread count, and the **Message button on the profile** (Block 2
-   deferred it here). Web wiring: `apps/web/lib/messages.ts`, a `messages-route.ts`
-   gate, the `apps/web/lib/modules.ts` nav card, and the JSON routes.
-2. **Blocks honored** — composed at the route via communities' block check
-   (sender-side is straightforward; the bidirectional "recipient blocked you"
-   refuse needs a shared block definer — flag it).
-3. **Ephemerality + cleanup** — `after_24h` / `after_viewing` (first-view stamping
-   needs a small definer or narrow policy) + delete-for-me + a 15-min hard-delete
-   cron (`scripts/cron-messages-cleanup.sh`) + runbook. Schema columns are already
-   reserved (`expires_at`, `first_viewed_at`, `cleared_at`).
-4. **Enable for LGU** — add `'messages'` to `enabledModules` once 1–3 are in.
+1. **Enable for LGU** — one line, `enabledModules += 'messages'`. Left OFF on
+   purpose: this is a brand-new real-time-ish feature that could not be
+   browser-verified end-to-end autonomously (it needs the split DB + a running
+   app). §8 is satisfied to enable (reporting + blocking + moderation + UI are all
+   in) — but flip it on **after** a quick manual pass in the morning: start a
+   thread from a profile, send both ways, edit/delete, report, confirm the
+   moderator queue. It goes live on the deploy the moment the flag is added.
+2. **Ephemerality + cleanup** — `after_24h` / `after_viewing` (the first-view
+   stamping needs its own small §6 definer that updates the sender's message to
+   set expiry, gated on participation) + delete-for-me (a per-message hide) + a
+   15-min hard-delete cron (`scripts/cron-messages-cleanup.sh`) + runbook. The
+   schema columns are already reserved (`expires_at`, `first_viewed_at`,
+   `cleared_at`) and the default is `never`, so the feature works without it. Held
+   for unhurried §6 work rather than rushed at the tail of the run.
+3. **Bidirectional block refuse** — the sender-side block is honored (you cannot
+   open a thread with someone you blocked). The "recipient blocked you" refuse
+   needs a shared block definer reading `user_blocks` both ways (a communities
+   capability, or a core blocks concern); flagged, low urgency (either party can
+   block from the profile, and communities feeds already hide a blocker).
+4. **Global unread badge** — the inbox shows per-conversation unread; a sidebar
+   badge can reuse `unreadCount(userId, tenant)`.
 
 Nothing tonight failed silently; the only CI hiccups were self-inflicted and
 fixed in-loop (a DEFINER_INTENT registry entry, an order-independent test-DB
-migration application, a FORCE-table test-setup path, a couple of em-dash copy
-lint failures, and a recipient-unread query). One e2e flake (a timetable term
-combobox) passed on re-run.
+migration application, a FORCE-table test-setup path, a few em-dash copy lint
+failures, a recipient-unread query, and one branch that fell behind main and was
+updated before merge). One e2e flake (a timetable term combobox) passed on re-run.
