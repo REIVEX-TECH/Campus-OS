@@ -23,8 +23,8 @@ export function isAllowlisted(email: string, allowlist: readonly string[]): bool
 
 /**
  * Make a listed person a platform admin, once. Upgrade only: an address later
- * removed from the list keeps the row until a human removes it, in the same
- * way a tenant's configured admins work. True when the row was written now.
+ * removed from the list keeps the row until a human removes it. True when the
+ * row was written now.
  *
  * The write no longer happens here. `platform_roles` is not writable by the
  * application role at all (0016): the row policy is SELECT-only, so a direct

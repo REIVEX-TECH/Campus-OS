@@ -97,7 +97,16 @@ export async function effectivePermissionsInTransaction(
   return new Set(rows.map((r) => r.permission).filter((p): p is string => typeof p === 'string'));
 }
 
-/** Every role a tenant has, with what each one can do. Needs a tenant context. */
+/**
+ * Every role a tenant has, with what each one can do. Needs a tenant context.
+ *
+ * Intentionally not gated on a single permission: the catalogue is not per-user
+ * data but a materialisation of the platform templates, tenant-scoped by the
+ * `roles_read_in_tenant` policy (0013), and read legitimately by a resident admin
+ * (manage-roles OR manage-members) AND by a platform admin verifying a definition
+ * reached the tenant. Tenant-context RLS is the right boundary here; a
+ * per-permission gate would wrongly hide it from those callers.
+ */
 export async function listRoles(actorUserId: string, tenantId: string): Promise<Role[]> {
   return withActorInTenant(actorUserId, tenantId, async (tx) => {
     const roleRows = await tx.select().from(roles).where(eq(roles.tenantId, tenantId));
@@ -126,13 +135,22 @@ export async function listRoles(actorUserId: string, tenantId: string): Promise<
   });
 }
 
-/** The roles one member holds. Needs a tenant context. */
+/**
+ * The roles one member holds. Needs a tenant context.
+ *
+ * A specific member's assignments are a roster/role-management read, so this gates
+ * in the function itself -- not only at the caller -- on manage-roles OR
+ * manage-members, and returns empty for anyone else, rather than leaning on
+ * tenant-context RLS alone the way listRoles (a non-sensitive catalogue) can.
+ */
 export async function rolesForMember(
   actorUserId: string,
   tenantId: string,
   memberUserId: string,
 ): Promise<string[]> {
   return withActorInTenant(actorUserId, tenantId, async (tx) => {
+    const perms = await effectivePermissionsInTransaction(tx, actorUserId, tenantId);
+    if (!perms.has('manage-roles') && !perms.has('manage-members')) return [];
     const rows = await tx
       .select({ key: roles.key })
       .from(membershipRoles)

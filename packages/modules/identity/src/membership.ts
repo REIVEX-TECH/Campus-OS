@@ -12,12 +12,14 @@ import { tenantMemberships, verificationRequests } from './schema/identity';
  * that last fact: a time and a method, never a public badge. Public surfaces
  * show only the anonymous handle.
  *
- * Writes here run in a TENANT context, because the policy (0008) lets a person
- * read the memberships they hold but never write one. There is exactly one
- * writer, `grantVerified`, and three callers: the domain check at sign in, the
- * configured admin list at sign in, and a tenant admin's decision.
+ * Writes never go through the application role: tenant_memberships is written
+ * only by the 0019 definers -- the domain self-verify and the student floor at
+ * sign in, and a tenant admin's decision -- each of which re-checks its own
+ * authority in the database. The application role cannot write the table directly.
  */
 
+// 'config' is historical only: the retired config-admin path (0023) wrote it and
+// no live writer emits it any more (0025/0028). Kept so existing rows read back.
 export type VerificationMethod = 'domain' | 'admin' | 'config';
 
 export interface Membership {

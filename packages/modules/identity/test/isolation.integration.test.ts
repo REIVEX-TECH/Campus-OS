@@ -597,6 +597,8 @@ describe('row security invariants', () => {
     platform_roles: false,
     audit_log: true,
     user_recents: true,
+    // Own-row preference (0027), the user_recents shape: FORCE on, no definer reads it.
+    verify_prompt_dismissed: true,
     verification_requests: true,
     // Read across the tenant by auth_pending_verification_requests and purged by
     // the verification_request_details_purge trigger, both owner-run, so FORCE is
@@ -606,6 +608,11 @@ describe('row security invariants', () => {
     roles: false,
     role_permissions: false,
     membership_roles: false,
+    // Platform-global definitions (0013): public read, platform write, read by the
+    // owner in the sync script. NO FORCE so the owner can maintain them; the app is
+    // bound by the read/write policies regardless.
+    role_templates: false,
+    role_template_permissions: false,
     // Base schema, written by the owner in the sync script and by a platform
     // admin under policies; never read by a definer function. No FORCE so the
     // owner can write it; the application owns nothing, so RLS binds it anyway.
@@ -1200,7 +1207,10 @@ describe('roles and permissions', () => {
       ok: false,
       reason: 'not_allowed',
     });
+    // rolesForMember is gated the same way: an admin reads a member's roles, a
+    // plain student cannot read anyone's off tenant-context RLS.
     expect(await rolesForMember(a.userId, 'aaa', other.userId)).toEqual(['student']);
+    expect(await rolesForMember(s.userId, 'aaa', other.userId)).toEqual([]);
   });
 
   it('refuses an unknown role and an unknown member', async () => {

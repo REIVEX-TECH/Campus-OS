@@ -65,5 +65,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE campusos_owner IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO campusos_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE campusos_owner IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO campusos_app;
+-- LOAD-BEARING: this makes app-EXECUTE the DEFAULT for every future function the
+-- owner creates, including a future SECURITY DEFINER meant to be owner-only. Such
+-- a definer is therefore app-callable unless its own migration REVOKEs EXECUTE
+-- from campusos_app BY NAME (a bare REVOKE ... FROM PUBLIC does not remove this
+-- default grant). The DEFINER_INTENT integration test fails CI if an owner-intent
+-- definer stays app-executable, so this footgun is caught by construction -- but
+-- when adding an owner-only definer, the by-name revoke is required, not optional.
 ALTER DEFAULT PRIVILEGES FOR ROLE campusos_owner IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO campusos_app;
