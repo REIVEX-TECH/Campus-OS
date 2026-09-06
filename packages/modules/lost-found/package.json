@@ -8,7 +8,9 @@
     ".": "./src/index.ts",
     "./manifest": "./src/manifest.ts",
     "./schema": "./src/schema/index.ts",
-    "./items": "./src/items.ts"
+    "./items": "./src/items.ts",
+    "./write": "./src/write.ts",
+    "./input": "./src/input.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

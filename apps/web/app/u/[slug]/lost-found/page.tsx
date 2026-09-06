@@ -56,10 +56,23 @@ export default async function LostFoundPage({ params, searchParams }: PageProps)
   const tabHref = (tabKind?: ItemKind) => `${base}/lost-found${tabKind ? `?kind=${tabKind}` : ''}`;
 
   const header = (
-    <header className="flex flex-col gap-1 px-1">
-      <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
-      <h1 className="text-2xl font-bold tracking-tight">{t('lostFound.heading')}</h1>
-      <p className="max-w-prose text-sm text-muted-foreground">{t('lostFound.intro')}</p>
+    <header className="flex flex-wrap items-end justify-between gap-3 px-1">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('lostFound.heading')}</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">{t('lostFound.intro')}</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <Link href={`${base}/lost-found/mine`} className="text-sm font-medium text-primary">
+          {t('lostFound.mine')}
+        </Link>
+        <Link
+          href={`${base}/lost-found/post`}
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+        >
+          {t('lostFound.report')}
+        </Link>
+      </div>
     </header>
   );
 

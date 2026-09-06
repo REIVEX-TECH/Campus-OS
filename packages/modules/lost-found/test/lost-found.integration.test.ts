@@ -11,9 +11,10 @@ import {
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
-import { migrationsFolder, migrationsTable } from '../src/manifest';
+import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { lostFoundItemPhotos, lostFoundItems } from '../src/schema/lost-found';
 import { listItems } from '../src/items';
+import { addItemPhoto, createItem, withdrawItem } from '../src/write';
 
 /**
  * RLS for Lost & Found: an item is tenant-wide readable but writable only as
@@ -165,5 +166,93 @@ describe('lost & found RLS', () => {
         }),
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('lost & found write service', () => {
+  const settings = settingsSchema.parse({});
+
+  /** A member whose email is off the tenant's domain: joined but not verified. */
+  async function unverified(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await ensureDomainMembership(actor, domain(tenant));
+    return actor;
+  }
+
+  it('refuses an unverified member and lets a verified one post', async () => {
+    if (!split) return;
+    const u = await unverified('lf-w-unv', 'aaa');
+    const refused = await createItem(
+      u,
+      'aaa',
+      { kind: 'lost', title: 'phone', category: 'electronics' },
+      settings,
+    );
+    expect(refused.ok).toBe(false);
+
+    const v = await member('lf-w-ver', 'aaa');
+    const ok = await createItem(
+      v,
+      'aaa',
+      { kind: 'lost', title: 'phone', category: 'electronics' },
+      settings,
+    );
+    expect(ok.ok).toBe(true);
+  });
+
+  it('rejects an unknown category', async () => {
+    if (!split) return;
+    const v = await member('lf-w-cat', 'aaa');
+    const res = await createItem(
+      v,
+      'aaa',
+      { kind: 'lost', title: 'thing', category: 'not-a-category' },
+      settings,
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it('adds a photo only for the owner, and withdraws only one’s own item', async () => {
+    if (!split) return;
+    const owner = await member('lf-w-own', 'aaa');
+    const other = await member('lf-w-oth', 'aaa');
+    const created = await createItem(
+      owner,
+      'aaa',
+      { kind: 'found', title: 'ring', category: 'other' },
+      settings,
+    );
+    if (!created.ok) throw new Error('create failed');
+    const id = created.value.id;
+    const photo = {
+      storageKey: 'lost-found/aa/x.webp',
+      thumbKey: 'lost-found/aa/x_thumb.webp',
+      contentType: 'image/webp',
+      width: 100,
+      height: 100,
+      byteSize: 1000,
+    };
+    expect((await addItemPhoto(owner, 'aaa', id, photo, settings.maxPhotosPerItem)).ok).toBe(true);
+    const foreign = await addItemPhoto(
+      other,
+      'aaa',
+      id,
+      { ...photo, storageKey: 'lost-found/aa/y.webp', thumbKey: 'lost-found/aa/y_thumb.webp' },
+      settings.maxPhotosPerItem,
+    );
+    expect(foreign.ok).toBe(false);
+
+    const mine = await withdrawItem(owner, 'aaa', id);
+    expect(mine.ok && mine.value.changed).toBe(true);
+
+    const another = await createItem(
+      owner,
+      'aaa',
+      { kind: 'lost', title: 'bag', category: 'bags' },
+      settings,
+    );
+    if (!another.ok) throw new Error('create failed');
+    const notOwner = await withdrawItem(other, 'aaa', another.value.id);
+    expect(notOwner.ok && notOwner.value.changed).toBe(false);
   });
 });
