@@ -405,9 +405,16 @@ describe('lost & found expiry', () => {
     return res.value.id;
   }
 
-  /** Force one item's expiry window so the sweep and the badge can be exercised. */
+  /**
+   * Force one item's expiry window. lf_items is FORCE RLS, so the owner
+   * (migration role) is bound too and, with no tenant context, would update
+   * nothing; go through the app role in the tenant context (the tenant policy
+   * admits the update), exactly the path the sweep and extend take.
+   */
   async function setExpiry(id: string, expr: string) {
-    await runAsMigrationRole(`update lf_items set expires_at = ${expr} where id = '${id}'`);
+    await withTenant('aaa', (tx) =>
+      tx.execute(sql`update lf_items set expires_at = ${sql.raw(expr)} where id = ${id}::uuid`),
+    );
   }
 
   it('expires only overdue open items, out of browse but still owned', async () => {
