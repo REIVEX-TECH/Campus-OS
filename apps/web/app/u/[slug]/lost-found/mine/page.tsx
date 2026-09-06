@@ -5,6 +5,7 @@ import { myItems } from '@campusos/module-lost-found/write';
 import { myClaims } from '@campusos/module-lost-found/claims';
 import { ItemCard } from '@/app/_components/lost-found/item-card';
 import { WithdrawButton } from '@/app/_components/lost-found/withdraw-button';
+import { ExtendButton } from '@/app/_components/lost-found/extend-button';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
@@ -63,7 +64,27 @@ export default async function MyLostFoundPage({ params }: Params) {
                 <li key={item.id} className="flex flex-col gap-1">
                   <ItemCard item={item} base={base} t={t} />
                   {item.status === 'open' ? (
-                    <div className="px-1">
+                    <div className="flex flex-wrap items-center gap-2 px-1">
+                      {item.expiringSoon ? (
+                        <>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                            {item.expiresAt
+                              ? t('lostFound.expiresOn', {
+                                  date: new Intl.DateTimeFormat(tenant.locale, {
+                                    day: 'numeric',
+                                    month: 'short',
+                                  }).format(item.expiresAt),
+                                })
+                              : t('lostFound.expiringSoon')}
+                          </span>
+                          <ExtendButton
+                            tenant={slug}
+                            itemId={item.id}
+                            label={t('lostFound.extend')}
+                            busyLabel={t('lostFound.extending')}
+                          />
+                        </>
+                      ) : null}
                       <WithdrawButton
                         tenant={slug}
                         itemId={item.id}

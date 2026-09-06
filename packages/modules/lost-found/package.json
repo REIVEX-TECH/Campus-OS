@@ -10,6 +10,7 @@
     "./schema": "./src/schema/index.ts",
     "./items": "./src/items.ts",
     "./write": "./src/write.ts",
+    "./expiry": "./src/expiry.ts",
     "./claims": "./src/claims.ts",
     "./moderation": "./src/moderation.ts",
     "./input": "./src/input.ts"

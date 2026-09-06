@@ -22,7 +22,7 @@ export const lgu: TenantConfigInput = {
   allowedEmailDomains: ['lgu.edu.pk'],
   // Anyone with a verified lgu.edu.pk address joins as a student.
   joinMode: 'domain',
-  enabledModules: ['timetable', 'communities'],
+  enabledModules: ['timetable', 'communities', 'lost-found'],
   seo: {
     titleTemplate: '%s · LGU Timetable',
     description:
