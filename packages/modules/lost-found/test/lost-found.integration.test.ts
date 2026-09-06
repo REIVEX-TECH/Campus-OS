@@ -14,7 +14,8 @@ import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { lostFoundItemPhotos, lostFoundItems } from '../src/schema/lost-found';
 import { listItems } from '../src/items';
-import { addItemPhoto, createItem, withdrawItem } from '../src/write';
+import { addItemPhoto, createItem, extendItem, myItems, withdrawItem } from '../src/write';
+import { expireOpenItems } from '../src/expiry';
 import {
   claimThread,
   confirmClaim,
@@ -387,5 +388,78 @@ describe('lost & found moderation', () => {
     expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
     const browse = await listItems('aaa');
     expect(browse.items.some((i) => i.id === itemId)).toBe(false);
+  });
+});
+
+describe('lost & found expiry', () => {
+  const settings = settingsSchema.parse({});
+
+  async function itemFor(reporter: { userId: string }, title: string) {
+    const res = await createItem(
+      reporter,
+      'aaa',
+      { kind: 'lost', title, category: 'other' },
+      settings,
+    );
+    if (!res.ok) throw new Error('create failed');
+    return res.value.id;
+  }
+
+  /** Force one item's expiry window so the sweep and the badge can be exercised. */
+  async function setExpiry(id: string, expr: string) {
+    await runAsMigrationRole(`update lf_items set expires_at = ${expr} where id = '${id}'`);
+  }
+
+  it('expires only overdue open items, out of browse but still owned', async () => {
+    if (!split) return;
+    const reporter = await member('lf-x-rep');
+    const overdue = await itemFor(reporter, 'overdue');
+    const fresh = await itemFor(reporter, 'fresh');
+    await setExpiry(overdue, `now() - interval '1 hour'`);
+    await setExpiry(fresh, `now() + interval '30 days'`);
+
+    const { expired } = await expireOpenItems('aaa');
+    expect(expired).toEqual([overdue]);
+
+    // Out of default browse, but the reporter still sees it (as expired).
+    const browse = await listItems('aaa');
+    expect(browse.items.some((i) => i.id === overdue)).toBe(false);
+    const mine = await myItems(reporter.userId, 'aaa');
+    expect(mine.find((i) => i.id === overdue)?.status).toBe('expired');
+    expect(mine.find((i) => i.id === fresh)?.status).toBe('open');
+
+    // Running again is a no-op: nothing open is overdue now.
+    expect((await expireOpenItems('aaa')).expired).toEqual([]);
+  });
+
+  it('flags an item expiring soon and lets only its reporter extend it', async () => {
+    if (!split) return;
+    const reporter = await member('lf-x-own');
+    const other = await member('lf-x-oth');
+    const id = await itemFor(reporter, 'soon');
+    await setExpiry(id, `now() + interval '2 days'`);
+
+    let mine = await myItems(reporter.userId, 'aaa');
+    expect(mine.find((i) => i.id === id)?.expiringSoon).toBe(true);
+
+    // A non-reporter cannot extend.
+    const foreign = await extendItem(other, 'aaa', id, settings);
+    expect(foreign.ok && foreign.value.changed).toBe(false);
+
+    // The reporter extends: still open, window pushed out, no longer "soon".
+    const mineExtend = await extendItem(reporter, 'aaa', id, settings);
+    expect(mineExtend.ok && mineExtend.value.changed).toBe(true);
+    mine = await myItems(reporter.userId, 'aaa');
+    expect(mine.find((i) => i.id === id)?.status).toBe('open');
+    expect(mine.find((i) => i.id === id)?.expiringSoon).toBe(false);
+  });
+
+  it('does not extend a resolved or withdrawn item', async () => {
+    if (!split) return;
+    const reporter = await member('lf-x-wd');
+    const id = await itemFor(reporter, 'withdrawn');
+    expect((await withdrawItem(reporter, 'aaa', id)).ok).toBe(true);
+    const res = await extendItem(reporter, 'aaa', id, settings);
+    expect(res.ok && res.value.changed).toBe(false);
   });
 });

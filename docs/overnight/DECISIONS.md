@@ -62,3 +62,41 @@ at the bottom of each block.
   checks it — not before, so no permission exists without a guard (the rbac
   principle). `role_template_permissions` (0013) is the DB source, not the TS
   `SYSTEM_ROLES`, so granting it is a migration, not a code edit.
+- **New L&F definers declared in the communities `DEFINER_INTENT` map.** The
+  "definer grant hygiene" test (communities integration suite) scans every
+  SECURITY DEFINER in the DB and fails on any not declared; it is a global
+  registry, so `auth_lf_report_queue` / `auth_lf_resolve_reports` are added there
+  as `app` (both grant EXECUTE to `campusos_app` and self-gate on
+  `lostfound.moderate`). The map living in communities is pre-existing; the L&F
+  moderation PR keeps it honest rather than duplicating the check per module.
+
+## Block 1 — Lost & Found — PR 5 (polish + enable)
+
+- **LGU enabled by config in this PR (`enabledModules += 'lost-found'`).** The
+  code path is complete and CI-green; the tenant flips live on the morning
+  deploy. No core change — enablement is a tenant decision (§4).
+- **Auto-expiry is a scheduled sweep, not a trigger or a request path.**
+  `expireOpenItems(tenant)` flips overdue `open` items to `expired`; it runs with
+  no actor in the tenant context, and the permissive tenant policy admits the
+  update exactly like the communities archive sweep. `pnpm lostfound:expire --
+--tenant <slug>` from cron (runbook: docs/runbooks/lost-found-expire.md). It
+  only moves overdue open items and is idempotent.
+- **"Notify 7 days before" is a live in-app badge, not a push.** Cross-module
+  notifications stay deferred (§4, the notifications-concern decision above), so
+  "expiring soon" is computed live from `expires_at` on My items (within
+  `EXPIRY_NOTICE_DAYS` = 7) with a one-tap **Keep it listed** extend. This works
+  the moment an item enters the window, independent of the sweep cadence.
+  `expiry_notified_at` stays reserved for the eventual reminder's idempotency.
+- **Expired items are viewable but out of default browse.** Browse only ever
+  lists `open` or `resolved`; an `expired` item is still reachable by direct link
+  (the item page does not filter on status) and in the reporter's My items. No
+  "Expired" browse tab — that would put them back in browse.
+- **Extend resets the full window and clears the notify mark.** One tap pushes
+  `expires_at` to `now() + expiryDays` and nulls `expiry_notified_at`, so the
+  badge and any future reminder reset together. Reporter-only, open-only (same
+  guard shape as withdraw).
+- **Browse filters are URL state, server-rendered.** kind / status (open|
+  resolved) / category / free-text `q` are all query params carried through the
+  tabs and the "more" cursor; the search+category form is a plain GET. No client
+  component — the page stays a Server Component and every filter is shareable and
+  back-button-correct.

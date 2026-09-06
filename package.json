@@ -19,6 +19,7 @@
     "db:migrate:all": "tsx scripts/migrate-all.ts",
     "communities:archive": "tsx scripts/communities-archive.ts",
     "communities:karma": "tsx scripts/communities-karma.ts",
+    "lostfound:expire": "tsx scripts/lost-found-expire.ts",
     "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",

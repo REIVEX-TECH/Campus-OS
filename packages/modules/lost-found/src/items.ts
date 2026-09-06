@@ -71,6 +71,8 @@ export interface BrowseFilters {
   category?: string;
   /** Defaults to 'open'; expired items are excluded from default browse. */
   status?: 'open' | 'resolved';
+  /** Free-text match on title and description. */
+  search?: string;
 }
 
 export const PAGE_SIZE = 24;
@@ -113,6 +115,11 @@ export async function listItems(
           and i.status = ${status}
           ${filters.kind ? sql`and i.kind = ${filters.kind}` : sql``}
           ${filters.category ? sql`and i.category = ${filters.category}` : sql``}
+          ${
+            filters.search
+              ? sql`and (i.title ilike ${'%' + filters.search + '%'} or i.description ilike ${'%' + filters.search + '%'})`
+              : sql``
+          }
           ${cursor ? sql`and (i.created_at, i.id) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)` : sql``}
         order by i.created_at desc, i.id desc
         limit ${PAGE_SIZE + 1}

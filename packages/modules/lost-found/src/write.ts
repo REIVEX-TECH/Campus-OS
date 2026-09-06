@@ -123,12 +123,52 @@ export async function withdrawItem(
   });
 }
 
+/**
+ * Push one's own open item's expiry out by another full window (one-tap extend).
+ * Only the reporter's own open item moves; the notify mark is cleared so the
+ * "expiring soon" badge and any future reminder reset with the new window.
+ */
+export async function extendItem(
+  actor: { userId: string },
+  tenantId: string,
+  itemId: string,
+  settings: LostFoundSettings,
+): Promise<Result<{ changed: boolean }, ItemRefusal>> {
+  const days = Math.max(1, Math.floor(settings.expiryDays));
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update lf_items
+           set expires_at = now() + (${days}::int * interval '1 day'),
+               expiry_notified_at = null,
+               edited_at = now()
+        where id = ${itemId}::uuid and tenant_id = ${tenantId}
+          and reporter_id = ${actor.userId}::uuid and status = 'open'
+        returning id`)),
+    ];
+    return ok({ changed: rows.length > 0 });
+  });
+}
+
+/** An owned item, with the expiry the reporter needs to see and act on. */
+export interface MyItemSummary extends ItemSummary {
+  expiresAt: Date | null;
+  /** Open and within the reminder window — surface the one-tap extend. */
+  expiringSoon: boolean;
+}
+
+/** Days before expiry an open item is flagged "expiring soon" (see extend). */
+export const EXPIRY_NOTICE_DAYS = 7;
+
 /** A person's own items in one tenant, any status, newest first. */
-export async function myItems(userId: string, tenantId: string): Promise<ItemSummary[]> {
+export async function myItems(userId: string, tenantId: string): Promise<MyItemSummary[]> {
   return withActorInTenant(userId, tenantId, async (tx) => {
     const rows = [
       ...(await tx.execute(sql`
         select i.id, i.kind, i.title, i.category, i.location_text, i.status, i.created_at,
+               i.expires_at,
+               (i.status = 'open' and i.expires_at is not null
+                 and i.expires_at <= now() + (${EXPIRY_NOTICE_DAYS}::int * interval '1 day')) as expiring_soon,
                (select p.thumb_key from lf_item_photos p
                  where p.item_id = i.id and p.removed_at is null
                  order by p.position asc limit 1) as thumb_key
@@ -144,6 +184,8 @@ export async function myItems(userId: string, tenantId: string): Promise<ItemSum
       location_text: string | null;
       status: string;
       created_at: string | Date;
+      expires_at: string | Date | null;
+      expiring_soon: boolean;
       thumb_key: string | null;
     }>;
     return rows.map((r) => ({
@@ -154,6 +196,13 @@ export async function myItems(userId: string, tenantId: string): Promise<ItemSum
       locationText: r.location_text,
       status: r.status,
       createdAt: r.created_at instanceof Date ? r.created_at : new Date(r.created_at),
+      expiresAt:
+        r.expires_at === null
+          ? null
+          : r.expires_at instanceof Date
+            ? r.expires_at
+            : new Date(r.expires_at),
+      expiringSoon: r.expiring_soon === true,
       thumbKey: r.thumb_key,
     }));
   });
