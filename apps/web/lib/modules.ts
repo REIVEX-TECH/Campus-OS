@@ -60,7 +60,14 @@ export const MODULES: ModuleCard[] = [
     soon: false,
     moduleId: 'communities',
   },
-  { key: 'lostFound', needsIdentity: true, icon: 'package-search', soon: true },
+  {
+    key: 'lostFound',
+    needsIdentity: true,
+    icon: 'package-search',
+    path: '/lost-found',
+    soon: false,
+    moduleId: 'lost-found',
+  },
   { key: 'rides', needsIdentity: true, icon: 'car', soon: true },
   { key: 'map', icon: 'map', soon: true },
 ];
