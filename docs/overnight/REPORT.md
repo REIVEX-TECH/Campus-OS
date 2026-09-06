@@ -50,11 +50,12 @@ PR adding/altering RLS, a SECURITY DEFINER, or a privilege grant).
 | #162 | module core: conversations/messages, participant RLS, send/read/edit/delete (0000)                                | `9627dcd` | yes |
 | #163 | moderation: report-with-snapshot + `messages.moderate` definers (0001)                                            | `eaf6f0e` | yes |
 | #165 | UI: inbox + thread (optimistic composer, polling, read receipts, edit/delete/report) + the profile Message button | `f80ceb7` | no  |
+| #167 | ephemerality: `after_24h` / `after_viewing`, stamp + hard-delete definers, cleanup sweep (0002)                   | `a1b9694` | yes |
 
-> The messages module is **complete and CI-green for the default (non-ephemeral)
-> case**: send, read, edit, delete-for-everyone, moderation, sender-side blocks,
-> and the full UI. It is **enabled for no tenant** yet, and ephemerality + the
-> cleanup cron are not built — see "Not done" below.
+> The messages module is **complete and CI-green**: send, read, edit,
+> delete-for-everyone, moderation, sender-side blocks, disappearing messages
+> (`after_24h` / `after_viewing`) with a cleanup sweep, and the full UI. It is
+> **enabled for no tenant** yet — see "Not done" below for the live-enable step.
 
 ---
 
@@ -110,7 +111,7 @@ pnpm db:migrate:all      # base + every module, each its own bookkeeping table
 New migrations this applies (in module order): identity `0031_member_identity`,
 `0032_platform_only_role_grants`; lost-found `0000_lost_found`,
 `0001_lost_found_claims`, `0002_lost_found_moderation`; messages `0000_messages`,
-`0001_messages_moderation`.
+`0001_messages_moderation`, `0002_messages_ephemerality`.
 
 ### 5. Re-apply db-grants (the role split re-run)
 
@@ -146,7 +147,13 @@ Lost & Found auto-expiry (daily is plenty), from `docs/runbooks/lost-found-expir
 20 3 * * * cd /srv/campusos && pnpm lostfound:expire -- --tenant lgu >> /var/log/campusos/lostfound-expire.log 2>&1
 ```
 
-(Messages has **no** cleanup cron yet — ephemerality is not built; see "Not done".)
+Messages ephemeral-cleanup sweep (every 15 minutes), from
+`docs/runbooks/messages-cleanup.md` — needed only once messages is enabled for a
+tenant, harmless before then (it deletes only already-expired rows):
+
+```cron
+*/15 * * * * cd /srv/campusos && pnpm messages:cleanup -- --tenant lgu >> /var/log/campusos/messages-cleanup.log 2>&1
+```
 
 ### 8. Reload the app
 
@@ -184,17 +191,20 @@ select p.proname, has_function_privilege('campusos_app', p.oid, 'execute') as ap
 from pg_proc p
 where p.pronamespace='public'::regnamespace and p.prosecdef
   and p.proname in ('auth_member_identity','auth_lf_report_queue','auth_lf_resolve_reports',
-                    'auth_msg_report_queue','auth_msg_resolve_reports')
+                    'auth_msg_report_queue','auth_msg_resolve_reports',
+                    'auth_msg_stamp_viewed','auth_msg_expire')
 order by p.proname;
 ```
 
-All five must be `app_can_execute = t` (they self-gate on a permission inside).
-`auth_effective_permissions` stays `t` (re-defined in 0032, still app-callable).
+All seven must be `app_can_execute = t` (each self-gates inside — on a permission,
+on participation, or, for `auth_msg_expire`, on `expires_at <= now()` within one
+tenant). `auth_effective_permissions` stays `t` (re-defined in 0032, still
+app-callable).
 
 ### Journal parity / migrations recorded
 
 ```sql
-select left(id,60) from public.__drizzle_migrations_messages order by created_at;   -- 0000, 0001
+select left(id,60) from public.__drizzle_migrations_messages order by created_at;   -- 0000, 0001, 0002
 select left(id,60) from public.__drizzle_migrations_identity order by created_at;   -- ... 0031, 0032
 -- lost-found records in __drizzle_migrations_lost_found: 0000..0002
 ```
@@ -226,11 +236,13 @@ select exists(select 1 from role_template_permissions
   Year>", karma total + split; own profile shows "Edit profile"; a member's post
   in a restricted community does not appear; handles in a community's members list
   and the moderators rail link to the profile.
-- **Messages**: fully built (inbox, thread, composer, moderation, profile Message
-  button) but **not enabled** for LGU. To try it before enabling, add `'messages'`
-  to LGU's `enabledModules` in a scratch build: from a profile, Message → send both
-  ways → read receipt appears → edit/delete → report → the moderator queue shows
-  the snapshot.
+- **Messages**: fully built (inbox, thread, composer, moderation, disappearing
+  messages, profile Message button) but **not enabled** for LGU. To try it before
+  enabling, add `'messages'` to LGU's `enabledModules` in a scratch build: from a
+  profile, Message → send both ways → read receipt appears → edit/delete → report
+  → the moderator queue shows the snapshot; set the thread to "After viewing",
+  send, have the recipient open it, and confirm it is gone after the grace window
+  (the 15-min sweep hard-deletes it; reads hide it immediately).
 
 ---
 
@@ -249,9 +261,9 @@ larger deferrals, all logged:
 
 ## Not done (the remaining messages work — safe to pick up in the morning)
 
-The messages module is **complete and CI-green** — core + moderation (both §6) +
-the full UI. What is left is a live-enable decision and two enhancements, none of
-them a blocker for the default (non-ephemeral) feature:
+The messages module is **complete and CI-green** — core + moderation +
+ephemerality (all §6) + the full UI. What is left is a live-enable decision and
+two enhancements, none of them a blocker:
 
 1. **Enable for LGU** — one line, `enabledModules += 'messages'`. Left OFF on
    purpose: this is a brand-new real-time-ish feature that could not be
@@ -259,14 +271,12 @@ them a blocker for the default (non-ephemeral) feature:
    app). §8 is satisfied to enable (reporting + blocking + moderation + UI are all
    in) — but flip it on **after** a quick manual pass in the morning: start a
    thread from a profile, send both ways, edit/delete, report, confirm the
-   moderator queue. It goes live on the deploy the moment the flag is added.
-2. **Ephemerality + cleanup** — `after_24h` / `after_viewing` (the first-view
-   stamping needs its own small §6 definer that updates the sender's message to
-   set expiry, gated on participation) + delete-for-me (a per-message hide) + a
-   15-min hard-delete cron (`scripts/cron-messages-cleanup.sh`) + runbook. The
-   schema columns are already reserved (`expires_at`, `first_viewed_at`,
-   `cleared_at`) and the default is `never`, so the feature works without it. Held
-   for unhurried §6 work rather than rushed at the tail of the run.
+   moderator queue, and try a disappearing thread. It goes live on the deploy the
+   moment the flag is added. If you enable it, also add the messages-cleanup cron
+   (deploy step 7).
+2. **Delete-for-me** — a per-message hide (the `cleared_at` column is reserved for
+   it). Delete-for-everyone (within the window) already ships; this is the
+   private-hide variant.
 3. **Bidirectional block refuse** — the sender-side block is honored (you cannot
    open a thread with someone you blocked). The "recipient blocked you" refuse
    needs a shared block definer reading `user_blocks` both ways (a communities
@@ -278,5 +288,8 @@ them a blocker for the default (non-ephemeral) feature:
 Nothing tonight failed silently; the only CI hiccups were self-inflicted and
 fixed in-loop (a DEFINER_INTENT registry entry, an order-independent test-DB
 migration application, a FORCE-table test-setup path, a few em-dash copy lint
-failures, a recipient-unread query, and one branch that fell behind main and was
-updated before merge). One e2e flake (a timetable term combobox) passed on re-run.
+failures, a recipient-unread query, an ephemeral-cleanup DELETE that swept zero
+rows until it was routed through an owner-run definer — the DELETE's row scan
+applies the participant SELECT policy — and one branch that fell behind main and
+was updated before merge). One e2e flake (a timetable term combobox) passed on
+re-run.
