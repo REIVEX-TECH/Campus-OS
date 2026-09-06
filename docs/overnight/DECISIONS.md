@@ -205,3 +205,44 @@ at the bottom of each block.
   threads and L&F already linked. A few secondary surfaces (the notifications
   actor avatar, the blocked list, admin rosters) still do not link — a minor
   follow-up.
+
+## Block 3 — Direct messages (new module)
+
+- **Messages is its own module with its own reports table, not a consumer of a
+  core notifications/reports seam.** §4 forbids a module writing another module's
+  tables, and no shared reports/notifications concern exists in core yet. So
+  messages keeps `msg_reports` (report-with-snapshot) and surfaces unread
+  in-module; cross-module push notifications and a shared reports table stay the
+  flagged core follow-up (already noted for L&F). Blocks are composed at the web
+  route via communities' `isBlocked` (a read, not a write), and cross-module
+  handle/avatar reads go through the `public_profiles` view — no messages→
+  communities table coupling.
+- **Participant RLS on all three tables; NO FORCE so the moderator/cleanup
+  definers can read and delete across.** `msg_conversations` / `msg_messages` /
+  `msg_participant_state` carry a tenant + participant policy (a row is visible
+  only to `participant_a` / `participant_b`). Moderation reads and the ephemeral
+  sweep run through owner-run (NO FORCE) SECURITY DEFINERs, each self-gating; the
+  app role never sees another participant's thread.
+- **The ephemeral cleanup sweep MUST be an owner-run definer, not an app-role
+  `DELETE ... WHERE expires_at <= now()`.** This is the non-obvious one and cost a
+  CI cycle: a `DELETE` (and `UPDATE`) scans the rows it removes, and that scan is
+  subject to the table's _SELECT_ policy. `msg_messages`'s SELECT policy is
+  participant-keyed on `app.user_id`, so the no-actor cleanup context matches zero
+  rows and the sweep deletes nothing — silently. `auth_msg_expire(tenant)` (NO
+  FORCE definer) does the delete, bounded to `expires_at IS NOT NULL AND
+expires_at <= now()` within one tenant, and returns `ROW_COUNT`. (L&F's expire
+  sweep worked as a plain app-role update only because `lf_items`' SELECT policy
+  is tenant-based, not participant-based — the distinction is the lesson.)
+- **`after_viewing` expiry is stamped by a definer on first read, gated on
+  participation.** The viewer is the recipient, not the sender, so the own-message
+  UPDATE policy would block them from setting `expires_at` on the sender's
+  message. `auth_msg_stamp_viewed(tenant, conversation, grace)` does it, checking
+  the caller is a participant of that specific `after_viewing` conversation
+  (through the RLS-filtered `msg_conversations`, so a non-participant stamps
+  nothing) and touching only unviewed inbound messages. Both definers declared
+  `app` in the DEFINER_INTENT registry.
+- **Reads hide expired messages immediately; the sweep only reclaims storage.**
+  Every read query (`thread`, inbox preview, `unreadCount`) filters
+  `expires_at <= now()`, so a message disappears from the UI the instant it
+  expires regardless of when the 15-minute cron next runs. The cron is a
+  storage-hygiene job, never the privacy boundary.
