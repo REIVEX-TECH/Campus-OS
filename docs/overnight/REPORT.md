@@ -1,144 +1,269 @@
-# Overnight run: report
+# Overnight run — morning report
 
-Every PR shipped through the normal loop: branch, PR, CI green, merge. No gate was
-weakened and nothing was merged red.
+Every PR went through the normal loop: branch → PR → CI green → merge. No gate was
+weakened and nothing was merged red. Non-obvious calls are in `DECISIONS.md`; new
+security findings (none live) would be in `SECURITY-BACKLOG.md`.
 
-Anything stopped rather than guessed is in `DECISIONS.md`.
-
----
-
-## Merged
-
-| #   | PR                                                                     | Merge SHA |
-| --- | ---------------------------------------------------------------------- | --------- |
-| 56  | `fix(web): show readable course titles, not import slugs`              | `75d70e9` |
-| 57  | `fix(web): set metadataBase so social cards resolve`                   | `25dcb6f` |
-| 58  | `feat(web): illustrated generated avatars`                             | `18c7184` |
-| 59  | `feat(identity): the identity data model and its isolation guarantees` | `d1fb575` |
-| 60  | `feat(core): tenant join mode setting`                                 | `2de96c1` |
-| 61  | `docs: overnight run report and open decisions`                        | `a400a66` |
-| 62  | `feat(web): steadier loading for avatars and directories`              | `1e5e564` |
-| 63  | `feat(web): empty states that read as deliberate`                      | `5ac85f2` |
-| 64  | `fix(web): a room hosts courses, it does not teach them`               | `abd0042` |
-| 65  | `fix(web): the profile breadcrumb no longer wraps badly on a phone`    | `a0d4d99` |
-| 66  | `fix(web): the course filter is called Course`                         | `26a248a` |
-| 67  | `docs: update overnight report with the polish PRs`                    | `f1a2b3c` |
-| 68  | `feat(web): the room directory shows a building only when it varies`   | `2b9110d` |
-| 69  | `fix(web): profiles no longer scroll sideways on a phone`              | `5e81777` |
+Production was **not** touched: no migrations were run, no nginx changed, no deploy
+done. That is the morning's job — the exact sequence is below.
 
 ---
 
-## A. Bug fixes
+## What shipped, by block
 
-**1 and 2, course names and the duplicate course, were one bug.** The import gives
-a course a slug shaped `code` and a readable `title`. Several surfaces led with the
-slug, so a course and its lab both truncated to
-`application-of-information-communication-technologie...` and read as the same row
-rendered twice. The underlying tally was already correct and deduplicated by course
-id. Fixing the display fixed both reports. Titles now appear on teacher and room
-profiles, the course page, search results, and the filter chips, with chips capped
-and the full title on hover. Two unit tests pin the dedup so the suspicion cannot
-resurface silently.
+Each row: PR, one line, merge SHA, and whether a §6 concrete-SQL review ran (any
+PR adding/altering RLS, a SECURITY DEFINER, or a privilege grant).
 
-**3, metadataBase.** Tenant pages already set it per request. The warning came from
-the statically rendered routes, the 404 and the platform opengraph image, which
-have no request host to read. The root layout now sets it from `PLATFORM_HOST`,
-falling back through `TENANT_BASE_DOMAIN` and `APP_DOMAIN`. Deliberately
-configuration rather than `headers()`: reading the host in the root layout would
-opt the whole tree into dynamic rendering to fix metadata for the few routes that
-have no host anyway. `.env.example` documents the dependency.
+### Block 1 — Lost & Found (new module, enabled for LGU)
 
-## B. Illustrated avatars
+| PR   | What                                                                      | Merge SHA | §6  |
+| ---- | ------------------------------------------------------------------------- | --------- | --- |
+| #151 | media/object-store seam (`packages/media`, `ObjectStore`, sharp pipeline) | `12571fa` | n/a |
+| #152 | lost-found scaffold + model + browse (items/photos, tenant RLS + FORCE)   | `b6fd27a` | yes |
+| #153 | post an item (verified-gate, upload: magic-byte + sharp + thumbnail)      | `74a9093` | yes |
+| #155 | claims lifecycle + private claim threads (participant RLS, NO FORCE)      | `6e661c1` | yes |
+| #156 | reporting + moderation (`lf_reports`, `lostfound.moderate` definers)      | `0f6575b` | yes |
+| #157 | browse filters, 90-day auto-expiry, enable for LGU                        | `4e3cb00` | no  |
 
-DiceBear, server rendered. People get **Notionists**, a hand drawn character
-style; rooms get **Shapes**, because a face on a lecture hall reads as a mistake.
-Seeded by entity id, so one teacher always resolves to one picture.
+### Block 1.5 — Identity governance
 
-Licences checked before adding, as asked: `@dicebear/core` MIT,
-`@dicebear/collection` MIT, the Notionists artwork **CC0 1.0** (Zoish), Shapes
-MIT. Nothing needs runtime attribution.
+| PR   | What                                                                                                                           | Merge SHA | §6  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ | --------- | --- |
+| #147 | contain the platform exemption in `auth_set_membership_role` to a live grant (0029)                                            | `b1ae188` | yes |
+| #148 | move verification PII to `verification_request_details`, own-row RLS + purge (0030)                                            | `89b636e` | yes |
+| #149 | composed-review Lows + doc rewrite                                                                                             | `e5c09ff` | yes |
+| #150 | security backlog doc                                                                                                           | `6ad01ac` | n/a |
+| #158 | **1.5a** admin can reveal a member's identity (`tenant_member_identity`, `auth_member_identity`, `view-member-identity`, 0031) | `99820ea` | yes |
+| #160 | **1.5b** only platform admins assign tenant roles (drop `manage-roles` from tenant_admin, add it to the grant branch, 0032)    | `93c8adf` | yes |
 
-Two things worth knowing:
+### Block 2 — Public profiles + karma
 
-- The first install resolved `@dicebear/collection@9` against `@dicebear/core@10`,
-  which throws on import because `escape` was removed in core 10. Core is pinned
-  to 9 to match.
-- Each illustrated SVG is roughly 11KB, so inlining twenty of them would add
-  hundreds of KB to the HTML on every load. They are served from
-  `/api/avatar/[kind]/[seed]` with an immutable cache header, which is honest
-  because the output is a pure function of the seed. The client ships no avatar
-  code, and the same component works from server and client trees.
+| PR   | What                                                                                                          | Merge SHA | §6                |
+| ---- | ------------------------------------------------------------------------------------------------------------- | --------- | ----------------- |
+| #161 | richer profile (member-since, Admin badge, karma split, Edit link, handle links) + a post-history privacy fix | `6ec3aaf` | no (query filter) |
 
-## C. Identity foundation
+### Block 3 — Direct messages (new module, NOT yet enabled)
 
-**Identity PR 1 shipped.** The module package, six tables, their RLS policies, the
-`app.user_id` context with `withActor` and `withActorInTenant`, and twelve
-integration tests that are the actual deliverable: a user reads only their own
-row and cannot write a row claiming another identity, no context returns nothing,
-membership reads work in both directions without leaking one tenant's members to
-another, and the audit log survives an attempted update and delete unchanged.
+| PR   | What                                                                               | Merge SHA | §6  |
+| ---- | ---------------------------------------------------------------------------------- | --------- | --- |
+| —    | design docs (`docs/design-messages.md`, `docs/design-calls.md`)                    | (in #162) | n/a |
+| #162 | module core: conversations/messages, participant RLS, send/read/edit/delete (0000) | `9627dcd` | yes |
+| #163 | moderation: report-with-snapshot + `messages.moderate` definers (0001)             | `eaf6f0e` | yes |
 
-Building it surfaced two real problems:
-
-- **`auth_resolve_session` cannot work as designed** and was not shipped. See
-  `DECISIONS.md` item 1. It blocks identity PR 2.
-- **Modules were silently skipping each other's migrations.** Drizzle applies only
-  migrations dated after the last one recorded, and every module shared one
-  bookkeeping table. Adding identity, dated later than timetable, made a fresh
-  database record identity and then skip every timetable migration, so
-  `departments` was never created. Each module now names its own table. Base and
-  timetable stay on the default, so no existing database re-runs anything. This
-  was a latent bug that would have hit the next module regardless.
-
-**Identity PRs 2 to 4 were not started**, per `DECISIONS.md` item 2: the
-instructions conflict on whether to run them unattended, and PR 2 is blocked on
-the session resolution decision anyway.
-
-**`join_mode`** shipped separately as an additive, inert tenant setting, since it
-was approved and does not depend on membership existing.
+> The messages module backend is complete and CI-green, but has **no UI and is
+> enabled for no tenant** — see "Not done" below.
 
 ---
 
-## D. Polish
+## Deploy sequence (run in this order)
 
-Each its own PR, all additive.
+The last production deploy was "through #149" (0029/0030 already applied). So the
+new work to apply is: identity 0031–0032, all of lost-found, and messages.
 
-- **Avatars paint their seeded backdrop immediately**, so a directory shows its
-  circles on first paint instead of popping in one at a time as each SVG lands.
-- **Directory loading skeletons** for teachers and rooms, at the real card size.
-  Deliberately not on the profile routes: a loading boundary commits a 200 as soon
-  as it streams, and those routes still 404 for an unknown id. Each file says so.
-- **Empty states** take an optional icon and tighter phone padding, so they read
-  as an answer rather than a card that failed to fill.
-- **A room hosts courses, it does not teach them.** The room profile had inherited
-  the teacher heading "Courses taught".
-- **The profile breadcrumb** wrapped mid phrase on a phone and left the separator
-  dangling at the end of a line. It stacks now, with the separator only when the
-  parts share a line.
-- **The course filter is called Course.** It was labelled "Class", which clashed
-  with "classes" already meaning individual sessions in the same panel.
-- **The room directory shows a building only when it varies.** Every card read
-  "Unassigned Building", which is noise dressed as information. Written as a
-  general rule about constant values rather than a check for that string, so it
-  is not tenant specific logic.
-- **Profiles no longer scroll sideways on a phone.** Found during the dark mode
-  and mobile sweep: the teacher and room profiles were 109px wider than a 375px
-  screen, clipping course titles and the free-slot chips. `truncate` sets
-  `white-space: nowrap`, which makes an element's min-content width the full text
-  width, and grid and flex items default to `min-width: auto`, so they refuse to
-  shrink below it. The link had `min-w-0` but its ancestors did not, so the floor
-  was set two levels up. Two e2e tests now assert zero horizontal overflow at
-  375 by 812 on both profiles.
+### 1. Pull + install + build
 
-A sweep afterwards measured every main route at 375px: the hub, timetable, a
-populated section timetable, search, free rooms, both directories, both profiles,
-and the platform landing all report zero overflow.
+```bash
+cd /srv/campusos
+git pull            # main at #162/#163
+pnpm install --frozen-lockfile
+pnpm build
+```
 
-## Gate status
+- **sharp native binary check** (Lost & Found photos, Ubuntu 24.04): confirm the
+  Linux binary resolved, else photo processing throws at runtime.
 
-Every merge was CI green on all three jobs: typecheck/lint/format/build/test, e2e
-smoke, and integration on Postgres with RLS. The known flaky `@campusos/db`
-deadlock did not appear. Two unrelated flakes were seen locally and cleared on
-re-run without any test being weakened: the semester combobox URL assertion, which
-was hardened earlier with a longer timeout because picking a term runs a soft
-navigation, and one stale-build race in the web e2e.
+```bash
+node -e "require('sharp'); console.log('sharp ok', require('sharp').versions)"
+ls node_modules/@img | grep sharp-linux-x64
+```
+
+### 2. Environment
+
+Add to the repo-root `.env` (documented in `.env.example`, `apps/web/lib/app-env.vars.json`):
+
+```
+MEDIA_DATA_DIR=/srv/campusos-data/media
+```
+
+- `MEDIA_DATA_DIR` is where Lost & Found photos are written (UUID keys). It is
+  **optional** to boot, but Lost & Found photo upload fails without it.
+
+### 3. Data directory (outside the repo)
+
+```bash
+sudo mkdir -p /srv/campusos-data/media
+sudo chown <the-app-user>:<the-app-user> /srv/campusos-data/media
+sudo chmod 750 /srv/campusos-data/media
+```
+
+Full detail: `docs/runbooks/media-storage.md`.
+
+### 4. Migrations (as the owner role)
+
+```bash
+pnpm db:migrate:all      # base + every module, each its own bookkeeping table
+```
+
+New migrations this applies (in module order): identity `0031_member_identity`,
+`0032_platform_only_role_grants`; lost-found `0000_lost_found`,
+`0001_lost_found_claims`, `0002_lost_found_moderation`; messages `0000_messages`,
+`0001_messages_moderation`.
+
+### 5. Re-apply db-grants (the role split re-run)
+
+```bash
+psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db-grants.sql
+```
+
+This re-grants table DML + non-definer EXECUTE to `campusos_app` for the new
+tables/functions and (harmlessly) re-affirms the definer exclusions. It never
+opens an owner-only definer (the DEFINER_INTENT test proves the exclusion holds).
+
+### 6. nginx (Lost & Found photos)
+
+Add the media location block from `docs/runbooks/media-storage.md` so photos are
+served by nginx from `MEDIA_DATA_DIR` with a long immutable cache (the Next route
+is dev-only):
+
+```nginx
+location /media/ {
+    alias /srv/campusos-data/media/;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+}
+```
+
+Then `sudo nginx -t && sudo systemctl reload nginx`.
+
+### 7. Cron
+
+Lost & Found auto-expiry (daily is plenty), from `docs/runbooks/lost-found-expire.md`:
+
+```cron
+20 3 * * * cd /srv/campusos && pnpm lostfound:expire -- --tenant lgu >> /var/log/campusos/lostfound-expire.log 2>&1
+```
+
+(Messages has **no** cleanup cron yet — ephemerality is not built; see "Not done".)
+
+### 8. Reload the app
+
+```bash
+pm2 reload campusos       # or the process name in ecosystem config
+```
+
+---
+
+## Post-deploy verification (SQL, as owner unless noted)
+
+### FORCE state of the new tables
+
+```sql
+select relname, relrowsecurity, relforcerowsecurity
+from pg_class
+where relname in (
+  'tenant_member_identity',        -- expect rowsecurity=t, force=f (definer reads it)
+  'lf_items','lf_item_photos',     -- force=t
+  'lf_claims','lf_claim_messages', -- force=f (moderator definer)
+  'lf_reports',                    -- force=f
+  'msg_conversations','msg_participant_state','msg_messages', -- force=f
+  'msg_reports'                    -- force=f
+) and relkind='r' order by relname;
+```
+
+Every one must have `relrowsecurity = t`. FORCE (`relforcerowsecurity`) is `f`
+exactly where a definer reads across (identity/messages/claims/reports) and `t`
+on `lf_items`/`lf_item_photos`.
+
+### App EXECUTE on the new definers
+
+```sql
+select p.proname, has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
+from pg_proc p
+where p.pronamespace='public'::regnamespace and p.prosecdef
+  and p.proname in ('auth_member_identity','auth_lf_report_queue','auth_lf_resolve_reports',
+                    'auth_msg_report_queue','auth_msg_resolve_reports')
+order by p.proname;
+```
+
+All five must be `app_can_execute = t` (they self-gate on a permission inside).
+`auth_effective_permissions` stays `t` (re-defined in 0032, still app-callable).
+
+### Journal parity / migrations recorded
+
+```sql
+select left(id,60) from public.__drizzle_migrations_messages order by created_at;   -- 0000, 0001
+select left(id,60) from public.__drizzle_migrations_identity order by created_at;   -- ... 0031, 0032
+-- lost-found records in __drizzle_migrations_lost_found: 0000..0002
+```
+
+### manage-roles is off the resident tenant_admin (0032)
+
+```sql
+select exists(select 1 from role_template_permissions
+              where template_key='tenant_admin' and permission='manage-roles') as resident_has_manage_roles;
+-- expect: f
+```
+
+---
+
+## Browser checklist
+
+- **Lost & Found** (`/u/lgu/lost-found`): browse with lost/found + open/resolved
+  tabs, category + search filters; post an item (verified account) with a photo →
+  the thumbnail serves from `/media/`; open an item, claim it, message the poster,
+  poster confirms → item resolves; a moderator sees the queue at `/lost-found/mod`;
+  My items shows "expiring soon" + "Keep it listed" near a due item.
+- **Admin identity reveal** (`/u/lgu/admin/members`): a tenant admin sees "Show
+  identity"; clicking reveals name/roll/sign-in-email; a domain-verified member
+  shows just the email; confirm an `member.identity_viewed` audit row per reveal.
+- **Platform-only roles** (`/u/lgu/admin/roles`): as a resident admin the page is
+  read-only (catalogue + a note), no grant control; the members page shows no role
+  chips; only a platform admin under a grant can assign roles.
+- **Profiles** (`/u/lgu/people/<handle>`): Admin badge, "Member since <Month
+  Year>", karma total + split; own profile shows "Edit profile"; a member's post
+  in a restricted community does not appear; handles in a community's members list
+  and the moderators rail link to the profile.
+- **Messages**: backend only — no page yet.
+
+---
+
+## Decisions & deferrals
+
+`docs/overnight/DECISIONS.md` has the full log (Blocks 1, 1.5a, 1.5b, 2, 3). The
+larger deferrals, all logged:
+
+- **`docs/SECURITY-BACKLOG.md`**: whether `view-member-identity` should be
+  resident-only (excluded from the grant branch); M2 standing/appeal side-table;
+  the standing-reason-in-audit Low.
+- **Shared notifications + reports concern (core)**: L&F and messages both keep
+  their own reports tables and surface activity in-module, because a module must
+  not write another's tables (§4). A core notifications/reports seam is the
+  flagged right answer; until then, cross-module push notifications are deferred.
+
+## Not done (the remaining messages work — safe to pick up in the morning)
+
+The messages **backend is complete and CI-green** (core + moderation, both §6),
+but the feature is **not enabled for any tenant** and has **no UI**. Remaining, in
+order, before flipping LGU on (§8 wants reporting + blocking + moderation all
+present at enablement):
+
+1. **UI** — inbox (`/u/lgu/messages`) + thread (`/messages/[id]`): composer with
+   optimistic send, 3s thread / 15s inbox polling, read receipts, edit/delete
+   controls, a report control ("Reporting saves a copy for moderators"), the
+   sidebar unread count, and the **Message button on the profile** (Block 2
+   deferred it here). Web wiring: `apps/web/lib/messages.ts`, a `messages-route.ts`
+   gate, the `apps/web/lib/modules.ts` nav card, and the JSON routes.
+2. **Blocks honored** — composed at the route via communities' block check
+   (sender-side is straightforward; the bidirectional "recipient blocked you"
+   refuse needs a shared block definer — flag it).
+3. **Ephemerality + cleanup** — `after_24h` / `after_viewing` (first-view stamping
+   needs a small definer or narrow policy) + delete-for-me + a 15-min hard-delete
+   cron (`scripts/cron-messages-cleanup.sh`) + runbook. Schema columns are already
+   reserved (`expires_at`, `first_viewed_at`, `cleared_at`).
+4. **Enable for LGU** — add `'messages'` to `enabledModules` once 1–3 are in.
+
+Nothing tonight failed silently; the only CI hiccups were self-inflicted and
+fixed in-loop (a DEFINER_INTENT registry entry, an order-independent test-DB
+migration application, a FORCE-table test-setup path, a couple of em-dash copy
+lint failures, and a recipient-unread query). One e2e flake (a timetable term
+combobox) passed on re-run.
