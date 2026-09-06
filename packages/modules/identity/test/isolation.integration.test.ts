@@ -2565,10 +2565,28 @@ describe('finding a member by email (0026)', () => {
     return id;
   }
 
-  it('an admin finds a member of this tenant by email, case-insensitively', async () => {
-    const finder = await adminIn('aaa', 'finder-1');
+  /**
+   * Find-by-email feeds the roles grant flow, which is platform-only now (0032):
+   * `auth_find_member_by_email` is gated on manage-roles, so the authorized caller
+   * is a platform admin under a live grant. A fresh actor per call.
+   */
+  async function findByEmailUnderGrant(tenant: string, email: string) {
+    const p = await joinPolicyPlatformActor(`find-grant-${(grantorSeq += 1)}`);
+    await withPlatformGrant(p, tenant, 'entered to find a member', async () => undefined);
+    return withGrantedTenant(p, async (tx) => {
+      const rows = [
+        ...(await tx.execute(
+          sql`select user_id, handle, is_verified, roles
+              from auth_find_member_by_email(${tenant}, ${email})`,
+        )),
+      ] as { user_id: string; handle: string; is_verified: boolean; roles: string[] }[];
+      return rows[0];
+    });
+  }
+
+  it('a platform admin under a grant finds a member of this tenant by email, case-insensitively', async () => {
     const member = await domainMember('target@aaa.edu', 'Target_Member_0001');
-    const row = await findByEmail(finder.userId, 'aaa', '  TARGET@AAA.EDU ');
+    const row = await findByEmailUnderGrant('aaa', '  TARGET@AAA.EDU ');
     expect(row?.user_id).toBe(member);
     expect(row?.handle).toBe('Target_Member_0001');
     expect(row?.is_verified).toBe(true);
@@ -2576,18 +2594,20 @@ describe('finding a member by email (0026)', () => {
   });
 
   it('returns nothing for a non-member or unknown email (no cross-tenant enumeration)', async () => {
-    const finder = await adminIn('aaa', 'finder-2');
     await createUser('stranger@aaa.edu', 'Stranger_Acct_0002'); // account, no membership in aaa
-    expect(await findByEmail(finder.userId, 'aaa', 'stranger@aaa.edu')).toBeUndefined();
-    expect(await findByEmail(finder.userId, 'aaa', 'nobody@nowhere.edu')).toBeUndefined();
+    expect(await findByEmailUnderGrant('aaa', 'stranger@aaa.edu')).toBeUndefined();
+    expect(await findByEmailUnderGrant('aaa', 'nobody@nowhere.edu')).toBeUndefined();
   });
 
-  it('refuses a caller without manage-roles', async () => {
+  it('refuses a caller without manage-roles, resident admin included', async () => {
     const member = await domainMember('plain@aaa.edu', 'Plain_Member_0003');
     const target = await domainMember('t2@aaa.edu', 'Target_Two_0004');
     expect(target).toBeTruthy();
     // A student holds no manage-roles: the definer returns nothing even for a real member.
     expect(await findByEmail(member, 'aaa', 't2@aaa.edu')).toBeUndefined();
+    // Nor does a resident tenant admin now (manage-roles is platform-only, 0032).
+    const resident = await adminIn('aaa', 'find-resident');
+    expect(await findByEmail(resident.userId, 'aaa', 't2@aaa.edu')).toBeUndefined();
   });
 
   it('a platform admin under a grant finds a member, and a grant for another tenant does not', async () => {
