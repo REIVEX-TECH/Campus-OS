@@ -1065,7 +1065,11 @@ describe('verifying by hand', () => {
     const [closed] = await withActor(waiting.userId, (tx) =>
       tx.select().from(verificationRequests),
     );
-    expect(closed).toMatchObject({ status: 'superseded', fullName: null, rollNumber: null });
+    expect(closed).toMatchObject({ status: 'superseded' });
+    // The detail row is purged by the trigger as the request leaves 'pending'.
+    expect(
+      await withActor(waiting.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(0);
     const pending = await listPendingRequests(admin, 'aaa');
     expect(pending.ok && pending.value.some((r) => r.userId === waiting.userId)).toBe(false);
     expect(await verifyMember(admin, 'aaa', '00000000-0000-0000-0000-000000000000')).toEqual({
