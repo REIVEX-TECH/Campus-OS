@@ -8,6 +8,7 @@
     { "name": "PORT", "required": false },
     { "name": "SOURCE_MODE", "required": false },
     { "name": "SUPERADMIN_EMAILS", "required": false },
-    { "name": "GOOGLE_SITE_VERIFICATION", "required": false }
+    { "name": "GOOGLE_SITE_VERIFICATION", "required": false },
+    { "name": "MEDIA_DATA_DIR", "required": false }
   ]
 }

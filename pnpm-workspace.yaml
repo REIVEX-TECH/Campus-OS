@@ -8,3 +8,4 @@ packages:
 # Dependencies allowed to run install/build scripts (blocked by default).
 allowBuilds:
   esbuild: true
+  sharp: true
