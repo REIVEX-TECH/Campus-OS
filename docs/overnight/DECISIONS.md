@@ -26,6 +26,21 @@ at the bottom of each block.
   pattern); only claims and moderation, which cross users, need definers.
 - **Claims/claim messages are NOT tenant-wide readable.** Own/reporter RLS +
   moderator definer, mirroring the M1/M2 lesson: "who claimed what" is private.
+- **Claims tables are NO FORCE.** The moderator read (PR 4b) is an owner-run
+  definer; FORCE would bind the owner to the participant policy and hide claims
+  from moderation. The app role is a non-owner and stays confined regardless (the
+  tenant_memberships / M1 pattern). Items/photos stay FORCE (no definer reads them).
+- **sharp externalized via a webpack `externals` entry, not only
+  `serverExternalPackages`.** sharp is reached through the transpiled
+  `@campusos/media`, and `serverExternalPackages` alone still let webpack bundle
+  it (breaking the platform-binary resolution and `next build`). A verified local
+  build confirmed the fix.
+- **Claim notifications deferred (module independence, §4).** L&F does not write
+  the communities `notifications` table (a module must not write another module's
+  table). Claim activity is surfaced within L&F (reporter sees claims; my-items
+  shows the claimant theirs). A shared notifications concern — also required by the
+  messages module — should be core infrastructure; flagged for the messages design
+  and the report.
 - **Posting/claiming are gated on verified membership, not a role permission.**
   Any verified member may post or claim (the approved design), so only
   `lostfound.moderate` is a role permission. It is added to the enforced
