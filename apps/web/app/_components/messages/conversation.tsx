@@ -31,6 +31,10 @@ export type ConversationLabels = {
   reportDone: string;
   failed: string;
   empty: string;
+  ephemeralityLabel: string;
+  ephemeralityNever: string;
+  ephemeralityAfter24h: string;
+  ephemeralityAfterViewing: string;
 };
 
 /**
@@ -46,6 +50,7 @@ export function Conversation({
   selfUserId,
   initialMessages,
   otherLastReadAt,
+  ephemerality,
   editWindowMinutes,
   deleteWindowMinutes,
   reasons,
@@ -56,6 +61,7 @@ export function Conversation({
   selfUserId: string;
   initialMessages: WireMessage[];
   otherLastReadAt: string | null;
+  ephemerality: string;
   editWindowMinutes: number;
   deleteWindowMinutes: number;
   reasons: Reason[];
@@ -155,8 +161,31 @@ export function Conversation({
     .find((m) => m.senderId === selfUserId && !m.deleted);
   const lastOwnRead = lastOwn ? Date.parse(lastOwn.createdAt) <= lastReadMs : false;
 
+  function changeEphemerality(value: string) {
+    void fetch(`/api/messages/${conversationId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant, action: 'ephemerality', value }),
+    }).then((res) => {
+      if (res.ok) router.refresh();
+      else setError(labels.failed);
+    });
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        {labels.ephemeralityLabel}
+        <select
+          value={ephemerality}
+          onChange={(e) => changeEphemerality(e.target.value)}
+          className="ios-field h-7 rounded-lg py-0 text-xs"
+        >
+          <option value="never">{labels.ephemeralityNever}</option>
+          <option value="after_24h">{labels.ephemeralityAfter24h}</option>
+          <option value="after_viewing">{labels.ephemeralityAfterViewing}</option>
+        </select>
+      </label>
       <ol className="ios-card flex min-h-[40vh] flex-col gap-2 rounded-2xl p-3">
         {initialMessages.length === 0 && optimistic.length === 0 ? (
           <li className="m-auto text-sm text-muted-foreground">{labels.empty}</li>

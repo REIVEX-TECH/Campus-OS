@@ -23,6 +23,10 @@ export type SendRefusal =
   | 'rate_limited'
   | 'too_late';
 
+/** How a conversation's messages expire. */
+export const EPHEMERALITY = ['never', 'after_24h', 'after_viewing'] as const;
+export type Ephemerality = (typeof EPHEMERALITY)[number];
+
 export interface ConversationSummary {
   id: string;
   otherUserId: string;
@@ -49,6 +53,7 @@ export interface Thread {
   otherHandle: string | null;
   otherAvatarSeed: string | null;
   otherLastReadAt: Date | null;
+  ephemerality: string;
   messages: ThreadMessage[];
 }
 
@@ -71,6 +76,7 @@ export async function startConversation(
   tenantId: string,
   otherUserId: string,
   settings: MessagesSettings,
+  ephemerality: Ephemerality = 'never',
 ): Promise<Result<{ id: string; created: boolean }, SendRefusal>> {
   if (otherUserId === actor.userId) return err('self');
   if (settings.whoCanMessage === 'nobody') return err('not_allowed');
@@ -97,8 +103,8 @@ export async function startConversation(
     // insert idempotent; a conflict means the conversation already existed.
     const inserted = [
       ...(await tx.execute(sql`
-        insert into msg_conversations (tenant_id, participant_a, participant_b)
-        values (${tenantId}, ${a}::uuid, ${b}::uuid)
+        insert into msg_conversations (tenant_id, participant_a, participant_b, ephemerality)
+        values (${tenantId}, ${a}::uuid, ${b}::uuid, ${ephemerality})
         on conflict (tenant_id, participant_a, participant_b) do nothing
         returning id`)),
     ] as { id: string }[];
@@ -147,9 +153,9 @@ export async function sendMessage(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(
-        sql`select id from msg_conversations where id = ${conversationId}::uuid limit 1`,
+        sql`select id, ephemerality from msg_conversations where id = ${conversationId}::uuid limit 1`,
       )),
-    ] as { id: string }[];
+    ] as { id: string; ephemerality: string }[];
     if (!conv) return err('not_found'); // RLS hides conversations the actor is not in
     // A reply-to must be a message in this same conversation (RLS-visible).
     let replyTo: string | null = null;
@@ -162,10 +168,13 @@ export async function sendMessage(
       ] as { id: string }[];
       replyTo = r ? r.id : null;
     }
+    // after_24h expires at send; after_viewing is stamped on first view; never = null.
+    const expires =
+      conv.ephemerality === 'after_24h' ? sql`now() + interval '24 hours'` : sql`null`;
     const [row] = [
       ...(await tx.execute(sql`
-        insert into msg_messages (tenant_id, conversation_id, sender_id, body, reply_to_id)
-        values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, ${body}, ${replyTo}::uuid)
+        insert into msg_messages (tenant_id, conversation_id, sender_id, body, reply_to_id, expires_at)
+        values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, ${body}, ${replyTo}::uuid, ${expires})
         returning id`)),
     ] as { id: string }[];
     await tx.execute(sql`
@@ -190,6 +199,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
                p.handle as other_handle, p.avatar_seed as other_avatar_seed,
                (select case when m.deleted_at is not null then null else m.body end
                   from msg_messages m where m.conversation_id = mine.id
+                    and (m.expires_at is null or m.expires_at > now())
                   order by m.created_at desc limit 1) as preview,
                (select count(*)::int from msg_messages m
                   left join msg_participant_state s
@@ -197,6 +207,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
                   where m.conversation_id = mine.id
                     and m.sender_id <> ${userId}::uuid
                     and m.deleted_at is null
+                    and (m.expires_at is null or m.expires_at > now())
                     and (s.last_read_at is null or m.created_at > s.last_read_at)) as unread
         from mine
         left join public_profiles p on p.user_id = mine.other
@@ -237,7 +248,7 @@ export async function thread(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(sql`
-        select c.id,
+        select c.id, c.ephemerality,
                case when c.participant_a = ${actor.userId}::uuid then c.participant_b else c.participant_a end as other,
                p.handle as other_handle, p.avatar_seed as other_avatar_seed
         from msg_conversations c
@@ -246,6 +257,7 @@ export async function thread(
         where c.id = ${conversationId}::uuid limit 1`)),
     ] as {
       id: string;
+      ephemerality: string;
       other: string;
       other_handle: string | null;
       other_avatar_seed: string | null;
@@ -261,6 +273,7 @@ export async function thread(
         select id, sender_id, body, reply_to_id, created_at, edited_at, deleted_at
         from msg_messages
         where conversation_id = ${conversationId}::uuid
+          and (expires_at is null or expires_at > now())
         order by created_at asc, id asc
         limit ${limit}`)),
     ] as Array<{
@@ -278,6 +291,7 @@ export async function thread(
       otherHandle: conv.other_handle,
       otherAvatarSeed: conv.other_avatar_seed,
       otherLastReadAt: otherState ? toDate(otherState.last_read_at) : null,
+      ephemerality: conv.ephemerality,
       messages: rows.map((m) => ({
         id: m.id,
         senderId: m.sender_id,
@@ -291,11 +305,16 @@ export async function thread(
   });
 }
 
-/** Mark the conversation read up to now, for the actor. */
+/**
+ * Mark the conversation read up to now, for the actor. If it is an after-viewing
+ * conversation, this is also first-view: the definer stamps a short expiry on the
+ * inbound messages the actor is now seeing (`graceSeconds` from the tenant setting).
+ */
 export async function markRead(
   actor: { userId: string },
   tenantId: string,
   conversationId: string,
+  graceSeconds = 60,
 ): Promise<Result<{ ok: true }, SendRefusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
@@ -309,7 +328,30 @@ export async function markRead(
       values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, now())
       on conflict (conversation_id, participant_id)
       do update set last_read_at = now()`);
+    // No-op unless the conversation is after_viewing (the definer checks).
+    await tx.execute(
+      sql`select auth_msg_stamp_viewed(${tenantId}, ${conversationId}::uuid, ${graceSeconds}::int)`,
+    );
     return ok({ ok: true });
+  });
+}
+
+/** Set how a conversation's messages expire. Either participant may change it. */
+export async function setEphemerality(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+  value: Ephemerality,
+): Promise<Result<{ ok: true }, SendRefusal>> {
+  if (!EPHEMERALITY.includes(value)) return err('invalid');
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update msg_conversations set ephemerality = ${value}
+        where id = ${conversationId}::uuid
+        returning id`)),
+    ];
+    return rows.length > 0 ? ok({ ok: true }) : err('not_found');
   });
 }
 
