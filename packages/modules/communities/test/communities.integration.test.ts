@@ -100,6 +100,18 @@ beforeAll(async () => {
     identityManifest.migrations.table,
   );
   await applyMigrations(migrationDatabaseUrl(), migrationsFolder, migrationsTable);
+  // The "definer grant hygiene" test below is the ONE global registry of every
+  // SECURITY DEFINER in the system. The integration job shares a single Postgres
+  // across packages and turbo does not fix the run order, so another module's
+  // definers may or may not already be present when this suite runs. Apply every
+  // other module's migrations that create definers here — by path, so no package
+  // dependency is added — so the registry sees them deterministically regardless
+  // of order. Add a module's drizzle folder here when it grows its first definer.
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'lost-found', 'drizzle'),
+    '__drizzle_migrations_lost_found',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
