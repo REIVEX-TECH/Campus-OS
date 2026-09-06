@@ -53,15 +53,24 @@ export type MembersLabels = {
   lastAdmin: string;
   self: string;
   failed: string;
+  showIdentity: string;
+  hideIdentity: string;
+  revealing: string;
+  identityName: string;
+  identityRoll: string;
+  identityEmail: string;
+  identityNone: string;
 };
 
 type Outcome = { userId: string; message: string; error: boolean };
+type RevealedIdentity = { fullName: string | null; rollNumber: string | null; email: string };
 
 export function MembersList({
   tenant,
   selfUserId,
   canManageRoles,
   canRestrict,
+  canViewIdentity,
   roles,
   items,
   labels,
@@ -70,6 +79,7 @@ export function MembersList({
   selfUserId: string;
   canManageRoles: boolean;
   canRestrict: boolean;
+  canViewIdentity: boolean;
   roles: MemberRole[];
   items: MemberItem[];
   labels: MembersLabels;
@@ -77,6 +87,43 @@ export function MembersList({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, RevealedIdentity>>({});
+  const [revealBusy, setRevealBusy] = useState<string | null>(null);
+
+  async function reveal(userId: string): Promise<void> {
+    setRevealBusy(userId);
+    const response = await fetch('/api/admin/members/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant, userId }),
+    });
+    const result = (await response.json().catch(() => ({}))) as {
+      fullName?: string | null;
+      rollNumber?: string | null;
+      email?: string;
+    };
+    setRevealBusy(null);
+    if (!response.ok || !result.email) {
+      setOutcome({ userId, message: labels.failed, error: true });
+      return;
+    }
+    setRevealed((r) => ({
+      ...r,
+      [userId]: {
+        fullName: result.fullName ?? null,
+        rollNumber: result.rollNumber ?? null,
+        email: result.email!,
+      },
+    }));
+  }
+
+  function hide(userId: string): void {
+    setRevealed((r) => {
+      const next = { ...r };
+      delete next[userId];
+      return next;
+    });
+  }
 
   async function post(userId: string, path: string, body: Record<string, unknown>): Promise<void> {
     setBusy(userId);
@@ -215,6 +262,49 @@ export function MembersList({
 
             {m.standingLine ? (
               <p className="text-xs text-muted-foreground">{m.standingLine}</p>
+            ) : null}
+
+            {canViewIdentity ? (
+              revealed[m.userId] ? (
+                <div className="flex flex-col gap-1 rounded-xl bg-muted/50 p-3 text-sm">
+                  <p>
+                    <span className="text-muted-foreground">{labels.identityEmail}: </span>
+                    {revealed[m.userId]!.email}
+                  </p>
+                  {revealed[m.userId]!.fullName ? (
+                    <p>
+                      <span className="text-muted-foreground">{labels.identityName}: </span>
+                      {revealed[m.userId]!.fullName}
+                    </p>
+                  ) : null}
+                  {revealed[m.userId]!.rollNumber ? (
+                    <p>
+                      <span className="text-muted-foreground">{labels.identityRoll}: </span>
+                      {revealed[m.userId]!.rollNumber}
+                    </p>
+                  ) : null}
+                  {!revealed[m.userId]!.fullName && !revealed[m.userId]!.rollNumber ? (
+                    <p className="text-xs text-muted-foreground">{labels.identityNone}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => hide(m.userId)}
+                    className="self-start text-xs font-medium text-primary hover:underline"
+                  >
+                    {labels.hideIdentity}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => reveal(m.userId)}
+                  disabled={revealBusy !== null}
+                  aria-busy={revealBusy === m.userId || undefined}
+                  className="self-start text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                >
+                  {revealBusy === m.userId ? labels.revealing : labels.showIdentity}
+                </button>
+              )
             ) : null}
 
             {self && outcome?.userId !== m.userId ? null : (

@@ -61,3 +61,26 @@ actor_user_id = app.user_id`). So the reason is also readable by any session in
   administrators and the actor; the reason is the point of the entry. Revisit only
   if the audit trail is ever surfaced to non-administrators, or as part of a
   broader audit-access review.
+
+### `view-member-identity` reachable by a platform admin under a grant
+
+- **Where:** `auth_member_identity` (0031, Block 1.5a) gates on
+  `view-member-identity`, which the grant branch of `auth_effective_permissions`
+  grants a platform admin under a live grant (it resolves to the tenant_admin set
+  minus `communities.unmask`).
+- **Why kept (decided):** revealing a member's real identity is administrative
+  tooling, not a content-anonymity break like `unmask`; platform admins are the
+  platform's operators and every reveal is audited with the actor. So it is
+  deliberately NOT excluded, which also kept 1.5a off the high-blast-radius
+  `auth_effective_permissions`.
+- **The flip, if wanted:** to make reveal resident-admin-only, add
+  `AND rp.permission <> 'view-member-identity'` to the grant branch (a new
+  `auth_effective_permissions` version, alongside the existing unmask exclusion).
+  One migration; §6 it.
+
+### migration-number collision to avoid when M2 resumes
+
+- The M2 draft above names `0031_membership_standing_details.sql`, but Block 1.5a
+  has now landed `0031_member_identity.sql` (journal idx 31) on main. When M2
+  resumes, renumber its file to the next free number (0032+) and journal it there;
+  `0031` is taken.

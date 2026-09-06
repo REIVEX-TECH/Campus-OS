@@ -218,6 +218,13 @@
       "when": 1756800030000,
       "tag": "0030_verification_request_details",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1756800031000,
+      "tag": "0031_member_identity",
+      "breakpoints": true
     }
   ]
 }

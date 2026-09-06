@@ -2788,6 +2788,7 @@ describe('definer grant hygiene', () => {
     auth_grant_platform_admin: 'app',
     auth_handle_is_reserved: 'app',
     auth_join_as_student: 'app',
+    auth_member_identity: 'app',
     auth_open_tenant_grant: 'app',
     auth_pending_verification_requests: 'app',
     auth_resolve_session: 'app',

@@ -100,3 +100,44 @@ at the bottom of each block.
   tabs and the "more" cursor; the search+category form is a plain GET. No client
   component — the page stays a Server Component and every filter is shareable and
   back-button-correct.
+
+## Block 1.5a — Admin can reveal a member's identity
+
+- **A new `tenant_member_identity` side table captures name + roll at
+  verification; email is read live.** The architecture keeps no real identity
+  after a decision (the 0030 purge) and `users` has no name/roll, so there was
+  nothing to look up later. The name/roll are captured from the still-pending
+  verification detail inside `auth_verify_member` (every verify path funnels
+  through it), before `decideRequest` flips the status and the purge fires —
+  "copy before purge". The sign-in email is read live from `users` at reveal
+  time, never snapshotted, so it cannot go stale.
+- **The table has RLS on, NOT forced, and NO application-facing policy at all.**
+  db-grants blanket-grants table DML to the app on every table, so RLS — not a
+  missing grant — is the boundary; with zero app policy the app role (a
+  non-owner) is denied every row, and the only reader is the owner-run reveal
+  definer (NO FORCE lets it across). A permissive tenant policy was deliberately
+  NOT added: a tenant-wide read would expose real identity to any member in the
+  tenant context, exactly what this must prevent (§4/§8).
+- **`auth_member_identity` is the single, audited, one-at-a-time reveal.** Gated
+  on the new `view-member-identity` through `auth_effective_permissions` (never a
+  bare read), refuses a non-member/cross-tenant target (empty, no leak), and
+  writes a `member.identity_viewed` audit line (ids only) on every authorized
+  look. No bulk variant — identity is looked at one person at a time on purpose.
+- **A platform admin under a live grant CAN reveal (not excluded like
+  `communities.unmask`).** `unmask` breaks a content-anonymity promise, so it is
+  resident-only; revealing a member's identity is ordinary administrative tooling
+  and platform admins are the platform's trusted operators, already resolving to
+  the tenant_admin set under a grant. The per-reveal audit line, stamped with the
+  actor, is the control — not withholding the lookup. This kept 1.5a off the
+  high-blast-radius `auth_effective_permissions` (no new version needed). The
+  alternative (exclude it, resident-only) is a one-migration flip, logged in
+  docs/SECURITY-BACKLOG.md.
+- **`view-member-identity` added to the core catalogue and the tenant_admin
+  template.** The permission exists only alongside its guard (the reveal
+  definer): added to `PERMISSIONS` (so it flows into `SYSTEM_ROLES.tenant_admin`)
+  and to `role_template_permissions` + backfilled onto existing tenant_admin
+  roles in 0031 (the lost-found 0002 pattern).
+- **The members and verification explainers were corrected.** "Handles only: no
+  email is shown here" was no longer true; both intros now say identity can be
+  revealed and every reveal is logged, and that an approved request's name/number
+  are kept (as the member's identity) while a rejected one's are discarded.
