@@ -6,27 +6,50 @@
 --     now() + a short grace), so it does not vanish mid-read.
 --
 -- Read queries filter out expires_at <= now(); a scheduled sweep HARD-deletes
--- expired rows so they do not linger. Two SQL pieces are needed here:
+-- expired rows so they do not linger. Two owner-run definers do the writing:
 --
---   1. A DELETE policy so the cleanup sweep (no actor, tenant context) can remove
---      ONLY already-expired rows as the application role. It keys on the tenant
---      GUC and expires_at, never on app.user_id: this is a maintenance capability
---      scoped to expired rows, not an authorization decision, and it can delete
---      nothing that has not already expired.
+--   1. auth_msg_expire deletes a tenant's expired messages. It must be a definer,
+--      NOT an application-role DELETE with a policy: a DELETE scans the rows it
+--      removes, and that scan is subject to the participant SELECT policy (0000),
+--      which the sweep -- running with no actor -- cannot satisfy, so an app-role
+--      DELETE would remove nothing. The owner (NO FORCE) sees across and deletes;
+--      it removes ONLY already-expired rows, so even called freely it can drop
+--      nothing that has not expired and touches no other tenant.
 --
---   2. An owner-run definer to stamp after_viewing on first view. The viewer is
+--   2. auth_msg_stamp_viewed stamps after_viewing on first view. The viewer is
 --      the RECIPIENT, not the sender, so the own-message UPDATE policy (0000)
 --      would block them from setting expiry on the sender's message. The definer
 --      does it, gated on the caller being a participant of the conversation (read
 --      through the RLS-filtered msg_conversations, so a non-participant stamps
 --      nothing), and only on that conversation's not-yet-viewed inbound messages.
 
-CREATE POLICY "msg_messages_expire_delete" ON "msg_messages" FOR DELETE
-	USING (
-		tenant_id = current_setting('app.tenant_id', true)
-		AND expires_at IS NOT NULL
-		AND expires_at <= now()
-	);
+CREATE OR REPLACE FUNCTION auth_msg_expire(p_tenant_id text)
+	RETURNS integer
+	LANGUAGE plpgsql
+	SECURITY DEFINER
+	SET search_path = public
+AS $$
+DECLARE
+	v_count integer;
+BEGIN
+	DELETE FROM msg_messages
+	 WHERE tenant_id = p_tenant_id
+	   AND expires_at IS NOT NULL
+	   AND expires_at <= now();
+	GET DIAGNOSTICS v_count = ROW_COUNT;
+	RETURN v_count;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION auth_msg_expire(text) FROM PUBLIC;
+--> statement-breakpoint
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'campusos_app') THEN
+		EXECUTE 'GRANT EXECUTE ON FUNCTION auth_msg_expire(text) TO campusos_app';
+	END IF;
+END
+$$;
 --> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION auth_msg_stamp_viewed(

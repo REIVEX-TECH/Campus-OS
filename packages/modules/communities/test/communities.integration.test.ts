@@ -2860,6 +2860,9 @@ describe('definer grant hygiene', () => {
     // Stamps an after-viewing message's expiry on first view; app-callable, gated
     // on the caller being a participant of the conversation.
     auth_msg_stamp_viewed: 'app',
+    // The cleanup sweep: deletes a tenant's already-expired messages (owner-run so
+    // the delete is not filtered by the participant SELECT policy).
+    auth_msg_expire: 'app',
     // Owner-only: a maintenance script, an internal helper of other definers, or
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.

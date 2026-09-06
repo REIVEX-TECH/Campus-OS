@@ -9,15 +9,14 @@ import { withTenant } from '@campusos/db';
  * expired, and it never reaches another tenant's rows. Idempotent.
  */
 export async function expireMessages(tenantId: string): Promise<{ deleted: number }> {
+  // The delete goes through an owner-run definer (0002): a plain app-role DELETE
+  // would have its row scan filtered by the participant SELECT policy, which a
+  // no-actor sweep cannot satisfy. The definer bypasses that (NO FORCE) and only
+  // ever removes already-expired rows.
   return withTenant(tenantId, async (tx) => {
-    // No RETURNING: with no actor context the participant SELECT policy would
-    // filter the returned rows to nothing even though the DELETE policy admits
-    // them. postgres-js reports the affected-row count on the result's `count`.
-    const result = await tx.execute(sql`
-      delete from msg_messages
-      where tenant_id = ${tenantId}
-        and expires_at is not null
-        and expires_at <= now()`);
-    return { deleted: (result as unknown as { count?: number }).count ?? 0 };
+    const [row] = [...(await tx.execute(sql`select auth_msg_expire(${tenantId}) as n`))] as {
+      n: number;
+    }[];
+    return { deleted: row?.n ?? 0 };
   });
 }
