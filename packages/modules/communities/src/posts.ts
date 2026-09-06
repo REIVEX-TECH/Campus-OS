@@ -459,9 +459,12 @@ export async function postById(
 }
 
 /**
- * A person's public post history: what they wrote under their handle. Filtered
- * on the generated public author column, which is null for anonymous posts,
- * so the anonymous ones cannot appear here whatever the caller passes.
+ * A person's public post history: what they wrote under their handle, in public
+ * communities. Filtered on the generated public author column, which is null for
+ * anonymous posts, so the anonymous ones cannot appear here whatever the caller
+ * passes; and on the community being public and live, so a signed post in a
+ * private/restricted or dissolved community stays off the public profile — the
+ * same boundary readComments enforces for comments.
  */
 export async function postsByAuthor(
   tenantId: string,
@@ -478,7 +481,7 @@ export async function postsByAuthor(
         communityName: communities.name,
       })
       .from(postsRead)
-      .leftJoin(communities, eq(communities.id, postsRead.communityId))
+      .innerJoin(communities, eq(communities.id, postsRead.communityId))
       .leftJoin(publicProfiles, eq(publicProfiles.userId, postsRead.publicAuthorId))
       .where(
         and(
@@ -486,6 +489,8 @@ export async function postsByAuthor(
           eq(postsRead.publicAuthorId, authorUserId),
           isNull(postsRead.deletedAt),
           isNull(postsRead.removedAt),
+          eq(communities.visibility, 'public'),
+          isNull(communities.deletedAt),
         ),
       )
       .orderBy(desc(postsRead.createdAt))

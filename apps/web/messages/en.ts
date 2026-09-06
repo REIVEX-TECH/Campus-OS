@@ -1059,8 +1059,12 @@ export const en = {
   'mod.action.pin_order': 'reordered the pins',
   'mod.action.flairs.updated': 'changed the flairs',
   'profile.karma': '{count} karma',
+  'profile.karmaSplit': '{posts} from posts, {comments} from comments',
   'profile.karmaPrivate':
     'Including {count} from what you posted anonymously. Only you see that part.',
+  'profile.memberSince': 'Member since {date}',
+  'profile.badge.admin': 'Admin',
+  'profile.edit': 'Edit profile',
   'profile.tabsLabel': 'Profile sections',
   'profile.posts': 'Posts',
   'profile.comments': 'Comments',

@@ -82,13 +82,18 @@ export default async function CommunityMembersPage({ params }: Params) {
         <ul className="ios-card flex flex-col rounded-2xl p-2">
           {members.map((m) => (
             <li key={m.userId} className="flex items-center gap-3 rounded-xl px-2 py-2">
-              <IdentityAvatar seed={m.avatarSeed} label={m.handle} size={32} />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <p className="truncate text-sm font-medium">{m.handle}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('communities.membersPage.since', { date: when.format(m.joinedAt) })}
-                </p>
-              </div>
+              <Link
+                href={`${base}/people/${m.handle}`}
+                className="ios-pressable flex min-w-0 flex-1 items-center gap-3 rounded-xl hover:bg-muted"
+              >
+                <IdentityAvatar seed={m.avatarSeed} label={m.handle} size={32} />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <p className="truncate text-sm font-medium">{m.handle}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('communities.membersPage.since', { date: when.format(m.joinedAt) })}
+                  </p>
+                </div>
+              </Link>
               {m.roles[0] ? (
                 <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   {t(`communities.role.${m.roles[0]}` as MessageKey)}

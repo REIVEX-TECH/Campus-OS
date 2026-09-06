@@ -117,9 +117,14 @@ export function CommunityRail({
         <ul className="flex flex-col gap-1.5">
           {moderators.map((m) => (
             <li key={m.userId} className="flex items-center gap-2 text-sm">
-              <IdentityAvatar seed={m.avatarSeed} label={m.handle} size={24} />
-              <span className="truncate font-medium">{m.handle}</span>
-              <span className="text-xs text-muted-foreground">
+              <Link
+                href={`${base}/people/${m.handle}`}
+                className="ios-pressable flex min-w-0 flex-1 items-center gap-2 rounded-lg hover:bg-muted"
+              >
+                <IdentityAvatar seed={m.avatarSeed} label={m.handle} size={24} />
+                <span className="truncate font-medium">{m.handle}</span>
+              </Link>
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {t(`communities.role.${m.roles[0]}` as MessageKey)}
               </span>
             </li>
