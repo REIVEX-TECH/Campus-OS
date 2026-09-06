@@ -1,9 +1,15 @@
 import { eq, sql } from 'drizzle-orm';
-import type { ZodError } from 'zod';
-import { withActorInTenant, type TenantTransaction } from '@campusos/db';
+import { z, type ZodError } from 'zod';
+import {
+  withActorInTenant,
+  withTenantMutation,
+  type TenantTransaction,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { universities } from '@campusos/db/schema';
-import { tenantConfigSchema, type TenantConfig } from '@campusos/core/tenant';
+import { err, ok, type Result } from '@campusos/core';
+import { joinModeSchema, tenantConfigSchema, type TenantConfig } from '@campusos/core/tenant';
 import { recordAudit } from './audit';
 import { isPlatformAdmin } from './platform';
 import { ensureSystemRoles } from './rbac';
@@ -110,7 +116,11 @@ export async function createTenant(
   if (!(await isPlatformAdmin(actor.userId))) return { ok: false, reason: 'not_allowed' };
   const parsed = tenantConfigSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: 'invalid', issues: issuesOf(parsed.error) };
-  const config = parsed.data;
+  // The join policy (joinMode + allowedEmailDomains) is not set at creation: a new
+  // tenant starts closed (domain mode, no domains, so nothing auto-joins), and it
+  // is changed only through auth_set_join_policy (setJoinPolicy) -- the one
+  // guarded, audited writer. The create form never sets it.
+  const config: TenantConfig = { ...parsed.data, joinMode: 'domain', allowedEmailDomains: [] };
 
   return withActorInTenant(actor.userId, config.slug, async (tx) => {
     const created = await insertUniversity(tx, {
@@ -147,7 +157,6 @@ export async function updateTenantConfig(
   const parsed = tenantConfigSchema.safeParse(input);
   if (!parsed.success) return { ok: false, reason: 'invalid', issues: issuesOf(parsed.error) };
   if (parsed.data.slug !== slug) return { ok: false, reason: 'slug_mismatch' };
-  const config = parsed.data;
 
   const [existing] = await getDb()
     .select({ slug: universities.slug })
@@ -156,6 +165,25 @@ export async function updateTenantConfig(
   if (!existing) return { ok: false, reason: 'not_found' };
 
   return withActorInTenant(actor.userId, slug, async (tx) => {
+    // The join policy is owned by setJoinPolicy (grant- or manage-members-gated,
+    // distinctly audited); the general editor must not change it. Lock the config
+    // row and read its CURRENT join policy inside this transaction, so a concurrent
+    // setJoinPolicy cannot slip a change in between the read and the write: a name
+    // or theme edit here can never rewrite who auto-joins.
+    const [locked] = await tx
+      .select({ config: tenantConfigs.config })
+      .from(tenantConfigs)
+      .where(eq(tenantConfigs.slug, slug))
+      .for('update');
+    const stored = tenantConfigSchema.safeParse(locked?.config);
+    const config: TenantConfig = stored.success
+      ? {
+          ...parsed.data,
+          joinMode: stored.data.joinMode,
+          allowedEmailDomains: stored.data.allowedEmailDomains,
+        }
+      : { ...parsed.data, joinMode: 'domain', allowedEmailDomains: [] };
+
     await updateUniversity(tx, {
       slug,
       name: config.displayName,
@@ -172,5 +200,75 @@ export async function updateTenantConfig(
       meta: { version },
     });
     return { ok: true as const, config, version };
+  });
+}
+
+// The join policy -- who may auto-join, and how -- is a membership-governance
+// lever, not general configuration, so it is written only through a definer
+// (auth_set_join_policy, 0024): it authorizes a platform admin under an open
+// grant for this tenant or a tenant member with manage-members, refuses consumer
+// email providers structurally, writes only the two keys, and audits
+// `tenant.join_policy_updated`.
+
+const joinDomain = z
+  .string()
+  .regex(
+    /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
+    'must be a bare domain, e.g. lgu.edu.pk',
+  );
+
+const joinPolicySchema = z.object({
+  joinMode: joinModeSchema,
+  allowedEmailDomains: z.array(joinDomain).max(50),
+});
+
+export type JoinPolicyInput = z.infer<typeof joinPolicySchema>;
+
+export type JoinPolicyRefusal =
+  | { reason: 'not_allowed' | 'no_tenant' | 'invalid_mode' }
+  | { reason: 'invalid'; issues: string[] }
+  | { reason: 'blocked_domain'; domain: string };
+
+function pgTextArray(values: readonly string[]) {
+  return values.length === 0
+    ? sql`array[]::text[]`
+    : sql`array[${sql.join(
+        values.map((v) => sql`${v}`),
+        sql`, `,
+      )}]::text[]`;
+}
+
+/**
+ * Change a tenant's auto-join policy.
+ *
+ * Runs through the write seam (a platform admin under a grant, or a tenant member
+ * with manage-members) and calls the definer, which re-checks authority on the
+ * unforgeable grant use-row, refuses consumer email providers, writes only the
+ * two keys, and audits distinctly. Governs member auto-join, never admin.
+ */
+export async function setJoinPolicy(
+  actor: { userId: string },
+  slug: string,
+  input: unknown,
+  access?: TenantWriteContext,
+): Promise<Result<JoinPolicyInput, JoinPolicyRefusal>> {
+  const parsed = joinPolicySchema.safeParse(input);
+  if (!parsed.success) return err({ reason: 'invalid', issues: issuesOf(parsed.error) });
+  const { joinMode, allowedEmailDomains } = parsed.data;
+  return withTenantMutation(actor.userId, slug, access, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_set_join_policy(${slug}, ${joinMode}, ${pgTextArray(allowedEmailDomains)}) as code`,
+      )),
+    ] as { code: string }[];
+    const code = row?.code ?? 'not_allowed';
+    if (code === 'ok') return ok({ joinMode, allowedEmailDomains });
+    if (code.startsWith('blocked_domain:')) {
+      return err({
+        reason: 'blocked_domain' as const,
+        domain: code.slice('blocked_domain:'.length),
+      });
+    }
+    return err({ reason: code as 'not_allowed' | 'no_tenant' | 'invalid_mode' });
   });
 }

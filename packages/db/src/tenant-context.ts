@@ -54,6 +54,15 @@ export function withActorInTenant<T>(
   });
 }
 
+/**
+ * Every granted transaction is bounded to 10s. A cross-tenant admin action is a
+ * short, interactive write; nothing long-running (a crawl, a bulk import) should
+ * ever run under a grant, so if a granted statement hits this, that is a design
+ * smell to fix, not a limit to raise. Transaction-local (`SET LOCAL`), so it
+ * never leaks to the next query on the pooled connection.
+ */
+const GRANTED_STATEMENT_TIMEOUT = sql`set local statement_timeout = '10000ms'`;
+
 /** What opening a platform tenant grant returns: the grant, its tenant, and when it ends. */
 export interface PlatformGrant {
   grantId: string;
@@ -85,6 +94,7 @@ export function withPlatformGrant<T>(
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true)`);
+    await tx.execute(GRANTED_STATEMENT_TIMEOUT);
     const rows = [
       ...(await tx.execute(
         sql`select grant_id, tenant_id, expires_at, reason
@@ -117,13 +127,63 @@ export function withPlatformGrant<T>(
  * `app.tenant_id`. Raises if there is no open grant, which the caller maps to a
  * re-open prompt rather than letting it surface as a 500 (Phase 5B).
  */
+/**
+ * How a tenant-admin mutation should run: as the actor's own membership, or
+ * under a platform grant bound to a session. The application seam resolves this
+ * per request; identity mutation functions take it and run their definer call in
+ * the right context, so god-mode writes carry the grant use row into the 0019
+ * definers exactly as a resident admin's write carries their membership.
+ */
+export type TenantWriteContext = { via: 'member' } | { via: 'grant'; sessionId: string };
+
+/**
+ * Run a tenant-admin mutation `fn` in the resolved context. Under a grant it
+ * re-enters the grant (stamping the use row `auth_assume_tenant_grant` writes)
+ * and asserts the grant is for THIS tenant before doing anything, so a mutation
+ * can never act on a tenant other than the one whose grant is open. With no
+ * access, or `via: 'member'`, it is the ordinary membership context.
+ */
+export function withTenantMutation<T>(
+  actorUserId: string,
+  tenantId: string,
+  access: TenantWriteContext | undefined,
+  fn: (tx: TenantTransaction) => Promise<T>,
+): Promise<T> {
+  if (access?.via === 'grant') {
+    return withGrantedTenant(
+      { userId: actorUserId, sessionId: access.sessionId },
+      async (tx, grant) => {
+        if (grant.tenantId !== tenantId) {
+          throw new Error('tenant grant does not match the target tenant');
+        }
+        return fn(tx);
+      },
+    );
+  }
+  return withActorInTenant(actorUserId, tenantId, fn);
+}
+
 export function withGrantedTenant<T>(
   actor: { userId: string; sessionId: string },
-  fn: (tx: TenantTransaction) => Promise<T>,
+  fn: (tx: TenantTransaction, grant: PlatformGrant) => Promise<T>,
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.user_id', ${actor.userId}, true)`);
-    await tx.execute(sql`select auth_assume_tenant_grant(${actor.sessionId}::uuid)`);
-    return fn(tx);
+    await tx.execute(GRANTED_STATEMENT_TIMEOUT);
+    const rows = [
+      ...(await tx.execute(
+        sql`select grant_id, tenant_id, expires_at, reason
+            from auth_assume_tenant_grant(${actor.sessionId}::uuid)`,
+      )),
+    ] as { grant_id: string; tenant_id: string; expires_at: string | Date; reason: string }[];
+    const row = rows[0];
+    if (!row) throw new Error('auth_assume_tenant_grant returned no row');
+    const grant: PlatformGrant = {
+      grantId: row.grant_id,
+      tenantId: row.tenant_id,
+      expiresAt: row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at),
+      reason: row.reason,
+    };
+    return fn(tx, grant);
   });
 }

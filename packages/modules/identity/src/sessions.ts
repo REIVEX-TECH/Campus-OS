@@ -163,6 +163,29 @@ export async function resolveSession(token: string | undefined): Promise<Actor |
 }
 
 /**
+ * Like `resolveSession`, but returns the session id alongside the user id, for
+ * the one caller that needs it: re-entering a platform grant bound to a session
+ * (`withGrantedTenant`). Kept separate so the public `Actor` never carries the
+ * session id. Returns null unless the token resolves to a live session of an
+ * active user; `auth_resolve_session` already excludes revoked/expired sessions.
+ */
+export async function resolveSessionActor(
+  token: string | undefined,
+): Promise<{ userId: string; sessionId: string } | null> {
+  if (!token) return null;
+  const rows = [
+    ...(await getDb().execute(sql`select * from auth_resolve_session(${hashToken(token)})`)),
+  ];
+  const row = rows[0] as { user_id?: string; session_id?: string } | undefined;
+  if (!row?.user_id || !row.session_id) return null;
+  const [user] = await withActor(row.user_id, (tx) =>
+    tx.select({ status: users.status }).from(users).where(eq(users.id, row.user_id!)),
+  );
+  if (!user || user.status !== 'active') return null;
+  return { userId: row.user_id, sessionId: row.session_id };
+}
+
+/**
  * Record that a session is still in use, at most once an hour. Writing on every
  * request would make each page load a write for no extra information.
  */
@@ -189,11 +212,37 @@ export async function revokeSession(token: string | undefined): Promise<void> {
     ...(await getDb().execute(sql`select * from auth_resolve_session(${hashToken(token)})`)),
   ];
   const row = rows[0] as { user_id?: string; session_id?: string } | undefined;
-  if (!row?.user_id) return;
-  await withActor(row.user_id, (tx) =>
+  if (!row?.user_id || !row.session_id) return;
+  const userId = row.user_id;
+  const sessionId = row.session_id;
+  // Primary and security-critical: end the session. It commits on its own so the
+  // secondary grant cleanup below can never abort it and leave the token live.
+  await withActor(userId, (tx) =>
     tx
       .update(sessions)
       .set({ revokedAt: new Date() })
-      .where(and(eq(sessions.id, row.session_id!), isNull(sessions.revokedAt))),
+      .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt))),
   );
+  // Secondary, best-effort: revoke any platform grant bound to this session so it
+  // is actually closed (0021), not just left unusable. Deliberately swallowed:
+  // the session is already revoked above, and the grant is unusable regardless
+  // via auth_assume_tenant_grant's session-liveness join, so a cleanup failure
+  // must not fail the sign-out. A no-op for the vast majority of sessions.
+  try {
+    await withActor(userId, (tx) =>
+      tx.execute(sql`select auth_revoke_grants_for_session(${sessionId}::uuid)`),
+    );
+  } catch (error) {
+    // Best-effort, but never silent: log loudly so a broken cleanup (a missing
+    // migration once hid behind an empty catch) is visible in the server logs.
+    // No PII: the pg code and message only, not the user or session.
+    const e = error as { code?: unknown; message?: unknown };
+    console.error(
+      JSON.stringify({
+        event: 'session_grant_cleanup_failed',
+        pgCode: typeof e.code === 'string' ? e.code : null,
+        message: typeof e.message === 'string' ? e.message : String(error),
+      }),
+    );
+  }
 }

@@ -1,0 +1,13 @@
+-- Retire the config-admin seeding path entirely.
+--
+-- auth_grant_configured_admin (0019) promoted the caller to tenant_admin when
+-- their own email was on the tenant's `adminEmails` config list. That list, and
+-- the `ensureConfiguredAdmin` sign-in call that fed this function, are removed in
+-- the same change: a DB-editable config value must never decide who is an
+-- administrator (CLAUDE.md 8, the 0016 residual). Existing config admins were
+-- converted to real tenant_memberships rows by the one-time 0023 migration
+-- before this drop, so no access is lost. tenant_admin is now granted only
+-- through auth_set_membership_role (roles UI) under a grant or by an admin with
+-- manage-roles. Nothing calls this function any more; drop it so the
+-- self-promotion primitive cannot be reached at all.
+DROP FUNCTION IF EXISTS auth_grant_configured_admin(text, text[]);

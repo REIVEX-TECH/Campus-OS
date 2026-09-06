@@ -6,7 +6,7 @@ import { tenantActivity } from '@campusos/module-identity/analytics';
 import { ActivityCards } from '@/app/_components/admin/activity-cards';
 import { BarRow, StatCard } from '@/app/_components/admin/analytics-parts';
 import { SignOutButton } from '@/app/_components/sign-out-button';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { translator, type MessageKey, type Translate } from '@/lib/i18n';
 import { getQueries, requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
@@ -49,7 +49,7 @@ export default async function AdminAnalyticsPage({ params }: Props) {
   const { slug } = await params;
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
-  const { actor, permissions } = await requirePermission(slug, 'view-analytics');
+  const { actor, permissions } = await accessForPage(slug, 'view-analytics');
   const base = await tenantBase(slug);
   const queries = getQueries(slug);
   const [analytics, freshness]: [

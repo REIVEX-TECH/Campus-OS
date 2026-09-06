@@ -2,10 +2,7 @@ import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { IdentityProviderNotConfiguredError, InvalidIdentityTokenError } from '@campusos/core/auth';
 import { googleVerifierFromEnv } from '@campusos/module-identity/auth';
-import {
-  ensureConfiguredAdmin,
-  ensureDomainMembership,
-} from '@campusos/module-identity/membership';
+import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
 import { findOrCreateUser, issueSession, revokeSession } from '@campusos/module-identity/sessions';
 import { getTenantRegistry } from '@/lib/tenants';
@@ -67,9 +64,11 @@ export async function POST(request: Request): Promise<Response> {
       ? (await getTenantRegistry()).resolveBySlug(parsed.data.tenant)
       : null;
     if (tenant) {
+      // Domain self-verification is the only membership consequence of signing in.
+      // Administrators are no longer seeded from config: tenant_admin is granted
+      // only through the roles UI under a grant (auth_set_membership_role), so a
+      // DB-editable value never decides who is an administrator.
       await ensureDomainMembership(actor, tenant);
-      // The configured administrators, an upgrade only. See the tenant config.
-      await ensureConfiguredAdmin(actor, tenant);
     }
     const session = await issueSession(actor, await requestFingerprint());
 

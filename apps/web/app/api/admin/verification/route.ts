@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { getTenantRegistry } from '@/lib/tenants';
 import { decideRequest } from '@campusos/module-identity/verification';
-import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
 import { isSameOrigin } from '@/lib/same-origin';
+import { tenantWriteContext } from '@/lib/tenant-access';
 
 /**
  * Approve or reject a verification request.
@@ -33,14 +33,15 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
-  const admin = tenant ? await permitted(tenant.slug, 'approve-verifications') : null;
-  if (!tenant || !admin) return Response.json({ error: 'not_found' }, { status: 404 });
+  const write = tenant ? await tenantWriteContext(tenant.slug, 'approve-verifications') : null;
+  if (!tenant || !write) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const result = await decideRequest(
-    { userId: admin.actor.userId },
+    { userId: write.actor.userId },
     tenant.slug,
     parsed.data.requestId,
     parsed.data.decision,
+    write.access,
   );
   if (!result.ok) {
     if (result.error === 'self') return Response.json({ error: 'self' }, { status: 409 });

@@ -26,12 +26,6 @@ export type TenantFormLabels = {
   primaryColor: string;
   logoPath: string;
   aliases: string;
-  allowedEmailDomains: string;
-  joinMode: string;
-  joinModeDomain: string;
-  joinModeInvite: string;
-  adminEmails: string;
-  adminEmailsHint: string;
   enabledModules: string;
   seoTitleTemplate: string;
   seoDescription: string;
@@ -56,9 +50,6 @@ type Values = {
   primaryColor: string;
   logoPath: string;
   aliases: string;
-  allowedEmailDomains: string;
-  joinMode: 'domain' | 'invite';
-  adminEmails: string;
   enabledModules: string;
   seoTitleTemplate: string;
   seoDescription: string;
@@ -91,9 +82,6 @@ function fromConfig(c: TenantConfig): Values {
     primaryColor: sixDigit(c.branding.colors.primary),
     logoPath: c.branding.logoPath,
     aliases: list(c.aliases),
-    allowedEmailDomains: list(c.allowedEmailDomains),
-    joinMode: c.joinMode,
-    adminEmails: list(c.adminEmails),
     enabledModules: list(c.enabledModules),
     seoTitleTemplate: c.seo.titleTemplate,
     seoDescription: c.seo.description,
@@ -116,9 +104,6 @@ function toConfig(base: TenantConfig, v: Values): TenantConfig {
       logoPath: v.logoPath.trim(),
     },
     aliases: unlist(v.aliases),
-    allowedEmailDomains: unlist(v.allowedEmailDomains),
-    joinMode: v.joinMode,
-    adminEmails: unlist(v.adminEmails),
     enabledModules: unlist(v.enabledModules),
     seo: {
       ...base.seo,
@@ -256,16 +241,6 @@ export function TenantForm({
             <option value="24h">{labels.timeFormat24h}</option>
           </select>
         </Field>
-        <Field label={labels.joinMode}>
-          <select
-            className={field}
-            value={v.joinMode}
-            onChange={(e) => set('joinMode', e.target.value as Values['joinMode'])}
-          >
-            <option value="domain">{labels.joinModeDomain}</option>
-            <option value="invite">{labels.joinModeInvite}</option>
-          </select>
-        </Field>
         <Field label={labels.primaryColor}>
           <input
             type="color"
@@ -286,22 +261,6 @@ export function TenantForm({
       </section>
 
       <section className="ios-card grid grid-cols-1 gap-4 rounded-2xl p-4">
-        <Field label={labels.allowedEmailDomains} hint={labels.listHint}>
-          <input
-            className={field}
-            value={v.allowedEmailDomains}
-            onChange={(e) => set('allowedEmailDomains', e.target.value)}
-            autoComplete="off"
-          />
-        </Field>
-        <Field label={labels.adminEmails} hint={labels.adminEmailsHint}>
-          <textarea
-            className={area}
-            value={v.adminEmails}
-            onChange={(e) => set('adminEmails', e.target.value)}
-            autoComplete="off"
-          />
-        </Field>
         <Field label={labels.enabledModules} hint={labels.listHint}>
           <input
             className={field}

@@ -1,11 +1,16 @@
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { withActor, withActorInTenant } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withTenantMutation,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { err, ok, type Result } from '@campusos/core';
 import { recordAudit } from './audit';
 import { isVerified, membershipFor, supersedePending } from './membership';
-import { verificationRequests } from './schema/identity';
+import { verificationRequests, verifyPromptDismissed } from './schema/identity';
 import { canInTransaction } from './rbac';
 
 /**
@@ -240,8 +245,9 @@ export async function decideRequest(
   tenantId: string,
   requestId: string,
   decision: Decision,
+  access?: TenantWriteContext,
 ): Promise<Result<DecisionOutcome, DecisionRefusal>> {
-  return withActorInTenant(admin.userId, tenantId, async (tx) => {
+  return withTenantMutation(admin.userId, tenantId, access, async (tx) => {
     if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
       return err('not_admin');
 
@@ -301,8 +307,9 @@ export async function verifyMember(
   admin: { userId: string },
   tenantId: string,
   targetUserId: string,
+  access?: TenantWriteContext,
 ): Promise<Result<{ alreadyVerified: boolean }, DecisionRefusal>> {
-  return withActorInTenant(admin.userId, tenantId, async (tx) => {
+  return withTenantMutation(admin.userId, tenantId, access, async (tx) => {
     if (!(await canInTransaction(tx, admin.userId, tenantId, 'approve-verifications')))
       return err('not_admin');
     if (targetUserId === admin.userId) return err('self');
@@ -335,4 +342,35 @@ export async function userIdByHandle(handle: string): Promise<string | null> {
     )),
   ] as { user_id?: string }[];
   return rows[0]?.user_id ?? null;
+}
+
+/**
+ * Remember that this person dismissed the "get verified" prompt for this tenant.
+ *
+ * Per account, not per device (0027): one dismissal is remembered everywhere, so
+ * the gentle prompt never nags again. Idempotent; the row is theirs alone (RLS on
+ * app.user_id). Not a verification decision, just a UI preference.
+ */
+export async function dismissVerifyPrompt(userId: string, tenantId: string): Promise<void> {
+  await withActor(userId, (tx) =>
+    tx
+      .insert(verifyPromptDismissed)
+      .values({ userId, tenantId })
+      .onConflictDoNothing({
+        target: [verifyPromptDismissed.userId, verifyPromptDismissed.tenantId],
+      }),
+  );
+}
+
+/** Whether this person has dismissed the get-verified prompt for this tenant. */
+export async function isVerifyPromptDismissed(userId: string, tenantId: string): Promise<boolean> {
+  const [row] = await withActor(userId, (tx) =>
+    tx
+      .select({ userId: verifyPromptDismissed.userId })
+      .from(verifyPromptDismissed)
+      .where(
+        and(eq(verifyPromptDismissed.userId, userId), eq(verifyPromptDismissed.tenantId, tenantId)),
+      ),
+  );
+  return Boolean(row);
 }

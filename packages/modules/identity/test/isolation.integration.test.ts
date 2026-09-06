@@ -29,19 +29,16 @@ import {
   userRecents,
   users,
   verificationRequests,
+  verifyPromptDismissed,
 } from '../src/schema/identity';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
-import {
-  ensureConfiguredAdmin,
-  ensureDomainMembership,
-  isVerified,
-  membershipFor,
-} from '../src/membership';
+import { ensureDomainMembership, isVerified, membershipFor } from '../src/membership';
 import {
   can,
   effectivePermissions,
+  effectivePermissionsInTransaction,
   grantRole,
   listRoles,
   revokeRole,
@@ -51,6 +48,7 @@ import { listMembers } from '../src/members';
 import { appeal, listStandings, liftStanding, setStanding, standingFor } from '../src/standing';
 import { tenantActivity } from '../src/analytics';
 import { ensurePlatformAdmin, isPlatformAdmin } from '../src/platform';
+import { tenantGrantsFor } from '../src/grants';
 import {
   createRoleTemplate,
   deleteRoleTemplate,
@@ -60,6 +58,8 @@ import {
 import { createTenant, listTenantConfigs, updateTenantConfig } from '../src/tenants';
 import {
   decideRequest,
+  dismissVerifyPrompt,
+  isVerifyPromptDismissed,
   latestRequest,
   listPendingRequests,
   requestVerification,
@@ -605,10 +605,14 @@ describe('row security invariants', () => {
     // admin under policies; never read by a definer function. No FORCE so the
     // owner can write it; the application owns nothing, so RLS binds it anyway.
     tenant_configs: false,
-    // Read by the grant definers (0018) as the owner, so FORCE must be off, or
-    // auth_under_tenant_grant and the resolver would see nothing and the
-    // subtraction would fail OPEN. The app cannot write them: the uses table has
-    // no policy and the grants table's writes are revoked from the app role.
+    // Read AND written by the grant definers (0018 open/assume/revoke, and 0021
+    // auth_revoke_grants_for_session) as the OWNER, so FORCE must stay off, or
+    // those definers would be filtered to nothing: auth_under_tenant_grant and
+    // the resolver would see no use row and the subtraction would fail OPEN, and
+    // the revoke UPDATEs would silently touch zero rows. Do NOT flip this to
+    // FORCE in a hardening pass; it would break every grant definer at once. The
+    // app cannot write them regardless: the uses table has no policy and the
+    // grants table's writes are revoked from the app role.
     platform_tenant_grants: false,
     platform_grant_uses: false,
   };
@@ -773,47 +777,35 @@ async function platform(subject: string) {
   return actor;
 }
 
-async function adminIn(tenant: string, subject: string) {
-  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-  const membership = await ensureConfiguredAdmin(actor, {
-    slug: tenant,
-    adminEmails: [`${subject}@gmail.com`],
-  });
-  expect(membership?.role).toBe('tenant_admin');
-  return actor;
+/**
+ * Seed a tenant_admin membership + role as the owner, the way the roles UI grants
+ * one under a grant. Replaces the retired ensureConfiguredAdmin for tests that
+ * just need a resident administrator.
+ */
+async function seedTenantAdmin(userId: string, tenant: string): Promise<void> {
+  await runAsMigrationRole(
+    `select auth_sync_tenant_roles('${tenant}')`,
+    `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+       values ('${tenant}', '${userId}', 'tenant_admin', 'active', now(), 'admin')
+       on conflict (tenant_id, user_id) do update
+         set role = 'tenant_admin',
+             verified_at = coalesce(tenant_memberships.verified_at, now()),
+             verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+       where m.tenant_id = '${tenant}' and m.user_id = '${userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
 }
 
-describe('configured admins', () => {
-  it('makes a listed address a verified tenant admin, off the domain', async () => {
-    const admin = await adminIn('aaa', 'adm-1');
-    const membership = await membershipFor(admin.userId, 'aaa');
-    expect(membership).toMatchObject({ role: 'tenant_admin', status: 'active' });
-    expect(membership!.verificationMethod).toBe('config');
-    expect(membership!.verifiedAt).toBeInstanceOf(Date);
-  });
-
-  it('upgrades an existing student rather than duplicating', async () => {
-    const actor = await findOrCreateUser({ subject: 'adm-2', email: 'up@aaa.edu' });
-    await ensureDomainMembership(actor, {
-      slug: 'aaa',
-      joinMode: 'domain',
-      allowedEmailDomains: ['aaa.edu'],
-    });
-    await ensureConfiguredAdmin(actor, { slug: 'aaa', adminEmails: ['UP@AAA.EDU'] });
-    const rows = await withActor(actor.userId, (tx) => tx.select().from(tenantMemberships));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.role).toBe('tenant_admin');
-  });
-
-  it('touches nobody who is not listed, and never downgrades', async () => {
-    const admin = await adminIn('aaa', 'adm-3');
-    expect(await ensureConfiguredAdmin(admin, { slug: 'aaa', adminEmails: [] })).toBeNull();
-    expect((await membershipFor(admin.userId, 'aaa'))!.role).toBe('tenant_admin');
-    const other = await findOrCreateUser({ subject: 'adm-4', email: 'plain@gmail.com' });
-    expect(await ensureConfiguredAdmin(other, { slug: 'aaa', adminEmails: ['x@y.z'] })).toBeNull();
-    expect(await membershipFor(other.userId, 'aaa')).toBeNull();
-  });
-});
+async function adminIn(tenant: string, subject: string) {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+  await seedTenantAdmin(actor.userId, tenant);
+  expect((await membershipFor(actor.userId, tenant))?.role).toBe('tenant_admin');
+  return actor;
+}
 
 describe('verification requests', () => {
   it('lets a person ask once, see their own, and change nothing', async () => {
@@ -1070,7 +1062,7 @@ describe('roles and permissions', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
 
@@ -1248,7 +1240,7 @@ describe('members, and the roles a tenant defines', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
 
@@ -1537,7 +1529,7 @@ describe('activity timing', () => {
   }
   async function admin(subject: string, tenant = 'aaa') {
     const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-    await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+    await seedTenantAdmin(actor.userId, tenant);
     return actor;
   }
   async function marks(userId: string) {
@@ -1844,6 +1836,135 @@ describe('tenant grants (cross-tenant platform administration)', () => {
     expect(log.filter((r) => r.tenantId === 'aaa' && r.actorUserId === p.userId)).toHaveLength(1);
   });
 
+  it('signing out revokes the grant, so a fresh session opens cleanly (0021)', async () => {
+    const p = await platformActor('grant-signout');
+    await withPlatformGrant(p, 'aaa', 'entered to read a report', async () => undefined);
+    // Usable while the session lives.
+    expect(await permsUnderGrant(p, 'aaa')).toEqual(expect.arrayContaining(['manage-members']));
+
+    // Sign out: the session ends AND the grant is revoked (not merely unusable).
+    await revokeSession(p.token);
+
+    // Unusable: re-entering the grant on the revoked session raises.
+    await expect(permsUnderGrant(p, 'aaa')).rejects.toThrow(/no open tenant grant/);
+
+    // Actually closed: a brand new session for the SAME admin opens a new grant
+    // with no lingering 'a tenant grant is already open' (55006). If sign-out had
+    // only made the old grant unusable, this open would raise.
+    const actor = await findOrCreateUser({
+      subject: 'grant-signout',
+      email: 'grant-signout@example.com',
+    });
+    await issueSession(actor);
+    const liveRows = await withActor(actor.userId, (tx) =>
+      tx
+        .select({ id: sessions.id, revokedAt: sessions.revokedAt })
+        .from(sessions)
+        .where(eq(sessions.userId, actor.userId)),
+    );
+    const live = liveRows.find((r) => r.revokedAt === null);
+    const p2 = { userId: actor.userId, sessionId: live!.id };
+    const grant2 = await withPlatformGrant(
+      p2,
+      'aaa',
+      'entered again after signing in',
+      async (_tx, g) => g,
+    );
+    expect(grant2.tenantId).toBe('aaa');
+  });
+
+  it('grants nothing in another tenant: the resolver keys on the grant tenant (the seam mismatch)', async () => {
+    // The seam refuses a grant whose tenant is not the URL slug; underneath, the
+    // resolver already keys the grant branch on the grant's own tenant, so even
+    // in the granted transaction a grant for aaa yields tenant_admin for aaa and
+    // nothing for bbb. Both layers, so a slip in one cannot leak the other.
+    const p = await platformActor('grant-crosscheck');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    const [aaa, bbb] = await withGrantedTenant(p, async (tx) => [
+      await effectivePermissionsInTransaction(tx, p.userId, 'aaa'),
+      await effectivePermissionsInTransaction(tx, p.userId, 'bbb'),
+    ]);
+    expect(aaa.size).toBeGreaterThan(0);
+    expect(bbb.size).toBe(0);
+  });
+
+  it('drives an identity mutation through the definer under a grant, and refuses self-promotion (2c)', async () => {
+    const p = await platformActor('grant-write');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to manage roles', async () => undefined);
+    const access = { via: 'grant' as const, sessionId: p.sessionId };
+    // The mutation runs in the granted transaction (withTenantMutation -> the
+    // 0019 definer sees the use row). Self-promotion is still refused by the
+    // not-self-under-grant containment, even through the seam write path.
+    const selfGrant = await grantRole(
+      { userId: p.userId },
+      'aaa',
+      p.userId,
+      'tenant_admin',
+      access,
+    );
+    expect(selfGrant.ok).toBe(false);
+    expect(await membershipFor(p.userId, 'aaa')).toBeNull();
+  });
+
+  it('a grant for one tenant cannot drive a write into another (withTenantMutation guard)', async () => {
+    const p = await platformActor('grant-write2');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    const access = { via: 'grant' as const, sessionId: p.sessionId };
+    await expect(
+      grantRole({ userId: p.userId }, 'bbb', p.userId, 'tenant_admin', access),
+    ).rejects.toThrow(/tenant grant does not match/);
+  });
+
+  it('auth_write_standing self-check keys on the grant row, not the forgeable app.user_id (0022)', async () => {
+    const p = await platformActor('grant-standing-forge');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to manage standing', async () => undefined);
+    const other = await createUser('other-standing@aaa.test', 'other_standing_h');
+    const code = await withGrantedTenant(p, async (tx) => {
+      // Forge app.user_id to someone else mid-transaction; the use-row still
+      // names the real grant admin. Targeting the grant admin must still be
+      // refused as self. Without the fix (self-check on app.user_id), the forged
+      // id would slip past and fall through to a permission refusal instead.
+      await tx.execute(sql`select set_config('app.user_id', ${other}::text, true)`);
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_write_standing('aaa', ${p.userId}::uuid, 'restricted', 'x', null) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('self');
+  });
+
+  it('bounds a granted transaction with a 10s statement_timeout (piece 3)', async () => {
+    const p = await platformActor('grant-timeout');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to check the bound', async () => undefined);
+    const timeout = await withGrantedTenant(p, async (tx) => {
+      const [row] = [...(await tx.execute(sql`show statement_timeout`))] as {
+        statement_timeout: string;
+      }[];
+      return row?.statement_timeout;
+    });
+    expect(timeout).toBe('10s');
+  });
+
+  it('shows the tenant who entered, and hides it from the visiting admin (piece 4)', async () => {
+    const p = await platformActor('grant-transparency');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for the record', async () => undefined);
+
+    // A resident admin of aaa (holds restrict-members) sees the grant and reason.
+    const resident = await findOrCreateUser({
+      subject: 'aaa-resident',
+      email: 'aaa-resident@gmail.com',
+    });
+    await seedTenantAdmin(resident.userId, 'aaa');
+    const seen = await tenantGrantsFor(resident.userId, 'aaa');
+    expect(seen.map((g) => g.reason)).toContain('entered aaa for the record');
+
+    // The visiting platform admin, even holding the grant, sees nothing: the
+    // record is read from membership, never through a grant.
+    expect(await tenantGrantsFor(p.userId, 'aaa')).toEqual([]);
+  });
+
   it('resolves to nothing on the bare pool, so every surface stays 404 until 5B', async () => {
     const p = await platformActor('grant-bare');
     await withPlatformGrant(p, 'aaa', 'a good enough reason', async () => undefined);
@@ -1986,5 +2107,257 @@ describe('tenant grants (cross-tenant platform administration)', () => {
       ),
     ).rejects.toThrow();
     expect(grant.grantId).toBeTruthy();
+  });
+});
+
+describe('setting a tenant join policy (0024)', () => {
+  // aaa needs a config row for the definer to update, and its system roles synced
+  // so auth_effective_permissions and the grant resolver have a tenant_admin to
+  // resolve to (a resident member would trigger the sync; these tests create few).
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `insert into tenant_configs (slug, config)
+         values ('aaa', '{"slug":"aaa","displayName":"Alpha U","joinMode":"invite","allowedEmailDomains":[]}'::jsonb)
+         on conflict (slug) do update set config = excluded.config, version = 1`,
+    );
+  });
+
+  async function joinPolicyCode(userId: string, mode: string, domains: string[]): Promise<string> {
+    const arr = domains.length
+      ? sql`array[${sql.join(
+          domains.map((d) => sql`${d}`),
+          sql`, `,
+        )}]::text[]`
+      : sql`array[]::text[]`;
+    const [row] = [
+      ...(await withActor(userId, (tx) =>
+        tx.execute(sql`select auth_set_join_policy('aaa', ${mode}, ${arr}) as code`),
+      )),
+    ] as { code: string }[];
+    return row?.code ?? 'error';
+  }
+
+  async function aaaConfig(): Promise<Record<string, unknown>> {
+    const [row] = await withTenant('aaa', (tx) =>
+      tx
+        .select({ config: tenantConfigs.config })
+        .from(tenantConfigs)
+        .where(eq(tenantConfigs.slug, 'aaa')),
+    );
+    return (row?.config ?? {}) as Record<string, unknown>;
+  }
+
+  it('lets a tenant admin set the mode and domains, touching only those keys, audited as a member action', async () => {
+    const admin = await adminIn('aaa', 'jp-admin');
+    expect(await joinPolicyCode(admin.userId, 'domain', ['AAA.edu', ' aaa.edu '])).toBe('ok');
+
+    const config = await aaaConfig();
+    expect(config.joinMode).toBe('domain');
+    expect(config.allowedEmailDomains).toEqual(['aaa.edu', 'aaa.edu']); // normalised, order kept
+    expect(config.displayName).toBe('Alpha U'); // other keys untouched
+
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]!.actorUserId).toBe(admin.userId);
+    expect(audits[0]!.meta).toMatchObject({ joinMode: 'domain', via: 'member' });
+  });
+
+  it('refuses a consumer email provider structurally, writing nothing', async () => {
+    const admin = await adminIn('aaa', 'jp-consumer');
+    expect(await joinPolicyCode(admin.userId, 'domain', ['aaa.edu', 'gmail.com'])).toBe(
+      'blocked_domain:gmail.com',
+    );
+    const config = await aaaConfig();
+    expect(config.allowedEmailDomains).toEqual([]); // unchanged
+    expect(config.joinMode).toBe('invite');
+    const audits = await withTenant('aaa', (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(audits).toHaveLength(0);
+  });
+
+  it('refuses anyone without manage-members, and a platform admin without a grant', async () => {
+    // alice has no membership in aaa: no permissions there.
+    expect(await joinPolicyCode(alice, 'domain', ['aaa.edu'])).toBe('not_allowed');
+    // A platform admin, but NOT under a grant, is just a stranger to aaa here.
+    const p = await joinPolicyPlatformActor('jp-nogrant');
+    expect(await joinPolicyCode(p.userId, 'domain', ['aaa.edu'])).toBe('not_allowed');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual([]);
+  });
+
+  it('lets a platform admin set it under a grant, and the audit is grant-stamped', async () => {
+    const p = await joinPolicyPlatformActor('jp-grant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to set the join policy', async () => undefined);
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('aaa', 'domain', array['aaa.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('ok');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual(['aaa.edu']);
+
+    const [row] = await withActor(p.userId, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'tenant.join_policy_updated')),
+    );
+    expect(row!.actorUserId).toBe(p.userId);
+    expect(row!.meta).toMatchObject({ via: 'grant' });
+    expect(row!.adminTenantSessionId).not.toBeNull(); // stamped by audit_log_stamp_grant
+  });
+
+  it('refuses a grant for another tenant: the decision keys on the grant tenant', async () => {
+    const p = await joinPolicyPlatformActor('jp-xtenant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa for a good reason', async () => undefined);
+    // Under the aaa grant, reach for bbb's policy: auth_effective_permissions
+    // yields nothing for bbb, so the definer refuses without a write.
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('bbb', 'domain', array['bbb.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('not_allowed');
+  });
+
+  it('refuses a de-admined holder of a still-open grant (0018 liveness re-check)', async () => {
+    const p = await joinPolicyPlatformActor('jp-deadmin');
+    await withPlatformGrant(p, 'aaa', 'entered aaa before losing the role', async () => undefined);
+    // The platform role is removed while the grant and session stay live. Assuming
+    // the grant still stamps a use-row, but the authority resolves through
+    // auth_effective_permissions, whose grant branch re-checks platform_admin: so
+    // the one write that used to key on the bare use-row is now refused too.
+    await runAsMigrationRole(`delete from platform_roles where user_id = '${p.userId}'`);
+    const code = await withGrantedTenant(p, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(
+          sql`select auth_set_join_policy('aaa', 'domain', array['aaa.edu']::text[]) as code`,
+        )),
+      ] as { code: string }[];
+      return row?.code;
+    });
+    expect(code).toBe('not_allowed');
+    expect((await aaaConfig()).allowedEmailDomains).toEqual([]);
+  });
+});
+
+async function joinPolicyPlatformActor(
+  subject: string,
+): Promise<{ userId: string; sessionId: string }> {
+  const actor = await findOrCreateUser({ subject, email: `${subject}@example.com` });
+  await ensurePlatformAdmin(actor, [`${subject}@example.com`]);
+  await issueSession(actor);
+  const rows = await withActor(actor.userId, (tx) =>
+    tx
+      .select({ id: sessions.id, revokedAt: sessions.revokedAt })
+      .from(sessions)
+      .where(eq(sessions.userId, actor.userId)),
+  );
+  const live = rows.find((r) => r.revokedAt === null);
+  return { userId: actor.userId, sessionId: live!.id };
+}
+
+describe('finding a member by email (0026)', () => {
+  beforeEach(async () => {
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('aaa')`,
+      `select auth_sync_tenant_roles('bbb')`,
+    );
+  });
+
+  async function findByEmail(callerId: string, tenant: string, email: string) {
+    const rows = [
+      ...(await withActor(callerId, (tx) =>
+        tx.execute(
+          sql`select user_id, handle, is_verified, roles
+              from auth_find_member_by_email(${tenant}, ${email})`,
+        ),
+      )),
+    ] as { user_id: string; handle: string; is_verified: boolean; roles: string[] }[];
+    return rows[0];
+  }
+
+  async function domainMember(email: string, handle: string): Promise<string> {
+    const id = await createUser(email, handle);
+    await ensureDomainMembership(
+      { userId: id, email },
+      { slug: 'aaa', joinMode: 'domain', allowedEmailDomains: ['aaa.edu'] },
+    );
+    return id;
+  }
+
+  it('an admin finds a member of this tenant by email, case-insensitively', async () => {
+    const finder = await adminIn('aaa', 'finder-1');
+    const member = await domainMember('target@aaa.edu', 'Target_Member_0001');
+    const row = await findByEmail(finder.userId, 'aaa', '  TARGET@AAA.EDU ');
+    expect(row?.user_id).toBe(member);
+    expect(row?.handle).toBe('Target_Member_0001');
+    expect(row?.is_verified).toBe(true);
+    expect(row?.roles).toContain('student');
+  });
+
+  it('returns nothing for a non-member or unknown email (no cross-tenant enumeration)', async () => {
+    const finder = await adminIn('aaa', 'finder-2');
+    await createUser('stranger@aaa.edu', 'Stranger_Acct_0002'); // account, no membership in aaa
+    expect(await findByEmail(finder.userId, 'aaa', 'stranger@aaa.edu')).toBeUndefined();
+    expect(await findByEmail(finder.userId, 'aaa', 'nobody@nowhere.edu')).toBeUndefined();
+  });
+
+  it('refuses a caller without manage-roles', async () => {
+    const member = await domainMember('plain@aaa.edu', 'Plain_Member_0003');
+    const target = await domainMember('t2@aaa.edu', 'Target_Two_0004');
+    expect(target).toBeTruthy();
+    // A student holds no manage-roles: the definer returns nothing even for a real member.
+    expect(await findByEmail(member, 'aaa', 't2@aaa.edu')).toBeUndefined();
+  });
+
+  it('a platform admin under a grant finds a member, and a grant for another tenant does not', async () => {
+    const member = await domainMember('grantfind@aaa.edu', 'Grant_Find_0005');
+    const p = await joinPolicyPlatformActor('find-grant');
+    await withPlatformGrant(p, 'aaa', 'entered aaa to grant an admin', async () => undefined);
+    const found = await withGrantedTenant(p, async (tx) => {
+      const rows = [
+        ...(await tx.execute(
+          sql`select user_id from auth_find_member_by_email('aaa', 'grantfind@aaa.edu')`,
+        )),
+      ] as { user_id: string }[];
+      return rows[0]?.user_id;
+    });
+    expect(found).toBe(member);
+    // The authz keys on the grant tenant: under an aaa grant, a lookup for bbb is
+    // unauthorized and yields nothing.
+    const crossTenant = await withGrantedTenant(
+      p,
+      async (tx) =>
+        [
+          ...(await tx.execute(
+            sql`select user_id from auth_find_member_by_email('bbb', 'grantfind@aaa.edu')`,
+          )),
+        ].length,
+    );
+    expect(crossTenant).toBe(0);
+  });
+});
+
+describe('verify prompt dismissal (0027)', () => {
+  it('remembers a dismissal per account and per tenant, idempotently, and keeps it private', async () => {
+    await dismissVerifyPrompt(alice, 'aaa');
+    await dismissVerifyPrompt(alice, 'aaa'); // idempotent: no error, no duplicate
+
+    expect(await isVerifyPromptDismissed(alice, 'aaa')).toBe(true);
+    expect(await isVerifyPromptDismissed(alice, 'bbb')).toBe(false); // per tenant
+    expect(await isVerifyPromptDismissed(bob, 'aaa')).toBe(false); // per account
+
+    // RLS: bob's own dismissal is never visible to alice.
+    await dismissVerifyPrompt(bob, 'aaa');
+    const aliceSees = await withActor(alice, (tx) => tx.select().from(verifyPromptDismissed));
+    expect(aliceSees.every((r) => r.userId === alice)).toBe(true);
+    expect(await isVerifyPromptDismissed(bob, 'aaa')).toBe(true);
   });
 });

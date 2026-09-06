@@ -2,10 +2,10 @@ import { z } from 'zod';
 import { getTenantRegistry } from '@/lib/tenants';
 import { CUSTOM_HANDLE_PATTERN } from '@campusos/module-identity/handle-rules';
 import { userIdByHandle, verifyMember } from '@campusos/module-identity/verification';
-import { permitted } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
 import { isSameOrigin } from '@/lib/same-origin';
+import { tenantWriteContext } from '@/lib/tenant-access';
 
 /**
  * Mark a member verified by hand, found by their public handle.
@@ -32,13 +32,18 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
-  const admin = tenant ? await permitted(tenant.slug, 'approve-verifications') : null;
-  if (!tenant || !admin) return Response.json({ error: 'not_found' }, { status: 404 });
+  const write = tenant ? await tenantWriteContext(tenant.slug, 'approve-verifications') : null;
+  if (!tenant || !write) return Response.json({ error: 'not_found' }, { status: 404 });
 
   const userId = await userIdByHandle(parsed.data.handle);
   if (!userId) return Response.json({ error: 'no_such_handle' }, { status: 404 });
 
-  const result = await verifyMember({ userId: admin.actor.userId }, tenant.slug, userId);
+  const result = await verifyMember(
+    { userId: write.actor.userId },
+    tenant.slug,
+    userId,
+    write.access,
+  );
   if (!result.ok) {
     if (result.error === 'self') return Response.json({ error: 'self' }, { status: 409 });
     return Response.json({ error: 'not_found' }, { status: 404 });

@@ -71,8 +71,8 @@ SOURCE_MODE=live pnpm ingest:lgu   # full autonomous crawl -> hosted DB
 ```
 
 Then map the pending rooms so classes stop showing TBA: start the app (or use
-the deployed one once step 3 is done), sign in with an address listed in the
-tenant's `adminEmails`, and resolve each room at `/u/lgu/admin/rooms`.
+the deployed one once step 3 is done), sign in as a tenant administrator, and
+resolve each room at `/u/lgu/admin/rooms`.
 
 > If the ingest reports many anomalies or fails to mint a session, the portal
 > (`timetable.lgu.edu.pk`) is in one of its flaky windows (see
@@ -141,7 +141,7 @@ Scheduled runs execute only when `HOSTED_DB_ENABLED` is `true`; a manual
 See `.env.example` for the full list. Production needs: `DATABASE_URL`,
 `TENANT_BASE_DOMAIN=campusos.reivex.io`, `PLATFORM_HOST=campusos.reivex.io`.
 `APP_DOMAIN=reivex.io` is optional (only the legacy 308). Admin needs no
-variable: it is a role on an account (see `adminEmails` in the tenant config).
+variable: it is a role on an account, granted through the admin roles UI.
 `LGU_PHPSESSID` and the `LGU_MAX_*` caps are optional.
 
 ## Production readiness checklist

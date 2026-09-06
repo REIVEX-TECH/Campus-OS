@@ -38,12 +38,6 @@ export interface JoinPolicy {
   allowedEmailDomains: readonly string[];
 }
 
-/** The part of a tenant's config that names its administrators. */
-export interface AdminPolicy {
-  slug: string;
-  adminEmails: readonly string[];
-}
-
 /** The domain of an address, lower cased, or null for anything malformed. */
 export function emailDomain(email: string): string | null {
   const at = email.lastIndexOf('@');
@@ -55,12 +49,6 @@ export function emailDomain(email: string): string | null {
 export function domainAllowed(email: string, allowed: readonly string[]): boolean {
   const domain = emailDomain(email);
   return domain !== null && allowed.some((d) => d.toLowerCase() === domain);
-}
-
-/** Whole address match, case insensitive. */
-export function isConfiguredAdmin(email: string, adminEmails: readonly string[]): boolean {
-  const wanted = email.trim().toLowerCase();
-  return wanted.length > 0 && adminEmails.some((a) => a.trim().toLowerCase() === wanted);
 }
 
 /** Verified, and in good standing. A suspended membership verifies nothing. */
@@ -156,28 +144,6 @@ export async function ensureDomainMembership(
       });
     }
     return membership;
-  });
-}
-
-/**
- * Give a configured administrator their role, on sign in.
- *
- * The list lives in the tenant's config, in code, so granting the role is a
- * reviewed change with a history. Only ever an upgrade. The write is done by
- * `auth_grant_configured_admin` (0019), which checks the actor's OWN email
- * against the list it is handed, so it can only promote the caller — the same
- * shape as the platform bootstrap. Anyone not listed is untouched.
- */
-export async function ensureConfiguredAdmin(
-  actor: { userId: string; email: string },
-  tenant: AdminPolicy,
-): Promise<Membership | null> {
-  if (!isConfiguredAdmin(actor.email, tenant.adminEmails)) return null;
-  return withActorInTenant(actor.userId, tenant.slug, async (tx) => {
-    await tx.execute(
-      sql`select auth_grant_configured_admin(${tenant.slug}, ${pgTextArray(tenant.adminEmails)})`,
-    );
-    return readMembership(tx, tenant.slug, actor.userId);
   });
 }
 

@@ -11,7 +11,7 @@ import { MembersList } from '@/app/_components/admin/members-list';
 import { ReportedPeople } from '@/app/_components/admin/reported-people';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { communitiesEnabled, communitiesSettings } from '@/lib/communities';
 import { reportReasonLabels } from '@/lib/community-labels';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -59,7 +59,7 @@ export default async function AdminMembersPage({ params }: Params) {
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const { actor, permissions } = await requirePermission(slug, 'manage-members');
+  const { actor, permissions } = await accessForPage(slug, 'manage-members');
   const canManageRoles = permissions.has('manage-roles');
   const canRestrict = permissions.has('restrict-members');
 

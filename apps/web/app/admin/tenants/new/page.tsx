@@ -18,7 +18,6 @@ const BLANK: TenantConfig = {
   branding: { colors: { primary: '#0b5d3b' }, logoPath: '/tenants/logo.svg' },
   allowedEmailDomains: [],
   joinMode: 'domain',
-  adminEmails: [],
   enabledModules: ['timetable'],
   moduleSettings: {},
   seo: { titleTemplate: '%s · CampusOS', description: '', keywords: [], aliases: [] },
@@ -33,6 +32,9 @@ export default async function NewTenantPage() {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight">{t('platform.admin.new.heading')}</h1>
         <p className="max-w-prose text-sm text-muted-foreground">{t('platform.admin.new.intro')}</p>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {t('platform.admin.new.firstAdmin')}
+        </p>
       </header>
       <TenantForm
         mode="create"

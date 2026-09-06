@@ -148,6 +148,62 @@
       "when": 1756800020000,
       "tag": "0020_definer_grant_hygiene",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1756800021000,
+      "tag": "0021_grant_session_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1756800022000,
+      "tag": "0022_standing_self_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1756800023000,
+      "tag": "0023_migrate_configured_admins",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1756800024000,
+      "tag": "0024_join_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1756800025000,
+      "tag": "0025_drop_configured_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1756800026000,
+      "tag": "0026_find_member_by_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1756800027000,
+      "tag": "0027_verify_prompt_dismissed",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1756800028000,
+      "tag": "0028_drop_migrate_configured_admin",
+      "breakpoints": true
     }
   ]
 }

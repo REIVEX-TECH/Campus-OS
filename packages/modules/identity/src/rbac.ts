@@ -1,5 +1,11 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { withActor, withActorInTenant, type TenantTransaction } from '@campusos/db';
+import {
+  withActor,
+  withActorInTenant,
+  withTenantMutation,
+  type TenantTransaction,
+  type TenantWriteContext,
+} from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { PermissionSet, isCommunityRole, isPermission, type Permission } from '@campusos/core';
 import { syncTenantRoles } from './role-templates';
@@ -184,6 +190,7 @@ export async function grantRole(
   tenantId: string,
   memberUserId: string,
   roleKey: string,
+  access?: TenantWriteContext,
 ): Promise<{ ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal }> {
   // Community roles attach per community, never to a tenant membership, and are
   // rejected here before the definer, which would otherwise find the synced row
@@ -193,7 +200,7 @@ export async function grantRole(
   // platform exemption that keeps communities.unmask grantable, and the "not
   // yourself under a grant" containment — is `auth_set_membership_role` (0019);
   // the application role can no longer write membership_roles directly.
-  const outcome = await withActorInTenant(actor.userId, tenantId, async (tx) => {
+  const outcome = await withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const [row] = [
       ...(await tx.execute(
         sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, true) as code`,
@@ -212,11 +219,12 @@ export async function revokeRole(
   tenantId: string,
   memberUserId: string,
   roleKey: string,
+  access?: TenantWriteContext,
 ): Promise<
   { ok: true; changed: boolean } | { ok: false; reason: RoleGrantRefusal | 'last_admin' }
 > {
   if (isCommunityRole(roleKey)) return { ok: false, reason: 'no_such_role' };
-  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
     const [row] = [
       ...(await tx.execute(
         sql`select auth_set_membership_role(${tenantId}, ${memberUserId}::uuid, ${roleKey}, false) as code`,
@@ -229,4 +237,39 @@ export async function revokeRole(
 /** Every permission held by anyone, for a member list. Read as the member. */
 export async function ownPermissions(userId: string, tenantId: string): Promise<PermissionSet> {
   return withActor(userId, async () => effectivePermissions(userId, tenantId));
+}
+
+export interface FoundMember {
+  userId: string;
+  handle: string;
+  isVerified: boolean;
+  roles: string[];
+}
+
+/**
+ * Find a member of this tenant by their email, for the roles UI.
+ *
+ * A privileged read (auth_find_member_by_email, 0026): manage-roles required, it
+ * resolves an email ONLY to a member of THIS tenant (nothing for a stranger or a
+ * cross-tenant account), and returns the handle and role keys, never the email.
+ * Runs in the write context so a platform admin's grant is assumed and the
+ * definer's authority check resolves; a resident admin uses their own membership.
+ */
+export async function findMemberByEmail(
+  actor: { userId: string },
+  tenantId: string,
+  email: string,
+  access?: TenantWriteContext,
+): Promise<FoundMember | null> {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select user_id, handle, is_verified, roles
+            from auth_find_member_by_email(${tenantId}, ${email})`,
+      )),
+    ] as { user_id: string; handle: string; is_verified: boolean; roles: string[] }[];
+    return row
+      ? { userId: row.user_id, handle: row.handle, isVerified: row.is_verified, roles: row.roles }
+      : null;
+  });
 }

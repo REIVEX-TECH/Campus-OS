@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buttonVariants } from '@campusos/ui';
+import { GetVerified } from '@/app/_components/get-verified';
 import { refusalMessage } from '@/lib/refusal-message';
 
 export type JoinLabels = {
@@ -27,10 +28,12 @@ export function JoinButton({
   const router = useRouter();
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   async function toggle(): Promise<void> {
     setWorking(true);
     setError(null);
+    setErrorCode(null);
     const response = await fetch(`/api/communities/${communityId}/membership`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -40,6 +43,7 @@ export function JoinButton({
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       setError(refusalMessage(labels.errors, body) || null);
+      setErrorCode(body.error ?? null);
       return;
     }
     router.refresh();
@@ -62,6 +66,7 @@ export function JoinButton({
           {error}
         </p>
       ) : null}
+      {errorCode === 'not_verified' ? <GetVerified variant="outline" /> : null}
     </div>
   );
 }

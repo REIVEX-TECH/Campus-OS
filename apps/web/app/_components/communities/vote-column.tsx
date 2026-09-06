@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useVerifyGate } from '@/app/_components/verify-gate';
 
 export type VoteLabels = { up: string; down: string; errors: Record<string, string> };
 
@@ -28,8 +29,12 @@ export function VoteColumn({
   const [state, setState] = useState({ score, myVote });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const gate = useVerifyGate();
 
   async function vote(next: -1 | 1): Promise<void> {
+    // An unverified member's arrows are live, but a tap offers verification here
+    // instead of failing silently: the control is where the gate is met.
+    if (gate?.needsVerify) return gate.openVerify();
     if (!canVote || busy) return;
     const value = state.myVote === next ? 0 : next;
     const before = state;
@@ -73,7 +78,7 @@ export function VoteColumn({
         onClick={() => vote(1)}
         aria-label={labels.up}
         aria-pressed={state.myVote === 1}
-        disabled={!canVote}
+        disabled={!canVote && !gate?.needsVerify}
         className="ios-pressable inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted disabled:cursor-default disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {arrow('up', state.myVote === 1)}
@@ -84,7 +89,7 @@ export function VoteColumn({
         onClick={() => vote(-1)}
         aria-label={labels.down}
         aria-pressed={state.myVote === -1}
-        disabled={!canVote}
+        disabled={!canVote && !gate?.needsVerify}
         className="ios-pressable inline-flex size-8 items-center justify-center rounded-lg hover:bg-muted disabled:cursor-default disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {arrow('down', state.myVote === -1)}

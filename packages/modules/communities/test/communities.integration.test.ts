@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withActorInTenant, withTenant } from '@campusos/db';
@@ -9,10 +12,7 @@ import {
   runBaseMigrations,
 } from '@campusos/db/migrate';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
-import {
-  ensureConfiguredAdmin,
-  ensureDomainMembership,
-} from '@campusos/module-identity/membership';
+import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { grantRole } from '@campusos/module-identity/rbac';
 import { liftStanding, setStanding, standingFor } from '@campusos/module-identity/standing';
 import { ensurePlatformAdmin } from '@campusos/module-identity/platform';
@@ -145,10 +145,24 @@ async function member(subject: string, tenant = 'aaa') {
   return actor;
 }
 
-/** A tenant administrator, through the configured list. */
+/** A tenant administrator, seeded as the owner (the config-admin path is retired). */
 async function admin(subject: string, tenant = 'aaa') {
   const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
-  await ensureConfiguredAdmin(actor, { slug: tenant, adminEmails: [`${subject}@gmail.com`] });
+  await runAsMigrationRole(
+    `select auth_sync_tenant_roles('${tenant}')`,
+    `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+       values ('${tenant}', '${actor.userId}', 'tenant_admin', 'active', now(), 'admin')
+       on conflict (tenant_id, user_id) do update
+         set role = 'tenant_admin',
+             verified_at = coalesce(tenant_memberships.verified_at, now()),
+             verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+    `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+       select m.id, r.id, m.tenant_id, m.user_id
+       from tenant_memberships m
+       join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+       where m.tenant_id = '${tenant}' and m.user_id = '${actor.userId}'
+       on conflict (membership_id, role_id) do nothing`,
+  );
   return actor;
 }
 
@@ -211,7 +225,8 @@ describe('row security invariants', () => {
     }
   });
 
-  it.skipIf(!split)('keeps the karma rebuild beyond the application’s reach', async () => {
+  it('keeps the karma rebuild beyond the application’s reach', async (ctx) => {
+    if (!split) return ctx.skip();
     // The owner's default privileges GRANT EXECUTE ON FUNCTIONS to the
     // application, so a definer meant for the owner alone has to be revoked
     // from it BY NAME; the repository's usual REVOKE ... FROM PUBLIC leaves
@@ -436,7 +451,8 @@ describe('the anonymity model', () => {
     return post.value.id;
   }
 
-  it.skipIf(!split)('does not let the application role read author_id at all', async () => {
+  it('does not let the application role read author_id at all', async (ctx) => {
+    if (!split) return ctx.skip();
     const owner = await member('col-owner');
     await expect(
       withActorInTenant(owner.userId, 'aaa', (tx) =>
@@ -2733,15 +2749,17 @@ describe('definer grant hygiene', () => {
     auth_assume_tenant_grant: 'app',
     auth_effective_community_permissions: 'app',
     auth_effective_permissions: 'app',
+    auth_find_member_by_email: 'app',
     auth_grant_admin_for_txn: 'app',
-    auth_grant_configured_admin: 'app',
     auth_grant_platform_admin: 'app',
     auth_handle_is_reserved: 'app',
     auth_join_as_student: 'app',
     auth_open_tenant_grant: 'app',
     auth_resolve_session: 'app',
     auth_resolve_user_by_subject: 'app',
+    auth_revoke_grants_for_session: 'app',
     auth_revoke_tenant_grant: 'app',
+    auth_set_join_policy: 'app',
     auth_set_membership_role: 'app',
     auth_sync_tenant_roles: 'app',
     auth_tenant_activity_days: 'app',
@@ -2763,40 +2781,91 @@ describe('definer grant hygiene', () => {
     communities_karma_recompute: 'owner',
   };
 
-  it.skipIf(!split)(
-    'grants each definer EXECUTE to the app exactly as its declared intent says',
-    async () => {
-      const rows = [
-        ...(await getDb().execute(
-          sql`select p.proname,
+  it('grants each definer EXECUTE to the app exactly as its declared intent says', async (ctx) => {
+    if (!split) return ctx.skip();
+    const rows = [
+      ...(await getDb().execute(
+        sql`select p.proname,
                    has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
             from pg_proc p
             where p.pronamespace = 'public'::regnamespace and p.prosecdef`,
-        )),
-      ] as { proname: string; app_can_execute: boolean }[];
+      )),
+    ] as { proname: string; app_can_execute: boolean }[];
 
-      // No definer may exist without a declared intent: a new one forces a choice.
-      const undeclared = rows.map((r) => r.proname).filter((n) => !(n in DEFINER_INTENT));
-      expect(
-        undeclared,
-        'undeclared SECURITY DEFINER functions — add them to DEFINER_INTENT',
-      ).toEqual([]);
+    // No definer may exist without a declared intent: a new one forces a choice.
+    const undeclared = rows.map((r) => r.proname).filter((n) => !(n in DEFINER_INTENT));
+    expect(
+      undeclared,
+      'undeclared SECURITY DEFINER functions — add them to DEFINER_INTENT',
+    ).toEqual([]);
 
-      // And the actual grant must match the declared intent, both directions: an
-      // owner-only definer must not be app-executable, an app one must be.
-      const mismatches = rows
-        .filter((r) => r.proname in DEFINER_INTENT)
-        .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
-        .map(
-          (r) =>
-            `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
-        );
-      expect(mismatches, 'a definer whose EXECUTE grant does not match its intent').toEqual([]);
+    // And the actual grant must match the declared intent, both directions: an
+    // owner-only definer must not be app-executable, an app one must be.
+    const mismatches = rows
+      .filter((r) => r.proname in DEFINER_INTENT)
+      .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
+      .map(
+        (r) =>
+          `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
+      );
+    expect(mismatches, 'a definer whose EXECUTE grant does not match its intent').toEqual([]);
 
-      // Guard against the map rotting: every declared name must exist.
-      const present = new Set(rows.map((r) => r.proname));
-      const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
-      expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
-    },
-  );
+    // Guard against the map rotting: every declared name must exist.
+    const present = new Set(rows.map((r) => r.proname));
+    const stale = Object.keys(DEFINER_INTENT).filter((n) => !present.has(n));
+    expect(stale, 'DEFINER_INTENT names that no longer exist').toEqual([]);
+  });
+
+  it('db-grants re-applied after migrate never re-opens an owner-only definer', async (ctx) => {
+    if (!split) return ctx.skip();
+    // db-grants.sql bills itself re-runnable and the production role-split runbook
+    // re-applies it after migrating. Its function-grant loop must exclude SECURITY
+    // DEFINER functions; a blanket `GRANT EXECUTE ON ALL FUNCTIONS ... TO
+    // campusos_app` would re-grant the owner-only definers by name and re-open the
+    // hole (communities 0011). Run the real file's loop against this
+    // already-migrated database, as the owner, and prove every definer's app
+    // EXECUTE still matches its declared intent.
+    const grants = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        '..',
+        'scripts',
+        'db-grants.sql',
+      ),
+      'utf8',
+    );
+    // Check the SQL, not the comments (which name the anti-pattern to explain it).
+    const sqlOnly = grants.replace(/--.*$/gm, '');
+    expect(
+      sqlOnly,
+      'db-grants must not blanket-grant EXECUTE on all functions to the app',
+    ).not.toMatch(/grant\s+execute\s+on\s+all\s+functions[^;]*campusos_app/i);
+    const loop = sqlOnly.match(/DO \$\$[\s\S]*?\$\$;/);
+    expect(
+      loop,
+      'db-grants must grant function EXECUTE via a definer-excluding loop',
+    ).not.toBeNull();
+
+    await runAsMigrationRole(loop![0]);
+
+    const rows = [
+      ...(await getDb().execute(
+        sql`select p.proname,
+                   has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
+            from pg_proc p
+            where p.pronamespace = 'public'::regnamespace and p.prosecdef`,
+      )),
+    ] as { proname: string; app_can_execute: boolean }[];
+    const mismatches = rows
+      .filter((r) => r.proname in DEFINER_INTENT)
+      .filter((r) => r.app_can_execute !== (DEFINER_INTENT[r.proname] === 'app'))
+      .map(
+        (r) =>
+          `${r.proname}: intent=${DEFINER_INTENT[r.proname]} but app_can_execute=${r.app_can_execute}`,
+      );
+    expect(mismatches, 're-applying db-grants changed a definer EXECUTE grant').toEqual([]);
+  });
 });

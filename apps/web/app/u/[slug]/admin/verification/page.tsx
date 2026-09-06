@@ -7,7 +7,7 @@ import { MemberVerify } from '@/app/_components/admin/member-verify';
 import { VerificationQueue } from '@/app/_components/admin/verification-queue';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
-import { requirePermission } from '@/lib/auth';
+import { accessForPage } from '@/lib/tenant-access';
 import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { requireTenant } from '@/lib/timetable';
@@ -43,7 +43,7 @@ export default async function AdminVerificationPage({ params }: Params) {
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const { actor, permissions } = await requirePermission(slug, 'approve-verifications');
+  const { actor, permissions } = await accessForPage(slug, 'approve-verifications');
 
   const pending = await listPendingRequests({ userId: actor.userId }, slug);
   const queue = pending.ok ? pending.value : [];

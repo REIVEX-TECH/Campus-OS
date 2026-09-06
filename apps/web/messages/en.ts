@@ -37,6 +37,8 @@ export const en = {
   'platform.admin.new.heading': 'New university',
   'platform.admin.new.intro':
     'The slug is permanent: it keys every row the university owns. Everything else can change later.',
+  'platform.admin.new.firstAdmin':
+    'A new university starts with no administrators. After you create it, ask its first administrator to sign in to the university once, then grant them the administrator role from its roles page while you are entered on a grant.',
   'platform.admin.edit.heading': 'Edit {name}',
   'platform.admin.edit.intro':
     'Saving writes this configuration to the database, which then wins over the file for this university.',
@@ -50,13 +52,6 @@ export const en = {
   'platform.admin.field.primaryColor': 'Accent colour',
   'platform.admin.field.logoPath': 'Logo path',
   'platform.admin.field.aliases': 'Slug aliases',
-  'platform.admin.field.allowedEmailDomains': 'Email domains that join automatically',
-  'platform.admin.field.joinMode': 'How people join',
-  'platform.admin.field.joinMode.domain': 'Anyone with a listed email domain',
-  'platform.admin.field.joinMode.invite': 'By invitation only',
-  'platform.admin.field.adminEmails': 'Administrator emails',
-  'platform.admin.field.adminEmailsHint':
-    'Each becomes an administrator of this university at their next sign in. Never shown anywhere.',
   'platform.admin.field.enabledModules': 'Enabled modules',
   'platform.admin.field.seoTitleTemplate': 'Title template (must contain %s)',
   'platform.admin.field.seoDescription': 'Description',
@@ -76,6 +71,35 @@ export const en = {
   'platform.signin.intro':
     'For platform administrators. Signing in here does not join you to any university.',
   'platform.signin.notConfigured': 'Sign in is not configured on this deployment.',
+
+  'platform.grant.enter': 'Enter',
+  'platform.grant.banner.active': 'In {tenant} on a platform grant',
+  'platform.grant.banner.reason': 'Reason',
+  'platform.grant.banner.timeLeft': '{time} left',
+  'platform.grant.banner.expiringSoon': 'Expiring soon. Reopen to keep working.',
+  'platform.grant.banner.close': 'Close grant',
+  'platform.grant.banner.closing': 'Closing',
+  'platform.grant.banner.reopen': 'Reopen',
+  'platform.grant.modal.heading': 'Enter {tenant}',
+  'platform.grant.modal.intro':
+    'You are entering another university as a platform administrator. It is recorded, time-boxed, and the university can see that you entered and why. Say why you are here.',
+  'platform.grant.modal.reasonField': 'Reason for entering',
+  'platform.grant.modal.reasonHint': 'At least 12 characters. The university sees this.',
+  'platform.grant.modal.sameReason': 'Same reason',
+  'platform.grant.modal.submit': 'Enter',
+  'platform.grant.modal.submitting': 'Entering',
+  'platform.grant.modal.failed': 'That did not go through. You can try again.',
+  'platform.grant.modal.cancel': 'Cancel',
+  'platform.grant.error.already_open':
+    'You already have a grant open. Close it before entering another university.',
+  'platform.grant.error.reason_too_short': 'The reason needs at least 12 characters.',
+  'platform.grant.error.unknown_tenant': 'That university does not exist.',
+  'platform.grant.error.forbidden': 'You cannot do that.',
+  'platform.grant.expired.heading': 'Your access ended',
+  'platform.grant.expired.body':
+    'Your grant for {tenant} is no longer active. Open it again below to continue.',
+  'platform.grant.expired.bodyGeneric':
+    'Your grant is no longer active. Open a university again below to continue.',
 
   'timetable.heading': 'Timetable',
   'timetable.viewTimetable': 'View timetable',
@@ -249,6 +273,33 @@ export const en = {
   'admin.nav.members': 'Members',
   'admin.nav.roles': 'Roles',
   'admin.nav.communities': 'Communities',
+  'admin.nav.platformAccess': 'Platform access',
+  'admin.platformAccess.heading': 'Platform access',
+  'admin.platformAccess.intro':
+    'When a CampusOS platform administrator enters your university it is recorded here: who, when, and why. While inside they see the same admin tools you do, minus unmasking anonymous authors.',
+  'admin.platformAccess.none': 'No platform administrator has entered {tenant}.',
+  'admin.platformAccess.reason': 'Reason',
+  'admin.platformAccess.entered': 'Entered {when}',
+  'admin.platformAccess.open': 'In now, until {when}',
+  'admin.platformAccess.expired': 'Expired {when}',
+  'admin.platformAccess.ended': 'Ended {when}',
+  'admin.platformAccess.signOut': 'Sign out',
+  'admin.nav.joinPolicy': 'Join policy',
+  'admin.joinPolicy.heading': 'Join policy',
+  'admin.joinPolicy.intro':
+    'Who may join this university automatically, and how. This governs member sign-up only, never who is an administrator.',
+  'admin.joinPolicy.mode': 'How people join',
+  'admin.joinPolicy.mode.domain':
+    'By email domain: a verified university email joins automatically',
+  'admin.joinPolicy.mode.invite': 'By invitation: an administrator verifies each person',
+  'admin.joinPolicy.domains': 'Allowed email domains',
+  'admin.joinPolicy.domainsHelp':
+    'One per line, e.g. lgu.edu.pk. University domains only; consumer providers such as gmail.com are refused. Used only when the mode is by email domain.',
+  'admin.joinPolicy.save': 'Save join policy',
+  'admin.joinPolicy.saved': 'Join policy saved.',
+  'admin.joinPolicy.blocked':
+    '{domain} is a consumer email provider, so it cannot be an allowed domain: it would let anyone with that provider join. Open membership, if you want it, is a deliberate choice, not a side effect of a domain.',
+  'admin.joinPolicy.error': 'That change could not be saved. Check the domains and try again.',
   'admin.roles.permission.communities.create': 'Create a community',
   'admin.roles.permission.communities.oversee': 'Oversee every community',
   'admin.roles.permission.communities.unmask': 'Reveal an anonymous author',
@@ -441,6 +492,21 @@ export const en = {
   'account.verification.errorRate': 'Too many requests recently. Try again later.',
   'account.verification.errorVerified': 'You are already verified.',
   'account.verification.errorGeneric': 'That did not go through. You can try again.',
+  'verify.getVerified': 'Get verified',
+  'verify.modalHeading': 'Get verified',
+  'verify.modalIntro':
+    'Verifying tells your university who you are, so you can take part: post, comment, and vote in communities.',
+  'verify.howHeading': 'How it works',
+  'verify.howDomain':
+    'If you signed in with your university email, you are verified automatically.',
+  'verify.howRequest':
+    'Otherwise, send your name and roll number below and an administrator checks it against the university records.',
+  'verify.close': 'Close',
+  'verify.prompt.heading': 'Get verified to take part',
+  'verify.prompt.body':
+    'You are signed in but not yet verified. Verify to post, comment, and vote in this university.',
+  'verify.prompt.dismiss': 'Dismiss',
+  'verify.gate.post': 'You need to be a verified member to post here.',
   'account.admin.open': 'Open the university admin',
 
   'admin.verification.heading': 'Verification',
@@ -545,6 +611,21 @@ export const en = {
   'admin.roles.permission.view-analytics': 'View analytics',
   'admin.roles.permission.post': 'Post in communities',
   'admin.roles.permission.moderate': 'Moderate posts and reports',
+  'admin.grantByEmail.heading': 'Grant an administrator by email',
+  'admin.grantByEmail.intro':
+    'Find a member of this university by the email they signed in with, then grant them the administrator role. They must have signed in to this university at least once.',
+  'admin.grantByEmail.email': 'Email address',
+  'admin.grantByEmail.find': 'Find member',
+  'admin.grantByEmail.finding': 'Finding',
+  'admin.grantByEmail.notFound':
+    'No member of this university has that email. Ask them to sign in to this university once, then try again.',
+  'admin.grantByEmail.foundVerified': '{handle} is a verified member.',
+  'admin.grantByEmail.foundUnverified': '{handle} is a member, not yet verified.',
+  'admin.grantByEmail.alreadyAdmin': '{handle} is already an administrator.',
+  'admin.grantByEmail.grant': 'Grant administrator',
+  'admin.grantByEmail.granting': 'Granting',
+  'admin.grantByEmail.granted': '{handle} is now an administrator.',
+  'admin.grantByEmail.failed': 'That did not go through. You can try again.',
   'admin.backToAccount': 'Back to your account',
   'admin.noProfile': 'Account not active',
   'communities.heading': 'Communities',
