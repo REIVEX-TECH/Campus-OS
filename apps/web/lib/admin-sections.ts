@@ -50,7 +50,16 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     path: '/admin/join-policy',
     label: 'admin.nav.joinPolicy',
   },
-  { key: 'roles', permission: 'manage-roles', path: '/admin/roles', label: 'admin.nav.roles' },
+  {
+    // What each role carries: a read-only catalogue, gated on manage-members so a
+    // resident admin can still see it. Assigning roles is platform-only now
+    // (identity 0032); the grant control on the page renders only for a holder of
+    // manage-roles, i.e. a platform admin under a grant.
+    key: 'roles',
+    permission: 'manage-members',
+    path: '/admin/roles',
+    label: 'admin.nav.roles',
+  },
   { key: 'rooms', permission: 'manage-rooms', path: '/admin/rooms', label: 'admin.nav.rooms' },
   {
     key: 'analytics',

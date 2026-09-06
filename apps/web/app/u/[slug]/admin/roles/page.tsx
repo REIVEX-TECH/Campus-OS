@@ -33,17 +33,19 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 /**
  * What each role in this university may do.
  *
- * Read only: which roles exist and what they carry is a platform level
- * definition, and `manage-roles` here means granting them on the members
- * page. Gated on that permission all the same, so the page and the control it
- * explains open together, and 404 to anyone without it.
+ * The catalogue is read-only for everyone: which roles exist and what they carry
+ * is a platform-level definition. Gated on `manage-members` so a resident admin
+ * can see it, but ASSIGNING a role is platform-only now (identity 0032), so the
+ * grant-by-email control renders only for a holder of `manage-roles`: a platform
+ * admin acting under a live grant. A resident admin sees the catalogue and a note.
  */
 export default async function AdminRolesPage({ params }: Params) {
   const { slug } = await params;
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
-  const { actor, permissions } = await accessForPage(slug, 'manage-roles');
+  const { actor, permissions } = await accessForPage(slug, 'manage-members');
+  const canGrant = permissions.has('manage-roles');
 
   const roles = await listRoles(actor.userId, slug);
   const permissionLabels = Object.fromEntries(
@@ -81,28 +83,34 @@ export default async function AdminRolesPage({ params }: Params) {
           }}
         />
 
-        <section aria-labelledby="grant-by-email" className="flex flex-col gap-3 px-1">
-          <h2 id="grant-by-email" className="text-sm font-semibold">
-            {t('admin.grantByEmail.heading')}
-          </h2>
-          <GrantByEmail
-            tenant={slug}
-            labels={{
-              intro: t('admin.grantByEmail.intro'),
-              email: t('admin.grantByEmail.email'),
-              find: t('admin.grantByEmail.find'),
-              finding: t('admin.grantByEmail.finding'),
-              notFound: t('admin.grantByEmail.notFound'),
-              foundVerified: t('admin.grantByEmail.foundVerified', { handle: '{handle}' }),
-              foundUnverified: t('admin.grantByEmail.foundUnverified', { handle: '{handle}' }),
-              alreadyAdmin: t('admin.grantByEmail.alreadyAdmin', { handle: '{handle}' }),
-              grant: t('admin.grantByEmail.grant'),
-              granting: t('admin.grantByEmail.granting'),
-              granted: t('admin.grantByEmail.granted', { handle: '{handle}' }),
-              failed: t('admin.grantByEmail.failed'),
-            }}
-          />
-        </section>
+        {canGrant ? (
+          <section aria-labelledby="grant-by-email" className="flex flex-col gap-3 px-1">
+            <h2 id="grant-by-email" className="text-sm font-semibold">
+              {t('admin.grantByEmail.heading')}
+            </h2>
+            <GrantByEmail
+              tenant={slug}
+              labels={{
+                intro: t('admin.grantByEmail.intro'),
+                email: t('admin.grantByEmail.email'),
+                find: t('admin.grantByEmail.find'),
+                finding: t('admin.grantByEmail.finding'),
+                notFound: t('admin.grantByEmail.notFound'),
+                foundVerified: t('admin.grantByEmail.foundVerified', { handle: '{handle}' }),
+                foundUnverified: t('admin.grantByEmail.foundUnverified', { handle: '{handle}' }),
+                alreadyAdmin: t('admin.grantByEmail.alreadyAdmin', { handle: '{handle}' }),
+                grant: t('admin.grantByEmail.grant'),
+                granting: t('admin.grantByEmail.granting'),
+                granted: t('admin.grantByEmail.granted', { handle: '{handle}' }),
+                failed: t('admin.grantByEmail.failed'),
+              }}
+            />
+          </section>
+        ) : (
+          <p className="max-w-prose px-1 text-sm text-muted-foreground">
+            {t('admin.roles.platformManaged')}
+          </p>
+        )}
 
         <p className="px-1 text-sm">
           <Link href={`${base}/account`} className="font-medium text-primary hover:underline">

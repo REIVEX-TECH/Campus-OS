@@ -580,9 +580,11 @@ describe('the anonymity model', () => {
       permissions: ['communities.unmask'],
     });
     expect(role.ok).toBe(true);
+    // A resident administrator cannot assign roles at all now (platform-only,
+    // identity 0032), so this is refused before the above-your-own-head check.
     expect(await grantRole(tenantAdmin, 'aaa', tenantAdmin.userId, 'trust-and-safety')).toEqual({
       ok: false,
-      reason: 'above_own',
+      reason: 'not_allowed',
     });
     // Nor may a platform admin acting OFF-grant: the exemption that keeps
     // communities.unmask assignable is gated on a live grant (identity 0029).
