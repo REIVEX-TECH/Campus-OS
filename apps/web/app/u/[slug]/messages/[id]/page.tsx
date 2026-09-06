@@ -83,6 +83,7 @@ export default async function MessageThreadPage({ params }: Params) {
             deleted: m.deleted,
           }))}
           otherLastReadAt={convo.otherLastReadAt ? convo.otherLastReadAt.toISOString() : null}
+          ephemerality={convo.ephemerality}
           editWindowMinutes={settings.editWindowMinutes}
           deleteWindowMinutes={settings.deleteEveryoneWindowMinutes}
           reasons={REPORT_REASONS.map((r) => ({
@@ -106,6 +107,10 @@ export default async function MessageThreadPage({ params }: Params) {
             reportDone: t('messages.report.done'),
             failed: t('messages.failed'),
             empty: t('messages.threadEmpty'),
+            ephemeralityLabel: t('messages.ephemerality.label'),
+            ephemeralityNever: t('messages.ephemerality.never'),
+            ephemeralityAfter24h: t('messages.ephemerality.after24h'),
+            ephemeralityAfterViewing: t('messages.ephemerality.afterViewing'),
           }}
         />
       </div>

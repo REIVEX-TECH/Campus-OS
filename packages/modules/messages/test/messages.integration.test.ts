@@ -18,11 +18,13 @@ import {
   listInbox,
   markRead,
   sendMessage,
+  setEphemerality,
   startConversation,
   thread,
   unreadCount,
 } from '../src/service';
 import { moderationQueue, reportMessage, resolveReports } from '../src/moderation';
+import { expireMessages } from '../src/expiry';
 
 /**
  * Direct messages against a real Postgres: a conversation and its messages are
@@ -351,5 +353,73 @@ describe('direct messages moderation', () => {
       ok: false,
       error: 'not_found',
     });
+  });
+});
+
+describe('direct messages ephemerality', () => {
+  /** Force a message's expiry, as the owner, to simulate time passing. */
+  async function setExpiry(id: string, expr: string) {
+    await runAsMigrationRole(`update msg_messages set expires_at = ${expr} where id = '${id}'`);
+  }
+
+  it('stamps after_24h at send, and hides + sweeps a message past its window', async () => {
+    if (!split) return;
+    const a = await member('dm-e24-a');
+    const b = await member('dm-e24-b');
+    const started = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
+    if (!started.ok) throw new Error('start failed');
+    const id = started.value.id;
+    const sent = await sendMessage(a, 'aaa', id, { body: 'poof soon' }, settings);
+    if (!sent.ok) throw new Error('send failed');
+    // Visible while fresh.
+    expect((await thread(b, 'aaa', id))?.messages.map((m) => m.body)).toEqual(['poof soon']);
+    // Force it past the window: hidden from reads, then hard-deleted by the sweep.
+    await setExpiry(sent.value.id, `now() - interval '1 minute'`);
+    expect((await thread(b, 'aaa', id))?.messages).toEqual([]);
+    expect(await unreadCount(b.userId, 'aaa')).toBe(0);
+    expect((await expireMessages('aaa')).deleted).toBe(1);
+    expect((await expireMessages('aaa')).deleted).toBe(0);
+  });
+
+  it('stamps after_viewing only when the recipient reads, not before', async () => {
+    if (!split) return;
+    const a = await member('dm-ev-a');
+    const b = await member('dm-ev-b');
+    const started = await startConversation(a, 'aaa', b.userId, settings, 'after_viewing');
+    if (!started.ok) throw new Error('start failed');
+    const id = started.value.id;
+    const sent = await sendMessage(a, 'aaa', id, { body: 'read then gone' }, settings);
+    if (!sent.ok) throw new Error('send failed');
+    // Unread by b: no expiry yet.
+    const [beforeView] = [
+      ...(await withActorInTenant(a.userId, 'aaa', (tx) =>
+        tx.execute(sql`select expires_at from msg_messages where id = ${sent.value.id}::uuid`),
+      )),
+    ] as { expires_at: string | null }[];
+    expect(beforeView?.expires_at).toBeNull();
+    // b reads: the message it received now has an expiry.
+    expect((await markRead(b, 'aaa', id, 60)).ok).toBe(true);
+    const [afterView] = [
+      ...(await withActorInTenant(a.userId, 'aaa', (tx) =>
+        tx.execute(sql`select expires_at from msg_messages where id = ${sent.value.id}::uuid`),
+      )),
+    ] as { expires_at: string | null }[];
+    expect(afterView?.expires_at).not.toBeNull();
+  });
+
+  it('lets a participant change the disappearing mode', async () => {
+    if (!split) return;
+    const a = await member('dm-set-a');
+    const b = await member('dm-set-b');
+    const id = await open(a, b);
+    expect((await setEphemerality(b, 'aaa', id, 'after_24h')).ok).toBe(true);
+    const sent = await sendMessage(a, 'aaa', id, { body: 'now ephemeral' }, settings);
+    if (!sent.ok) throw new Error('send failed');
+    const [row] = [
+      ...(await withActorInTenant(a.userId, 'aaa', (tx) =>
+        tx.execute(sql`select expires_at from msg_messages where id = ${sent.value.id}::uuid`),
+      )),
+    ] as { expires_at: string | null }[];
+    expect(row?.expires_at).not.toBeNull();
   });
 });

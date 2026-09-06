@@ -10,6 +10,7 @@
     "./schema": "./src/schema/index.ts",
     "./service": "./src/service.ts",
     "./moderation": "./src/moderation.ts",
+    "./expiry": "./src/expiry.ts",
     "./input": "./src/input.ts"
   },
   "scripts": {

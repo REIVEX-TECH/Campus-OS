@@ -2857,6 +2857,9 @@ describe('definer grant hygiene', () => {
     // message snapshot) or resolves reports across participants.
     auth_msg_report_queue: 'app',
     auth_msg_resolve_reports: 'app',
+    // Stamps an after-viewing message's expiry on first view; app-callable, gated
+    // on the caller being a participant of the conversation.
+    auth_msg_stamp_viewed: 'app',
     // Owner-only: a maintenance script, an internal helper of other definers, or
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.

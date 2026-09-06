@@ -343,6 +343,10 @@ export const en = {
   'messages.report.reason.inappropriate': 'Inappropriate',
   'messages.report.reason.scam': 'Scam or impersonation',
   'messages.report.reason.other': 'Something else',
+  'messages.ephemerality.label': 'Disappearing',
+  'messages.ephemerality.never': 'Off',
+  'messages.ephemerality.after24h': 'After 24 hours',
+  'messages.ephemerality.afterViewing': 'After viewing',
 
   'search.heading': 'Search',
   'search.intro':
