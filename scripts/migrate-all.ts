@@ -3,11 +3,18 @@ import { applyMigrations, migrationDatabaseUrl, runBaseMigrations } from '@campu
 import { manifest as communitiesManifest } from '@campusos/module-communities/manifest';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import { manifest as lostFoundManifest } from '@campusos/module-lost-found/manifest';
+import { manifest as messagesManifest } from '@campusos/module-messages/manifest';
 import { manifest as timetableManifest } from '@campusos/module-timetable/manifest';
 
 // Base (@campusos/db) migrations run first, then each module's migrations in
 // manifest order. Register a module by adding its manifest here.
-const modules = [timetableManifest, identityManifest, communitiesManifest, lostFoundManifest];
+const modules = [
+  timetableManifest,
+  identityManifest,
+  communitiesManifest,
+  lostFoundManifest,
+  messagesManifest,
+];
 
 // Migrations are DDL, so they run as the schema owner rather than the runtime
 // role. See docs/db-role-split.md.
