@@ -12,6 +12,9 @@ export const PERMISSIONS = [
   'manage-rooms',
   'approve-verifications',
   'manage-members',
+  // Reveal one member's real identity (name, roll number, sign-in email). Every
+  // look is audited; the data is otherwise never shown, only handles.
+  'view-member-identity',
   // Standing: restricting a member to reading, or suspending them outright.
   'restrict-members',
   'manage-roles',

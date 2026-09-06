@@ -622,7 +622,7 @@ export const en = {
 
   'admin.verification.heading': 'Verification',
   'admin.verification.intro':
-    'Requests to be verified, and the members of the university. Only its admins can see this page. Names and numbers are deleted the moment you decide.',
+    'Requests to be verified, and the members of the university. Only its admins can see this page. Reject a request and its name and number are discarded at once; approve one and they are kept as that member’s identity, which an admin can look up (and every look is logged).',
   'admin.queue.heading': 'Waiting for a decision',
   'admin.queue.empty': 'Nothing is waiting.',
   'admin.queue.requested': 'Asked on {date}',
@@ -655,7 +655,14 @@ export const en = {
   'admin.members.verified': 'Verified',
   'admin.members.unverified': 'Not verified',
   'admin.members.intro':
-    'Everyone who belongs to the university, and the roles each of them holds. Handles only: no email is shown here.',
+    'Everyone who belongs to the university, and the roles each of them holds. The list shows handles only; you can reveal a member’s real identity when you need it, and every reveal is logged.',
+  'admin.members.showIdentity': 'Show identity',
+  'admin.members.hideIdentity': 'Hide',
+  'admin.members.revealing': 'Revealing',
+  'admin.members.identityName': 'Name',
+  'admin.members.identityRoll': 'Roll number',
+  'admin.members.identityEmail': 'Sign-in email',
+  'admin.members.identityNone': 'No name on file — verified without submitting one.',
   'admin.members.since': 'Member since {date}',
   'admin.members.you': 'You',
   'admin.members.suspended': 'Suspended',

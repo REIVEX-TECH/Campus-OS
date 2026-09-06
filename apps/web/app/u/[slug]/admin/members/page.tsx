@@ -42,7 +42,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  * Gated by `manage-members`, resolved on this request; anyone without it gets
  * a 404. The role controls appear only for someone who also holds
  * `manage-roles`, and every action is re-checked on the server inside its own
- * transaction. Handles only: no email is read anywhere on this page.
+ * transaction. The list itself shows handles only; a holder of
+ * `view-member-identity` can reveal one member's real identity on demand, and
+ * every such reveal is audited (auth_member_identity, 0031).
  */
 /** Why a member is under a standing and when it ends, in one line, or null. */
 function standingLineFor(
@@ -62,6 +64,7 @@ export default async function AdminMembersPage({ params }: Params) {
   const { actor, permissions } = await accessForPage(slug, 'manage-members');
   const canManageRoles = permissions.has('manage-roles');
   const canRestrict = permissions.has('restrict-members');
+  const canViewIdentity = permissions.has('view-member-identity');
 
   const settings = communitiesEnabled(tenant) ? communitiesSettings(tenant) : null;
   const [members, roles, standings, reported] = await Promise.all([
@@ -134,6 +137,7 @@ export default async function AdminMembersPage({ params }: Params) {
             selfUserId={actor.userId}
             canManageRoles={canManageRoles}
             canRestrict={canRestrict}
+            canViewIdentity={canViewIdentity}
             roles={named}
             items={rows.map((m) => ({
               userId: m.userId,
@@ -172,6 +176,13 @@ export default async function AdminMembersPage({ params }: Params) {
               lastAdmin: t('admin.members.lastAdmin'),
               self: t('admin.members.self'),
               failed: t('admin.members.failed'),
+              showIdentity: t('admin.members.showIdentity'),
+              hideIdentity: t('admin.members.hideIdentity'),
+              revealing: t('admin.members.revealing'),
+              identityName: t('admin.members.identityName'),
+              identityRoll: t('admin.members.identityRoll'),
+              identityEmail: t('admin.members.identityEmail'),
+              identityNone: t('admin.members.identityNone'),
             }}
           />
         )}

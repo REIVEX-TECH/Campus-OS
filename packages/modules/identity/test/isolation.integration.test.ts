@@ -42,6 +42,7 @@ import {
   effectivePermissionsInTransaction,
   grantRole,
   listRoles,
+  revealMemberIdentity,
   revokeRole,
   rolesForMember,
 } from '../src/rbac';
@@ -604,6 +605,10 @@ describe('row security invariants', () => {
     // the verification_request_details_purge trigger, both owner-run, so FORCE is
     // off; the app role stays bound to the own-row policy (0030).
     verification_request_details: false,
+    // Written by auth_verify_member (capture) and read by auth_member_identity
+    // (reveal), both owner-run, so FORCE is off (0031). It has NO app-facing
+    // policy at all, so RLS denies the app role every row regardless.
+    tenant_member_identity: false,
     // Read by auth_effective_permissions, so FORCE must stay off.
     roles: false,
     role_permissions: false,
@@ -1094,6 +1099,98 @@ describe('verifying by hand', () => {
       });
       expect(JSON.stringify(members.value)).not.toContain('@');
     }
+  });
+});
+
+describe('member identity (reveal, 0031)', () => {
+  const domain = { slug: 'aaa', joinMode: 'domain' as const, allowedEmailDomains: ['aaa.edu'] };
+
+  it('captures name and roll on approval, before the purge, and reveals them with the live email', async () => {
+    const admin = await adminIn('aaa', 'mi-adm-1');
+    const user = await findOrCreateUser({ subject: 'mi-user-1', email: 'reveal-me@gmail.com' });
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    expect(asked.ok).toBe(true);
+    if (!asked.ok) return;
+    expect((await decideRequest(admin, 'aaa', asked.value.id, 'approve')).ok).toBe(true);
+
+    // The verification detail was purged as the request left 'pending'...
+    expect(
+      await withActor(user.userId, (tx) => tx.select().from(verificationRequestDetails)),
+    ).toHaveLength(0);
+
+    // ...but the identity was captured first: the reveal returns it, plus the live email.
+    const identity = await revealMemberIdentity(admin, 'aaa', user.userId);
+    expect(identity).toMatchObject({
+      fullName: 'Ayesha Khan',
+      rollNumber: 'FA21-042',
+      email: 'reveal-me@gmail.com',
+    });
+  });
+
+  it('reveals only the sign-in email for a member who submitted no name (domain verify)', async () => {
+    const admin = await adminIn('aaa', 'mi-adm-2');
+    const student = await findOrCreateUser({ subject: 'mi-dom', email: 'domainy@aaa.edu' });
+    await ensureDomainMembership(student, domain);
+    const identity = await revealMemberIdentity(admin, 'aaa', student.userId);
+    expect(identity).toMatchObject({ email: 'domainy@aaa.edu', fullName: null, rollNumber: null });
+  });
+
+  it('refuses a caller without view-member-identity: empty, no leak', async () => {
+    const admin = await adminIn('aaa', 'mi-adm-3');
+    const target = await findOrCreateUser({ subject: 'mi-t3', email: 't3@gmail.com' });
+    const asked = await requestVerification(target.userId, 'aaa', details);
+    if (asked.ok) await decideRequest(admin, 'aaa', asked.value.id, 'approve');
+
+    // A plain student of the tenant cannot reveal, nor can the member themselves.
+    const nosy = await findOrCreateUser({ subject: 'mi-nosy', email: 'nosy@aaa.edu' });
+    await ensureDomainMembership(nosy, domain);
+    expect(await revealMemberIdentity(nosy, 'aaa', target.userId)).toBeNull();
+    expect(await revealMemberIdentity(target, 'aaa', target.userId)).toBeNull();
+  });
+
+  it('refuses across tenants: an admin here cannot reveal a member of another tenant', async () => {
+    const adminA = await adminIn('aaa', 'mi-adm-4');
+    const bMember = await findOrCreateUser({ subject: 'mi-b', email: 'bb@bbb.edu' });
+    await ensureDomainMembership(bMember, {
+      slug: 'bbb',
+      joinMode: 'domain',
+      allowedEmailDomains: ['bbb.edu'],
+    });
+    // bMember belongs to bbb, not aaa, so aaa's admin gets nothing.
+    expect(await revealMemberIdentity(adminA, 'aaa', bMember.userId)).toBeNull();
+  });
+
+  it('audits every reveal with the actor and target, and no PII', async () => {
+    const admin = await adminIn('aaa', 'mi-adm-5');
+    const user = await findOrCreateUser({ subject: 'mi-aud', email: 'audited@gmail.com' });
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    if (asked.ok) await decideRequest(admin, 'aaa', asked.value.id, 'approve');
+    await revealMemberIdentity(admin, 'aaa', user.userId);
+
+    const log = await withActor(admin.userId, (tx) =>
+      tx.select().from(auditLog).where(eq(auditLog.action, 'member.identity_viewed')),
+    );
+    const mine = log.filter((r) => r.tenantId === 'aaa' && r.actorUserId === admin.userId);
+    expect(mine).toHaveLength(1);
+    const meta = JSON.stringify(mine[0]!.meta);
+    expect(meta).toContain(user.userId);
+    // ids only in the audit line, never the revealed PII.
+    expect(meta).not.toContain('Ayesha');
+    expect(meta).not.toContain('@');
+  });
+
+  it('never lets the application read the identity table directly', async () => {
+    const admin = await adminIn('aaa', 'mi-adm-6');
+    const user = await findOrCreateUser({ subject: 'mi-iso', email: 'iso@gmail.com' });
+    const asked = await requestVerification(user.userId, 'aaa', details);
+    if (asked.ok) await decideRequest(admin, 'aaa', asked.value.id, 'approve');
+
+    // Even the member, in the tenant context, sees no row: the table has no
+    // app-facing policy, so RLS denies the application role every row.
+    const rows = await withActorInTenant(user.userId, 'aaa', (tx) =>
+      tx.execute(sql`select count(*)::int as n from tenant_member_identity`),
+    );
+    expect(([...rows] as { n: number }[])[0]?.n).toBe(0);
   });
 });
 

@@ -292,3 +292,70 @@ export async function findMemberByEmail(
       : null;
   });
 }
+
+export interface MemberIdentity {
+  userId: string;
+  handle: string | null;
+  avatarSeed: string;
+  /** Captured at verification from the request detail; null for a member who submitted none. */
+  fullName: string | null;
+  rollNumber: string | null;
+  /** The live sign-in email — the one identifier every member has. */
+  email: string;
+  capturedVia: string | null;
+  capturedAt: Date | null;
+}
+
+/**
+ * Reveal one member's real identity — name, roll number, sign-in email — for the
+ * admin members page.
+ *
+ * A deliberately narrow, audited read (auth_member_identity, 0031): the actor must
+ * hold view-member-identity, the target must be a member of THIS tenant (nothing
+ * for a stranger or a cross-tenant account), and every authorized reveal writes a
+ * `member.identity_viewed` audit line. Runs in the write context so a platform
+ * admin's grant is assumed and the definer's authority check resolves; a resident
+ * admin uses their own membership. Name/roll are null for a member who was
+ * verified without submitting them (a domain self-verify); the email is always
+ * present.
+ */
+export async function revealMemberIdentity(
+  actor: { userId: string },
+  tenantId: string,
+  targetUserId: string,
+  access?: TenantWriteContext,
+): Promise<MemberIdentity | null> {
+  return withTenantMutation(actor.userId, tenantId, access, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select user_id, handle, avatar_seed, full_name, roll_number, email, captured_via, captured_at
+            from auth_member_identity(${tenantId}, ${targetUserId}::uuid)`,
+      )),
+    ] as {
+      user_id: string;
+      handle: string | null;
+      avatar_seed: string;
+      full_name: string | null;
+      roll_number: string | null;
+      email: string;
+      captured_via: string | null;
+      captured_at: string | Date | null;
+    }[];
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      handle: row.handle,
+      avatarSeed: row.avatar_seed,
+      fullName: row.full_name,
+      rollNumber: row.roll_number,
+      email: row.email,
+      capturedVia: row.captured_via,
+      capturedAt:
+        row.captured_at === null
+          ? null
+          : row.captured_at instanceof Date
+            ? row.captured_at
+            : new Date(row.captured_at),
+    };
+  });
+}
