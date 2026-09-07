@@ -19,8 +19,8 @@ test('the tenant sitemap enumerates every public URL type', async ({ request }) 
   expect(xml).toContain('/courses/');
   expect(xml).toContain('/teachers/');
   expect(xml).toContain('/rooms/');
-  // The "coming soon" module stubs.
-  expect(xml).toContain('/soon/marketplace');
+  // The "coming soon" module stubs (marketplace is live now; rides is still soon).
+  expect(xml).toContain('/soon/rides');
   // URLs are the nested tenant host, absolute.
   expect(xml).toContain(`http://${NESTED}/`);
 });
