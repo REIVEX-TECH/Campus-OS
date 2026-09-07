@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNull, ne, sql } from 'drizzle-orm';
 import { withActorInTenant, withTenant, type TenantTransaction } from '@campusos/db';
 import {
   comments,
@@ -96,6 +96,41 @@ export async function commentsByAuthor(
   limit = 30,
 ): Promise<AuthoredComment[]> {
   return withTenant(tenantId, (tx) => readComments(tx, tenantId, userId, limit));
+}
+
+export interface ProfileMatch {
+  userId: string;
+  handle: string;
+  avatarSeed: string;
+}
+
+/**
+ * Members whose handle starts with `q`, for a recipient picker (the messages
+ * compose sheet). The actor's own row is excluded; the tenant scope is the RLS on
+ * the public_profiles view. A blank query returns nothing.
+ */
+export async function searchProfiles(
+  actor: { userId: string },
+  tenantId: string,
+  q: string,
+  limit = 8,
+): Promise<ProfileMatch[]> {
+  const query = q.trim();
+  if (!query) return [];
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = await tx
+      .select({
+        userId: publicProfiles.userId,
+        handle: publicProfiles.handle,
+        avatarSeed: publicProfiles.avatarSeed,
+      })
+      .from(publicProfiles)
+      .where(
+        and(ilike(publicProfiles.handle, `${query}%`), ne(publicProfiles.userId, actor.userId)),
+      )
+      .limit(limit);
+    return rows.map((r) => ({ userId: r.userId, handle: r.handle, avatarSeed: r.avatarSeed }));
+  });
 }
 
 /** Whether the viewer has blocked this person. Own rows, by RLS. */

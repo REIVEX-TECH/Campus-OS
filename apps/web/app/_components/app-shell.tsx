@@ -6,8 +6,13 @@ import { myCommunities } from '@campusos/module-communities/communities';
 import { COMMUNITIES } from '@/lib/communities';
 import { MODULES } from '@/lib/modules';
 import { ChromeProvider } from './chrome-context';
+import { ChatWidget } from './messages/chat-widget';
+import { ChatWidgetProvider } from './messages/chat-widget-context';
 import { Sidebar, type SidebarGroup, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
+import { buildMessagesLabels } from '@/lib/messages-labels';
+import { messagesSettings } from '@/lib/messages';
+import { getTenantRegistry } from '@/lib/tenants';
 import { unreadCount } from '@campusos/module-communities/notifications';
 import {
   unreadCount as messagesUnread,
@@ -63,6 +68,11 @@ export async function AppShell({
       ])
     : [0, 0];
   const msgTotal = msgUnread + msgRequests;
+  // The floating chat widget's config + labels, built once for the client panel.
+  const msgSettings = messagesOn
+    ? messagesSettings((await getTenantRegistry()).resolveBySlug(tenantSlug)!)
+    : null;
+  const msgLabels = messagesOn ? buildMessagesLabels(t) : null;
   const items: SidebarItem[] = MODULES.filter(
     (m) => !m.hideFromNav && (!m.moduleId || enabledModules.includes(m.moduleId)),
   ).map((m) => ({
@@ -94,70 +104,83 @@ export async function AppShell({
 
   return (
     <ChromeProvider>
-      <script dangerouslySetInnerHTML={{ __html: SIDEBAR_SCRIPT }} />
-      <SkipLink label={t('a11y.skipToContent')} />
-      <div className="app-frame">
-        <TopBar
-          tenantName={tenantName}
-          tenant={tenantSlug}
-          homeHref={base || '/'}
-          searchHref={`${base}/search`}
-          signInHref={`${base}/signin`}
-          account={
-            actor
-              ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
-              : null
-          }
-          notifications={
-            unread === null
-              ? null
-              : { href: `${base}/notifications`, unread, label: t('notifications.bell') }
-          }
-          messages={
-            messagesOn
-              ? {
-                  href: `${base}/messages`,
-                  count: msgTotal,
-                  label: t('module.messages.label'),
-                }
-              : null
-          }
-          firebase={firebaseWebConfig()}
-          labels={{
-            menu: t('nav.menu'),
-            search: t('nav.search'),
-            searchPlaceholder: t('search.placeholder'),
-            closeSearch: t('nav.closeSearch'),
-            theme: t('theme.toggle'),
-            account: {
-              signIn: t('signin.heading'),
-              working: t('signin.working'),
-              failed: t('signin.failed'),
-              retry: t('signin.retry'),
-              menu: t('nav.accountMenu'),
-              account: t('account.heading'),
-              signOut: t('signin.signOut'),
-              signingOut: t('signin.signingOut'),
-            },
-          }}
-        />
-        <div className="app-shell">
-          <Sidebar
-            items={items}
-            groups={groups}
+      <ChatWidgetProvider>
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_SCRIPT }} />
+        <SkipLink label={t('a11y.skipToContent')} />
+        <div className="app-frame">
+          <TopBar
+            tenantName={tenantName}
+            tenant={tenantSlug}
+            homeHref={base || '/'}
+            searchHref={`${base}/search`}
+            signInHref={`${base}/signin`}
+            account={
+              actor
+                ? { handle: actor.handle, avatarSeed: actor.avatarSeed, href: `${base}/account` }
+                : null
+            }
+            notifications={
+              unread === null
+                ? null
+                : { href: `${base}/notifications`, unread, label: t('notifications.bell') }
+            }
+            messages={
+              messagesOn
+                ? {
+                    href: `${base}/messages`,
+                    count: msgTotal,
+                    label: t('module.messages.label'),
+                  }
+                : null
+            }
+            firebase={firebaseWebConfig()}
             labels={{
-              modules: t('nav.modules'),
-              close: t('nav.close'),
-              collapse: t('nav.collapse'),
-              expand: t('nav.expand'),
-              comingSoon: t('modules.comingSoon'),
+              menu: t('nav.menu'),
+              search: t('nav.search'),
+              searchPlaceholder: t('search.placeholder'),
+              closeSearch: t('nav.closeSearch'),
+              theme: t('theme.toggle'),
+              account: {
+                signIn: t('signin.heading'),
+                working: t('signin.working'),
+                failed: t('signin.failed'),
+                retry: t('signin.retry'),
+                menu: t('nav.accountMenu'),
+                account: t('account.heading'),
+                signOut: t('signin.signOut'),
+                signingOut: t('signin.signingOut'),
+              },
             }}
           />
-          <main id="main" tabIndex={-1} className="app-content outline-none">
-            {children}
-          </main>
+          <div className="app-shell">
+            <Sidebar
+              items={items}
+              groups={groups}
+              labels={{
+                modules: t('nav.modules'),
+                close: t('nav.close'),
+                collapse: t('nav.collapse'),
+                expand: t('nav.expand'),
+                comingSoon: t('modules.comingSoon'),
+              }}
+            />
+            <main id="main" tabIndex={-1} className="app-content outline-none">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+        {messagesOn && msgLabels && msgSettings ? (
+          <ChatWidget
+            tenant={tenantSlug}
+            base={base}
+            selfUserId={actor!.userId}
+            maxLength={msgSettings.maxBodyLength}
+            editWindowMinutes={msgSettings.editWindowMinutes}
+            deleteWindowMinutes={msgSettings.deleteEveryoneWindowMinutes}
+            labels={msgLabels}
+          />
+        ) : null}
+      </ChatWidgetProvider>
     </ChromeProvider>
   );
 }

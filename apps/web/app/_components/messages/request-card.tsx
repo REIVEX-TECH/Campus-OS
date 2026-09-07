@@ -22,6 +22,7 @@ export function RequestCard({
   tenant,
   request,
   labels,
+  onChanged,
 }: {
   tenant: string;
   request: {
@@ -32,8 +33,12 @@ export function RequestCard({
     message: string | null;
   };
   labels: RequestCardLabels;
+  /** After an action; defaults to a route refresh (the full page). The client list
+   *  (widget / two-pane) re-fetches instead. */
+  onChanged?: () => void;
 }) {
   const router = useRouter();
+  const changed = onChanged ?? (() => router.refresh());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const name = request.fromHandle ?? labels.unknownMember;
@@ -48,7 +53,7 @@ export function RequestCard({
       body: JSON.stringify({ tenant, action }),
     }).catch(() => undefined);
     setBusy(false);
-    if (res?.ok) router.refresh();
+    if (res?.ok) changed();
     else setError(true);
   }
 

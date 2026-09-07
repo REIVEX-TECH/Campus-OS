@@ -16,6 +16,7 @@ import {
 import { memberPublicFacts } from '@campusos/module-identity/membership';
 import { conversationBetween } from '@campusos/module-messages/service';
 import { MessageButton } from '@/app/_components/messages/message-button';
+import { composeLabels } from '@/lib/messages-labels';
 import { messagesEnabled, messagesSettings } from '@/lib/messages';
 import { BlockButton } from '@/app/_components/communities/block-button';
 import { ReportPerson } from '@/app/_components/communities/report-person';
@@ -160,21 +161,13 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
               tenant={slug}
               base={base}
               userId={profile.userId}
+              recipientHandle={profile.handle}
+              recipientAvatarSeed={profile.avatarSeed}
               existing={existingConvo}
               maxLength={messagesSettings(tenant).maxBodyLength}
               label={t('messages.messageAction')}
               className="ios-pressable inline-flex h-9 items-center rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-              labels={{
-                title: t('messages.compose.title'),
-                hint: t('messages.compose.hint'),
-                placeholder: t('messages.composer.placeholder'),
-                send: t('messages.composer.send'),
-                sending: t('messages.composer.sending'),
-                cancel: t('comments.cancel'),
-                failed: t('messages.failed'),
-                declinedRecently: t('messages.compose.declinedRecently'),
-                blocked: t('messages.compose.blocked'),
-              }}
+              labels={composeLabels(t)}
             />
           ) : null}
           {actor && !self ? (

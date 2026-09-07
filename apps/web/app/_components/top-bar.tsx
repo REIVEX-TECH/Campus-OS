@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { AccountMenu, type AccountLabels, type TopAccount } from './account-menu';
 import { useChrome } from './chrome-context';
+import { useChatWidget } from './messages/chat-widget-context';
 import { LogoMark } from './logo-mark';
 import { ThemeToggle } from './theme-toggle';
 import { SearchIcon, TopSearch } from './top-search';
@@ -55,7 +57,17 @@ export function TopBar({
   labels: TopBarLabels;
 }) {
   const { openDrawer, menuButtonRef } = useChrome();
+  const widget = useChatWidget();
+  const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // The mail icon: on desktop it toggles the floating chat widget; below 1024px
+  // (no widget) it navigates to the full messages page.
+  function onMessages() {
+    if (!messages) return;
+    if (widget && window.matchMedia('(min-width: 1024px)').matches) widget.toggle();
+    else router.push(messages.href);
+  }
 
   return (
     <header id="app-topbar" className="app-topbar" data-print-hide>
@@ -122,9 +134,12 @@ export function TopBar({
           </button>
           <ThemeToggle label={labels.theme} />
           {messages ? (
-            <Link
-              href={messages.href}
+            <button
+              id="messages-widget-trigger"
+              type="button"
+              onClick={onMessages}
               aria-label={messages.label}
+              aria-expanded={widget ? widget.open : undefined}
               className="ios-pressable relative grid h-9 w-9 place-items-center rounded-full text-foreground"
             >
               <MailIcon />
@@ -133,7 +148,7 @@ export function TopBar({
                   {messages.count > 99 ? '99+' : messages.count}
                 </span>
               ) : null}
-            </Link>
+            </button>
           ) : null}
           {notifications ? (
             <Link

@@ -48,6 +48,32 @@ export async function messagesGate<S extends z.ZodTypeAny>(
   return { ok: true, actor, tenant, settings: messagesSettings(tenant), data: parsed.data };
 }
 
+/**
+ * The gate for a messages READ (the client widget/two-pane fetching inbox or a
+ * thread): same origin, signed in, the tenant resolved from `?tenant=`, the module
+ * enabled. No rate limit (these are the poll), and the module's own RLS confines
+ * every read to the actor's conversations.
+ */
+export type ReadGate =
+  | { ok: true; actor: Actor; tenant: TenantConfig; settings: MessagesSettings }
+  | { ok: false; response: Response };
+
+export async function messagesReadGate(request: Request): Promise<ReadGate> {
+  if (!isSameOrigin(request.headers)) {
+    return { ok: false, response: Response.json({ error: 'origin' }, { status: 403 }) };
+  }
+  const actor = await currentActor();
+  if (!actor) {
+    return { ok: false, response: Response.json({ error: 'unauthorised' }, { status: 401 }) };
+  }
+  const slug = new URL(request.url).searchParams.get('tenant');
+  const tenant = slug ? (await getTenantRegistry()).resolveBySlug(slug) : null;
+  if (!tenant || !messagesEnabled(tenant)) {
+    return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
+  }
+  return { ok: true, actor, tenant, settings: messagesSettings(tenant) };
+}
+
 /** Map a module refusal to an HTTP status. */
 export const MESSAGES_STATUS: Record<string, number> = {
   not_allowed: 403,

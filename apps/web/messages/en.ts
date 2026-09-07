@@ -363,7 +363,17 @@ export const en = {
   'messages.compose.hint': 'This starts a request. They choose whether to reply.',
   'messages.compose.declinedRecently': 'You recently sent a request. Try again later.',
   'messages.compose.blocked': 'You cannot message this person.',
+  'messages.compose.recipient': 'To',
+  'messages.compose.searchPlaceholder': 'Search people by handle',
+  'messages.compose.noMatches': 'No one found.',
   'messages.typing': 'Typing…',
+  'messages.widget.chats': 'Chats',
+  'messages.widget.newMessage': 'New message',
+  'messages.widget.openFull': 'Open in messages',
+  'messages.widget.minimize': 'Minimize',
+  'messages.widget.close': 'Close chats',
+  'messages.widget.back': 'Back to chats',
+  'messages.widget.label': 'Chats',
 
   'search.heading': 'Search',
   'search.intro':
