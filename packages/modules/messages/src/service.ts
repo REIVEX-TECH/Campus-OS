@@ -79,6 +79,8 @@ export interface Thread {
   isRequester: boolean;
   /** Whether the actor may send right now (false for a sent-but-unaccepted request). */
   canSend: boolean;
+  /** Whether the other participant is typing right now (active chats only). */
+  otherTyping: boolean;
   messages: ThreadMessage[];
 }
 
@@ -611,9 +613,14 @@ export async function thread(
     }
     const [otherState] = [
       ...(await tx.execute(sql`
-        select last_read_at from msg_participant_state
+        select last_read_at, typing_until from msg_participant_state
         where conversation_id = ${conversationId}::uuid and participant_id = ${conv.other}::uuid limit 1`)),
-    ] as { last_read_at: string | Date | null }[];
+    ] as { last_read_at: string | Date | null; typing_until: string | Date | null }[];
+    const otherTypingUntil = otherState ? toDate(otherState.typing_until) : null;
+    const otherTyping =
+      conv.status === 'active' &&
+      otherTypingUntil !== null &&
+      otherTypingUntil.getTime() > Date.now();
     const rows = [
       ...(await tx.execute(sql`
         select id, sender_id, body, reply_to_id, created_at, edited_at, deleted_at
@@ -641,6 +648,7 @@ export async function thread(
       status: conv.status,
       isRequester: conv.requested_by === actor.userId,
       canSend,
+      otherTyping,
       messages: rows.map((m) => ({
         id: m.id,
         senderId: m.sender_id,
@@ -684,6 +692,38 @@ export async function markRead(
     await tx.execute(
       sql`select auth_msg_stamp_viewed(${tenantId}, ${conversationId}::uuid, ${graceSeconds}::int)`,
     );
+    return ok({ ok: true });
+  });
+}
+
+/** Seconds a typing heartbeat keeps "typing" alive before it lapses. */
+const TYPING_TTL_SECONDS = 5;
+
+/**
+ * Heartbeat (or clear) the actor's typing state on a conversation. `on` extends it
+ * a few seconds; the composer refreshes it every couple of seconds while typing and
+ * clears it (`on=false`) on send or blur. Only in active conversations; a no-op
+ * otherwise, so a pending request never advertises typing.
+ */
+export async function setTyping(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+  on: boolean,
+): Promise<Result<{ ok: true }, SendRefusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [conv] = [
+      ...(await tx.execute(
+        sql`select id, status from msg_conversations where id = ${conversationId}::uuid limit 1`,
+      )),
+    ] as { id: string; status: string }[];
+    if (!conv) return err('not_found');
+    if (conv.status !== 'active') return ok({ ok: true });
+    const until = on ? sql`now() + (${TYPING_TTL_SECONDS}::int * interval '1 second')` : sql`null`;
+    await tx.execute(sql`
+      insert into msg_participant_state (tenant_id, conversation_id, participant_id, typing_until)
+      values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, ${until})
+      on conflict (conversation_id, participant_id) do update set typing_until = ${until}`);
     return ok({ ok: true });
   });
 }

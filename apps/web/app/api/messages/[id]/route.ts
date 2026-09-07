@@ -6,6 +6,7 @@ import {
   otherParticipant,
   sendMessage,
   setEphemerality,
+  setTyping,
   EPHEMERALITY,
 } from '@campusos/module-messages/service';
 import { blockUser, blockedBetween } from '@campusos/module-communities/blocks';
@@ -22,24 +23,31 @@ const bodySchema = z.discriminatedUnion('action', [
     replyToId: z.string().uuid().optional(),
   }),
   z.object({ tenant, action: z.literal('read') }),
+  z.object({ tenant, action: z.literal('typing'), on: z.boolean() }),
   z.object({ tenant, action: z.literal('ephemerality'), value: z.enum(EPHEMERALITY) }),
   z.object({ tenant, action: z.literal('accept') }),
   z.object({ tenant, action: z.literal('decline') }),
   z.object({ tenant, action: z.literal('decline_block') }),
 ]);
 
-/** Act in one conversation: send, read, set expiry, or accept/decline a request. */
+/** Act in one conversation: send, read, typing, set expiry, or accept/decline. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) {
     return Response.json({ error: 'not_found' }, { status: 404 });
   }
-  const gate = await messagesGate(request, 'thread', 60, bodySchema);
+  // 120/min: a typing heartbeat fires up to every 2s and must not crowd out sends.
+  const gate = await messagesGate(request, 'thread', 120, bodySchema);
   if (!gate.ok) return gate.response;
   const slug = gate.tenant.slug;
 
   if (gate.data.action === 'read') {
     const res = await markRead(gate.actor, slug, id, gate.settings.afterViewingGraceSeconds);
+    if (!res.ok) return refusalResponse(res.error);
+    return Response.json({ ok: true });
+  }
+  if (gate.data.action === 'typing') {
+    const res = await setTyping(gate.actor, slug, id, gate.data.on);
     if (!res.ok) return refusalResponse(res.error);
     return Response.json({ ok: true });
   }

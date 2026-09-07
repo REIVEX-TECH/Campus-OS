@@ -363,6 +363,7 @@ export const en = {
   'messages.compose.hint': 'This starts a request. They choose whether to reply.',
   'messages.compose.declinedRecently': 'You recently sent a request. Try again later.',
   'messages.compose.blocked': 'You cannot message this person.',
+  'messages.typing': 'Typing…',
 
   'search.heading': 'Search',
   'search.intro':

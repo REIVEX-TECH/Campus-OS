@@ -24,6 +24,7 @@ import {
   requestCount,
   sendMessage,
   setEphemerality,
+  setTyping,
   startConversation,
   thread,
   unreadCount,
@@ -557,6 +558,26 @@ describe('direct messages requests', () => {
     // The pending request message never got an expiry; the first active one did.
     expect(rows.find((r) => r.body === 'request')?.expires_at).toBeNull();
     expect(rows.find((r) => r.body === 'ok')?.expires_at).not.toBeNull();
+  });
+
+  it('shows the other side typing in an active chat, never while pending', async () => {
+    if (!split) return;
+    const a = await member('dm-ty-a');
+    const b = await member('dm-ty-b');
+    const id = await open(a, b);
+    // a is typing: b's thread sees it; a's own does not.
+    expect((await setTyping(a, 'aaa', id, true)).ok).toBe(true);
+    expect((await thread(b, 'aaa', id))?.otherTyping).toBe(true);
+    expect((await thread(a, 'aaa', id))?.otherTyping).toBe(false);
+    // Cleared on send/blur.
+    expect((await setTyping(a, 'aaa', id, false)).ok).toBe(true);
+    expect((await thread(b, 'aaa', id))?.otherTyping).toBe(false);
+    // A pending request never advertises typing (setTyping is a no-op there).
+    const c = await member('dm-ty-c');
+    const req = await startConversation(a, 'aaa', c.userId, 'hi', settings);
+    if (!req.ok) throw new Error(req.error);
+    expect((await setTyping(a, 'aaa', req.value.id, true)).ok).toBe(true);
+    expect((await thread(c, 'aaa', req.value.id))?.otherTyping).toBe(false);
   });
 
   it('cannot create a request without a message', async () => {

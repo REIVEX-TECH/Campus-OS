@@ -87,6 +87,7 @@ export default async function MessageThreadPage({ params }: Params) {
           status={convo.status}
           isRequester={convo.isRequester}
           canSend={convo.canSend}
+          otherTyping={convo.otherTyping}
           inboxHref={`${base}/messages`}
           editWindowMinutes={settings.editWindowMinutes}
           deleteWindowMinutes={settings.deleteEveryoneWindowMinutes}
@@ -122,6 +123,7 @@ export default async function MessageThreadPage({ params }: Params) {
             accept: t('messages.request.accept'),
             decline: t('messages.request.decline'),
             block: t('messages.request.block'),
+            typing: t('messages.typing'),
           }}
         />
       </div>
