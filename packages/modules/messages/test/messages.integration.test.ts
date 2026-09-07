@@ -380,6 +380,8 @@ describe('direct messages ephemerality', () => {
     const started = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
     if (!started.ok) throw new Error('start failed');
     const id = started.value.id;
+    // Accept so it is an active chat: ephemerality applies only once active.
+    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'poof soon' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Visible while fresh.
@@ -404,6 +406,8 @@ describe('direct messages ephemerality', () => {
     const started = await startConversation(a, 'aaa', b.userId, settings, 'after_viewing');
     if (!started.ok) throw new Error('start failed');
     const id = started.value.id;
+    // Accept so it is an active chat: opening a request never stamps after_viewing.
+    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'read then gone' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Unread by b: no expiry yet.

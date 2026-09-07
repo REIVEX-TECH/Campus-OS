@@ -77,6 +77,8 @@ export interface Thread {
   status: string;
   /** True when the actor is the one who opened this (still-)request. */
   isRequester: boolean;
+  /** Whether the actor may send right now (false for a sent-but-unaccepted request). */
+  canSend: boolean;
   messages: ThreadMessage[];
 }
 
@@ -415,6 +417,26 @@ export async function requestCount(userId: string, tenantId: string): Promise<nu
   });
 }
 
+/**
+ * The other participant of a conversation the actor is in, or null. Lets the web
+ * route run the bidirectional block check (a communities capability) without the
+ * messages module reading another module's tables.
+ */
+export async function otherParticipant(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+): Promise<string | null> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(sql`
+        select case when participant_a = ${actor.userId}::uuid then participant_b else participant_a end as other
+        from msg_conversations where id = ${conversationId}::uuid limit 1`)),
+    ] as { other: string }[];
+    return row?.other ?? null;
+  });
+}
+
 /** Why an accept/decline did not apply, for a precise refusal. */
 async function requestRefusal(
   tx: TenantTransaction,
@@ -481,7 +503,7 @@ export async function thread(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(sql`
-        select c.id, c.ephemerality, c.status, c.requested_by,
+        select c.id, c.ephemerality, c.status, c.requested_by, c.status_changed_at,
                case when c.participant_a = ${actor.userId}::uuid then c.participant_b else c.participant_a end as other,
                p.handle as other_handle, p.avatar_seed as other_avatar_seed
         from msg_conversations c
@@ -493,11 +515,28 @@ export async function thread(
       ephemerality: string;
       status: string;
       requested_by: string | null;
+      status_changed_at: string | Date | null;
       other: string;
       other_handle: string | null;
       other_avatar_seed: string | null;
     }[];
     if (!conv) return null;
+    // Whether the actor may send now: always when active; a recipient replying to a
+    // pending request accepts it; a requester may send only the one request message.
+    let canSend = conv.status === 'active';
+    if (conv.status === 'pending') {
+      if (conv.requested_by !== actor.userId) {
+        canSend = true;
+      } else {
+        const [c] = [
+          ...(await tx.execute(sql`
+            select count(*)::int as n from msg_messages
+            where conversation_id = ${conversationId}::uuid
+              and created_at > ${conv.status_changed_at}::timestamptz`)),
+        ] as { n: number }[];
+        canSend = (c?.n ?? 0) === 0;
+      }
+    }
     const [otherState] = [
       ...(await tx.execute(sql`
         select last_read_at from msg_participant_state
@@ -529,6 +568,7 @@ export async function thread(
       ephemerality: conv.ephemerality,
       status: conv.status,
       isRequester: conv.requested_by === actor.userId,
+      canSend,
       messages: rows.map((m) => ({
         id: m.id,
         senderId: m.sender_id,
