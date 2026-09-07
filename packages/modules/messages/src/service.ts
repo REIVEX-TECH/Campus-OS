@@ -533,11 +533,16 @@ export async function acceptRequest(
   conversationId: string,
 ): Promise<Result<{ ok: true }, RequestRefusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    // Only activate a request that actually carries a message. A request is always
+    // created with its first message, so this holds for every real one; the guard
+    // means accept can never mint an active conversation with zero messages (which
+    // would read as "No messages yet" in an inbox).
     const rows = [
       ...(await tx.execute(sql`
         update msg_conversations set status = 'active', status_changed_at = now()
         where id = ${conversationId}::uuid and status = 'pending'
           and requested_by <> ${actor.userId}::uuid
+          and exists (select 1 from msg_messages m where m.conversation_id = ${conversationId}::uuid)
         returning id`)),
     ];
     if (rows.length > 0) return ok({ ok: true });

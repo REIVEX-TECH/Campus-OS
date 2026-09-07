@@ -43,6 +43,13 @@
       "when": 1756800305000,
       "tag": "0005_typing_indicator",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1756800306000,
+      "tag": "0006_prune_empty_conversations",
+      "breakpoints": true
     }
   ]
 }

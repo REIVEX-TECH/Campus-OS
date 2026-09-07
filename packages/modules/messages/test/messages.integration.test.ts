@@ -580,6 +580,20 @@ describe('direct messages requests', () => {
     expect((await thread(c, 'aaa', req.value.id))?.otherTyping).toBe(false);
   });
 
+  it('accept cannot mint an active conversation with zero messages', async () => {
+    if (!split) return;
+    const a = await member('dm-ae-a');
+    const b = await member('dm-ae-b');
+    const res = await startConversation(a, 'aaa', b.userId, 'hi', settings);
+    if (!res.ok) throw new Error(res.error);
+    const id = res.value.id;
+    // Strip the request's only message, as legacy create-empty data had none, then
+    // accept: the guard must refuse, leaving the conversation pending, not active.
+    await runAsMigrationRole(`delete from msg_messages where conversation_id = '${id}'`);
+    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(false);
+    expect((await thread(b, 'aaa', id))?.status).toBe('pending');
+  });
+
   it('cannot create a request without a message', async () => {
     if (!split) return;
     const a = await member('dm-nm-a');
