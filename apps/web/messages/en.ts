@@ -348,6 +348,17 @@ export const en = {
   'messages.ephemerality.never': 'Off',
   'messages.ephemerality.after24h': 'After 24 hours',
   'messages.ephemerality.afterViewing': 'After viewing',
+  'messages.tab.messages': 'Messages',
+  'messages.tab.requests': 'Requests',
+  'messages.requestsEmpty': 'No requests right now.',
+  'messages.requestsIntro': 'People who want to start a conversation with you.',
+  'messages.request.sent': 'Request sent',
+  'messages.request.waiting': 'Waiting for them to accept.',
+  'messages.request.replyAccepts': 'Replying accepts this request.',
+  'messages.request.incoming': 'Wants to start a conversation.',
+  'messages.request.accept': 'Accept',
+  'messages.request.decline': 'Decline',
+  'messages.request.block': 'Block',
 
   'search.heading': 'Search',
   'search.intro':
