@@ -5,8 +5,12 @@ import { pageAs } from './support/sessions';
  * A photo posted with a Lost & Found item round-trips through the media pipeline
  * and serves back from /media. This pins two things a browser depends on: the
  * upload endpoint accepts a real image (magic-byte + sharp), and /media is served
- * (not swallowed by the tenant rewrite). A regression in either fails here.
+ * (not swallowed by the tenant rewrite). The upload is driven through the API so a
+ * failure surfaces its status and body here rather than being swallowed by the
+ * post form's best-effort photo loop.
  */
+
+const ourOrigin = () => ({ origin: String(test.info().project.use.baseURL) });
 
 // A 1x1 PNG. sharp decodes it and re-encodes to WebP; the bytes only need to be a
 // genuine image, which a fake would not be.
@@ -19,23 +23,34 @@ test('a member posts a lost-found item with a photo that serves from /media', as
   browser,
 }) => {
   const page = await pageAs(browser, 'member');
-  await page.goto('/u/lgu/lost-found/post');
 
-  await page.getByRole('textbox', { name: 'Title' }).fill('Lost umbrella e2e');
-  await page
-    .locator('input[type=file]')
-    .setInputFiles({ name: 'sample.png', mimeType: 'image/png', buffer: PNG_1X1 });
-  await page.getByRole('button', { name: 'Post', exact: true }).click();
+  // Create the item (verified member). page.request carries the session cookie.
+  const created = await page.request.post('/api/lost-found/items', {
+    headers: { ...ourOrigin(), 'content-type': 'application/json' },
+    data: { tenant: 'lgu', kind: 'lost', title: 'Lost umbrella e2e', category: 'other' },
+  });
+  const createdBody = await created.text();
+  expect(created.ok(), createdBody).toBeTruthy();
+  const { id } = JSON.parse(createdBody) as { id: string };
 
-  // Lands on the new item page, which renders the photo from /media.
-  await page.waitForURL(/\/u\/lgu\/lost-found\/[0-9a-f-]{8,}$/i);
+  // Upload a real image through the pipeline; assert it succeeds. If MEDIA_DATA_DIR
+  // or the pipeline is wrong, the status and body show up in this assertion.
+  const uploaded = await page.request.post(`/api/lost-found/items/${id}/photos`, {
+    headers: ourOrigin(),
+    multipart: {
+      tenant: 'lgu',
+      file: { name: 'sample.png', mimeType: 'image/png', buffer: PNG_1X1 },
+    },
+  });
+  expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+
+  // The item page renders the photo from /media, and the URL actually serves.
+  await page.goto(`/u/lgu/lost-found/${id}`);
   const img = page.locator('img[src^="/media/"]').first();
   await expect(img).toBeVisible();
-
-  // The photo actually serves: fetch its URL and confirm a 200 image response.
   const src = await img.getAttribute('src');
   expect(src).toBeTruthy();
-  const res = await page.request.get(src!);
-  expect(res.status()).toBe(200);
-  expect(res.headers()['content-type'] ?? '').toContain('image/');
+  const served = await page.request.get(src!);
+  expect(served.status()).toBe(200);
+  expect(served.headers()['content-type'] ?? '').toContain('image/');
 });

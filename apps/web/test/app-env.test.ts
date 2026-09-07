@@ -18,6 +18,7 @@ function baseEnv(over: Record<string, string | undefined> = {}): NodeJS.ProcessE
     TENANT_BASE_DOMAIN: 'campusos.reivex.io',
     PLATFORM_HOST: 'campusos.reivex.io',
     APP_DOMAIN: 'campusos.reivex.io',
+    MEDIA_DATA_DIR: '/srv/campusos-data/media',
     ...over,
   };
 }
@@ -48,7 +49,7 @@ describe('assertAppEnv', () => {
   });
 
   it('requires the base/host vars in production (a missing one crashes the boot)', () => {
-    for (const name of ['TENANT_BASE_DOMAIN', 'PLATFORM_HOST', 'APP_DOMAIN']) {
+    for (const name of ['TENANT_BASE_DOMAIN', 'PLATFORM_HOST', 'APP_DOMAIN', 'MEDIA_DATA_DIR']) {
       expect(() => assertAppEnv({ env: baseEnv({ [name]: undefined }), dotenvPath: null })).toThrow(
         new RegExp(`${name} is REQUIRED in production`),
       );
@@ -141,7 +142,12 @@ describe('app-env manifest', () => {
     const always = vars.filter((v) => v.required).map((v) => v.name);
     const inProd = vars.filter((v) => v.requiredInProduction).map((v) => v.name);
     expect(always).toEqual(['DATABASE_URL']);
-    expect(inProd.sort()).toEqual(['APP_DOMAIN', 'PLATFORM_HOST', 'TENANT_BASE_DOMAIN']);
+    expect(inProd.sort()).toEqual([
+      'APP_DOMAIN',
+      'MEDIA_DATA_DIR',
+      'PLATFORM_HOST',
+      'TENANT_BASE_DOMAIN',
+    ]);
     expect(names).not.toContain('MIGRATION_DATABASE_URL');
     expect(names).not.toContain('NEXT_PUBLIC_FIREBASE_API_KEY');
   });
