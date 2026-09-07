@@ -91,6 +91,7 @@ export default async function LostFoundPostPage({ params }: Params) {
     failed: t('lostFound.form.failed'),
     tooLarge: t('lostFound.form.tooLarge'),
     badType: t('lostFound.form.badType'),
+    cardsWarning: t('lostFound.form.cardsWarning'),
     categoryLabels: Object.fromEntries(settings.categories.map((c) => [c, categoryLabel(t, c)])),
   };
 
