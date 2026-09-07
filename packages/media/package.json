@@ -6,7 +6,8 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./image": "./src/image.ts"
+    "./image": "./src/image.ts",
+    "./file": "./src/file.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
