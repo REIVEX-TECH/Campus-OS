@@ -310,6 +310,7 @@ export const en = {
   'lostFound.mod.viewItem': 'View item',
   'lostFound.mod.remove': 'Remove item',
   'lostFound.mod.removePrompt': 'Reason for removal',
+  'lostFound.mod.removeConfirm': 'Remove item',
   'lostFound.mod.dismiss': 'Dismiss',
   'lostFound.mod.working': 'Working',
   'lostFound.mod.link': 'Moderation',
