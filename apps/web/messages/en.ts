@@ -1277,6 +1277,8 @@ export const en = {
   'profile.noPosts': 'No posts under this name yet.',
   'profile.noComments': 'No comments under this name yet.',
   'profile.noAnonymous': 'Nothing posted anonymously.',
+  'profile.listings': 'For sale',
+  'profile.noListings': 'Nothing for sale right now.',
   'saved.tabsLabel': 'Saved sections',
   'saved.posts': 'Posts',
   'saved.comments': 'Comments',
