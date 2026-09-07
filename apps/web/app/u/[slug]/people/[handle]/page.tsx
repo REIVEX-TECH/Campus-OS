@@ -14,8 +14,9 @@ import {
   profileByHandle,
 } from '@campusos/module-communities/profiles';
 import { memberPublicFacts } from '@campusos/module-identity/membership';
+import { conversationBetween } from '@campusos/module-messages/service';
 import { MessageButton } from '@/app/_components/messages/message-button';
-import { messagesEnabled } from '@/lib/messages';
+import { messagesEnabled, messagesSettings } from '@/lib/messages';
 import { BlockButton } from '@/app/_components/communities/block-button';
 import { ReportPerson } from '@/app/_components/communities/report-person';
 import { PostCard } from '@/app/_components/communities/post-card';
@@ -105,6 +106,11 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
     : null;
   const here = `${base}/people/${profile.handle}`;
   const tabs = ['posts', 'comments', ...(self ? (['anonymous'] as const) : [])] as const;
+  // For the Message button: an existing conversation links straight to it; none
+  // opens the compose sheet (a request is created with its first message).
+  const messagesOn = messagesEnabled(tenant);
+  const existingConvo =
+    actor && !self && messagesOn ? await conversationBetween(actor, slug, profile.userId) : null;
 
   return (
     <PageShell>
@@ -149,14 +155,26 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
               {t('profile.edit')}
             </Link>
           ) : null}
-          {actor && !self && messagesEnabled(tenant) && !blocked ? (
+          {actor && !self && messagesOn && !blocked ? (
             <MessageButton
               tenant={slug}
               base={base}
               userId={profile.userId}
+              existing={existingConvo}
+              maxLength={messagesSettings(tenant).maxBodyLength}
               label={t('messages.messageAction')}
-              busyLabel={t('messages.composer.sending')}
               className="ios-pressable inline-flex h-9 items-center rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              labels={{
+                title: t('messages.compose.title'),
+                hint: t('messages.compose.hint'),
+                placeholder: t('messages.composer.placeholder'),
+                send: t('messages.composer.send'),
+                sending: t('messages.composer.sending'),
+                cancel: t('comments.cancel'),
+                failed: t('messages.failed'),
+                declinedRecently: t('messages.compose.declinedRecently'),
+                blocked: t('messages.compose.blocked'),
+              }}
             />
           ) : null}
           {actor && !self ? (
