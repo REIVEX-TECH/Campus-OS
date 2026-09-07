@@ -84,6 +84,10 @@ export default async function MessageThreadPage({ params }: Params) {
           }))}
           otherLastReadAt={convo.otherLastReadAt ? convo.otherLastReadAt.toISOString() : null}
           ephemerality={convo.ephemerality}
+          status={convo.status}
+          isRequester={convo.isRequester}
+          canSend={convo.canSend}
+          inboxHref={`${base}/messages`}
           editWindowMinutes={settings.editWindowMinutes}
           deleteWindowMinutes={settings.deleteEveryoneWindowMinutes}
           reasons={REPORT_REASONS.map((r) => ({
@@ -111,6 +115,13 @@ export default async function MessageThreadPage({ params }: Params) {
             ephemeralityNever: t('messages.ephemerality.never'),
             ephemeralityAfter24h: t('messages.ephemerality.after24h'),
             ephemeralityAfterViewing: t('messages.ephemerality.afterViewing'),
+            requestSent: t('messages.request.sent'),
+            requestWaiting: t('messages.request.waiting'),
+            requestComposerHint: t('messages.request.replyAccepts'),
+            requestIncomingHint: t('messages.request.incoming'),
+            accept: t('messages.request.accept'),
+            decline: t('messages.request.decline'),
+            block: t('messages.request.block'),
           }}
         />
       </div>

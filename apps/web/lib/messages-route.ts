@@ -57,7 +57,10 @@ export const MESSAGES_STATUS: Record<string, number> = {
   self: 409,
   invalid: 400,
   rate_limited: 429,
+  declined_recently: 409,
   not_found: 404,
+  not_pending: 409,
+  not_recipient: 403,
   too_late: 409,
   exists: 409,
 };

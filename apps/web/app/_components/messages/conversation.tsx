@@ -35,6 +35,13 @@ export type ConversationLabels = {
   ephemeralityNever: string;
   ephemeralityAfter24h: string;
   ephemeralityAfterViewing: string;
+  requestSent: string;
+  requestWaiting: string;
+  requestComposerHint: string;
+  requestIncomingHint: string;
+  accept: string;
+  decline: string;
+  block: string;
 };
 
 /**
@@ -51,6 +58,10 @@ export function Conversation({
   initialMessages,
   otherLastReadAt,
   ephemerality,
+  status,
+  isRequester,
+  canSend,
+  inboxHref,
   editWindowMinutes,
   deleteWindowMinutes,
   reasons,
@@ -62,12 +73,20 @@ export function Conversation({
   initialMessages: WireMessage[];
   otherLastReadAt: string | null;
   ephemerality: string;
+  status: string;
+  isRequester: boolean;
+  canSend: boolean;
+  inboxHref: string;
   editWindowMinutes: number;
   deleteWindowMinutes: number;
   reasons: Reason[];
   labels: ConversationLabels;
 }) {
   const router = useRouter();
+  // A pending request the actor received: they accept/decline it here (or replying
+  // accepts). A request the actor sent shows "Request sent" and no composer.
+  const incoming = status === 'pending' && !isRequester;
+  const sentRequest = (status === 'pending' || status === 'declined') && isRequester;
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [optimistic, setOptimistic] = useState<string[]>([]);
@@ -172,20 +191,73 @@ export function Conversation({
     });
   }
 
+  async function requestAction(action: 'accept' | 'decline' | 'decline_block') {
+    if (busy) return;
+    setBusy(true);
+    const res = await fetch(`/api/messages/${conversationId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant, action }),
+    }).catch(() => undefined);
+    setBusy(false);
+    if (res?.ok) {
+      // Accept: the thread becomes an active chat here. Decline/block: leave it.
+      if (action === 'accept') router.refresh();
+      else router.push(inboxHref);
+    } else {
+      setError(labels.failed);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-        {labels.ephemeralityLabel}
-        <select
-          value={ephemerality}
-          onChange={(e) => changeEphemerality(e.target.value)}
-          className="ios-field h-7 rounded-lg py-0 text-xs"
-        >
-          <option value="never">{labels.ephemeralityNever}</option>
-          <option value="after_24h">{labels.ephemeralityAfter24h}</option>
-          <option value="after_viewing">{labels.ephemeralityAfterViewing}</option>
-        </select>
-      </label>
+      {status === 'active' ? (
+        <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+          {labels.ephemeralityLabel}
+          <select
+            value={ephemerality}
+            onChange={(e) => changeEphemerality(e.target.value)}
+            className="ios-field h-7 rounded-lg px-2.5 py-0 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="never">{labels.ephemeralityNever}</option>
+            <option value="after_24h">{labels.ephemeralityAfter24h}</option>
+            <option value="after_viewing">{labels.ephemeralityAfterViewing}</option>
+          </select>
+        </label>
+      ) : null}
+
+      {incoming ? (
+        <div className="ios-card flex flex-col gap-2 rounded-2xl p-3">
+          <p className="text-sm text-muted-foreground">{labels.requestIncomingHint}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void requestAction('accept')}
+              className="ios-pressable rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {labels.accept}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void requestAction('decline')}
+              className="ios-pressable rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground disabled:opacity-50"
+            >
+              {labels.decline}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void requestAction('decline_block')}
+              className="ios-pressable rounded-full px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {labels.block}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <ol className="ios-card flex min-h-[40vh] flex-col gap-2 rounded-2xl p-3">
         {initialMessages.length === 0 && optimistic.length === 0 ? (
           <li className="m-auto text-sm text-muted-foreground">{labels.empty}</li>
@@ -245,35 +317,48 @@ export function Conversation({
         </p>
       ) : null}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-        className="flex items-end gap-2"
-      >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
+      {sentRequest ? (
+        <div className="ios-card flex flex-col gap-0.5 rounded-2xl p-3 text-sm">
+          <span className="font-medium">{labels.requestSent}</span>
+          <span className="text-muted-foreground">{labels.requestWaiting}</span>
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
           }}
-          rows={1}
-          placeholder={labels.placeholder}
-          aria-label={labels.placeholder}
-          className="ios-field max-h-40 flex-1 resize-none"
-        />
-        <button
-          type="submit"
-          disabled={busy || draft.trim().length === 0}
-          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          className="flex flex-col gap-1"
         >
-          {busy ? labels.sending : labels.send}
-        </button>
-      </form>
+          {incoming ? (
+            <p className="px-1 text-xs text-muted-foreground">{labels.requestComposerHint}</p>
+          ) : null}
+          <div className="flex items-end gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={1}
+              placeholder={labels.placeholder}
+              aria-label={labels.placeholder}
+              disabled={!canSend}
+              className="ios-field max-h-40 flex-1 resize-none rounded-xl px-3.5 py-2.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={busy || !canSend || draft.trim().length === 0}
+              className="ios-pressable rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {busy ? labels.sending : labels.send}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
