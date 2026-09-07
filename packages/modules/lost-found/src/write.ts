@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withActorInTenant } from '@campusos/db';
+import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { isVerifiedMember } from './access';
 import { lostFoundItemPhotos, lostFoundItems } from './schema/lost-found';
@@ -105,12 +105,14 @@ export async function addItemPhoto(
   });
 }
 
-/** Withdraw one's own open item. Idempotent-ish: only an open item changes. */
+/** Withdraw one's own open item. Idempotent-ish: only an open item changes. A
+ *  withdrawn item has no re-list path, so its photo ROWS are deleted here and the
+ *  storage keys returned for the caller to remove from object storage. */
 export async function withdrawItem(
   actor: { userId: string },
   tenantId: string,
   itemId: string,
-): Promise<Result<{ changed: boolean }, ItemRefusal>> {
+): Promise<Result<{ changed: boolean; photoKeys: string[] }, ItemRefusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const rows = [
       ...(await tx.execute(sql`
@@ -119,8 +121,29 @@ export async function withdrawItem(
           and reporter_id = ${actor.userId}::uuid and status = 'open'
         returning id`)),
     ];
-    return ok({ changed: rows.length > 0 });
+    if (rows.length === 0) return ok({ changed: false, photoKeys: [] });
+    return ok({ changed: true, photoKeys: await deleteItemPhotoRows(tx, itemId) });
   });
+}
+
+/**
+ * Delete an item's photo ROWS and return every storage key (full + thumb) so the
+ * caller can remove the files from object storage. The DB delete is inside the
+ * caller's transaction; the file delete happens after it commits (a filesystem op
+ * is not transactional, and a missing file is not an error). Callers gate on
+ * ownership/moderation before reaching this, so the tenant-only RLS on the photos
+ * table is not the access check.
+ */
+export async function deleteItemPhotoRows(
+  tx: TenantTransaction,
+  itemId: string,
+): Promise<string[]> {
+  const rows = [
+    ...(await tx.execute(sql`
+      delete from lf_item_photos where item_id = ${itemId}::uuid
+      returning storage_key, thumb_key`)),
+  ] as { storage_key: string; thumb_key: string }[];
+  return rows.flatMap((r) => [r.storage_key, r.thumb_key]).filter((k): k is string => Boolean(k));
 }
 
 /**
