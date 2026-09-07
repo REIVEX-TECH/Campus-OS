@@ -374,6 +374,7 @@ export const en = {
   'messages.widget.close': 'Close chats',
   'messages.widget.back': 'Back to chats',
   'messages.widget.label': 'Chats',
+  'messages.selectConversation': 'Select a conversation to read it.',
 
   'search.heading': 'Search',
   'search.intro':
