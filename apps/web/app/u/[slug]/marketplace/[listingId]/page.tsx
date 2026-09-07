@@ -4,6 +4,7 @@ import { mediaUrl } from '@campusos/media';
 import { isListingSaved, listingById } from '@campusos/module-marketplace/listings';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { MessageSellerButton } from '@/app/_components/marketplace/message-seller-button';
+import { ReportButton } from '@/app/_components/marketplace/report-button';
 import { SaveButton } from '@/app/_components/marketplace/save-button';
 import { SellerControls } from '@/app/_components/marketplace/seller-controls';
 import { PageShell } from '@/app/_components/page-shell';
@@ -212,6 +213,31 @@ export default async function MarketplaceListingPage({ params }: Params) {
                 }}
               />
             ) : null}
+          </div>
+        ) : null}
+
+        {canSave ? (
+          <div className="px-1">
+            <ReportButton
+              tenant={slug}
+              listingId={listing.id}
+              labels={{
+                button: t('marketplace.report.button'),
+                prompt: t('marketplace.report.prompt'),
+                note: t('marketplace.report.note'),
+                send: t('marketplace.report.send'),
+                done: t('marketplace.report.done'),
+                failed: t('marketplace.report.failed'),
+                cancel: t('marketplace.mod.cancel'),
+                reasonLabels: {
+                  prohibited: t('marketplace.report.reason.prohibited'),
+                  scam: t('marketplace.report.reason.scam'),
+                  spam: t('marketplace.report.reason.spam'),
+                  inappropriate: t('marketplace.report.reason.inappropriate'),
+                  other: t('marketplace.report.reason.other'),
+                },
+              }}
+            />
           </div>
         ) : null}
       </div>

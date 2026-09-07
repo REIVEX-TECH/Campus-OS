@@ -30,6 +30,7 @@ import {
   unsaveListing,
 } from '../src/write';
 import { expireActiveListings } from '../src/expiry';
+import { dismissReports, moderationQueue, removeListing, reportTarget } from '../src/moderation';
 
 /**
  * RLS for the marketplace: a listing is tenant-wide readable (anyone browses) but
@@ -62,6 +63,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await runAsMigrationRole(
+    'truncate table "mkt_reports" restart identity cascade',
     'truncate table "mkt_saved" restart identity cascade',
     'truncate table "mkt_listing_photos" restart identity cascade',
     'truncate table "mkt_listings" restart identity cascade',
@@ -373,5 +375,109 @@ describe('marketplace saved listings', () => {
     await setListingStatus(seller, 'aaa', b, 'sold');
     const active = await sellerActiveListings('aaa', seller.userId);
     expect(active.map((l) => l.id).sort()).toEqual([a].sort());
+  });
+});
+
+describe('marketplace moderation', () => {
+  const settings = settingsSchema.parse({});
+
+  /** A verified tenant administrator (holds marketplace.moderate), seeded as owner. */
+  async function admin(subject: string, tenant = 'aaa') {
+    const actor = await findOrCreateUser({ subject, email: `${subject}@gmail.com` });
+    await runAsMigrationRole(
+      `select auth_sync_tenant_roles('${tenant}')`,
+      `insert into tenant_memberships (tenant_id, user_id, role, status, verified_at, verification_method)
+         values ('${tenant}', '${actor.userId}', 'tenant_admin', 'active', now(), 'admin')
+         on conflict (tenant_id, user_id) do update
+           set role = 'tenant_admin',
+               verified_at = coalesce(tenant_memberships.verified_at, now()),
+               verification_method = coalesce(tenant_memberships.verification_method, 'admin')`,
+      `insert into membership_roles (membership_id, role_id, tenant_id, user_id)
+         select m.id, r.id, m.tenant_id, m.user_id
+         from tenant_memberships m
+         join roles r on r.tenant_id = m.tenant_id and r.key = 'tenant_admin'
+         where m.tenant_id = '${tenant}' and m.user_id = '${actor.userId}'
+         on conflict (membership_id, role_id) do nothing`,
+    );
+    return actor;
+  }
+
+  async function listingBy(seller: { userId: string }) {
+    const res = await createListing(
+      seller,
+      'aaa',
+      {
+        title: 'flagged',
+        pricePaisa: 900,
+        priceKind: 'fixed',
+        category: 'other',
+        condition: 'used',
+      },
+      settings,
+    );
+    if (!res.ok) throw new Error('create failed');
+    return res.value.id;
+  }
+
+  it('queues a report for a moderator only, and removal resolves it and drops photos', async () => {
+    if (!split) return;
+    const seller = await member('mk-mod-seller');
+    const flagger = await member('mk-mod-flag');
+    const id = await listingBy(seller);
+    expect(
+      (
+        await addListingPhoto(
+          seller,
+          'aaa',
+          id,
+          {
+            storageKey: 'marketplace/mo/x.webp',
+            thumbKey: 'marketplace/mo/x_thumb.webp',
+            contentType: 'image/webp',
+            width: 10,
+            height: 10,
+            byteSize: 100,
+          },
+          settings.maxPhotosPerListing,
+        )
+      ).ok,
+    ).toBe(true);
+
+    expect((await reportTarget(flagger, 'aaa', 'mkt_listing', id, 'scam')).ok).toBe(true);
+    // A non-moderator sees an empty queue (the definer gates on the permission).
+    expect((await moderationQueue(flagger, 'aaa')).length).toBe(0);
+
+    const mod = await admin('mk-mod-adm');
+    expect((await moderationQueue(mod, 'aaa')).some((q) => q.targetId === id)).toBe(true);
+    // A non-moderator cannot remove.
+    expect((await removeListing(flagger, 'aaa', id, 'nope')).ok).toBe(false);
+
+    const removed = await removeListing(mod, 'aaa', id, 'prohibited item');
+    expect(removed.ok).toBe(true);
+    if (removed.ok) {
+      expect(removed.value.photoKeys.sort()).toEqual(
+        ['marketplace/mo/x.webp', 'marketplace/mo/x_thumb.webp'].sort(),
+      );
+    }
+    expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
+    expect((await listingById('aaa', id))?.status).toBe('removed');
+    const leftover = await withActorInTenant(mod.userId, 'aaa', (tx) =>
+      tx.execute(
+        sql`select count(*)::int as n from mkt_listing_photos where listing_id = ${id}::uuid`,
+      ),
+    );
+    expect(([...leftover][0] as { n: number }).n).toBe(0);
+  });
+
+  it('dismiss clears the reports without removing the listing', async () => {
+    if (!split) return;
+    const seller = await member('mk-mod2-seller');
+    const flagger = await member('mk-mod2-flag');
+    const mod = await admin('mk-mod2-adm');
+    const id = await listingBy(seller);
+    expect((await reportTarget(flagger, 'aaa', 'mkt_listing', id, 'spam')).ok).toBe(true);
+    expect((await dismissReports(mod, 'aaa', 'mkt_listing', id)).ok).toBe(true);
+    expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
+    expect((await listingById('aaa', id))?.status).toBe('active');
   });
 });

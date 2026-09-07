@@ -11,7 +11,8 @@
     "./listings": "./src/listings.ts",
     "./write": "./src/write.ts",
     "./input": "./src/input.ts",
-    "./expiry": "./src/expiry.ts"
+    "./expiry": "./src/expiry.ts",
+    "./moderation": "./src/moderation.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

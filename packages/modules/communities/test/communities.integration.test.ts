@@ -117,6 +117,11 @@ beforeAll(async () => {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'messages', 'drizzle'),
     '__drizzle_migrations_messages',
   );
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'marketplace', 'drizzle'),
+    '__drizzle_migrations_marketplace',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
@@ -2877,6 +2882,11 @@ describe('definer grant hygiene', () => {
     // message snapshot) or resolves reports across participants.
     auth_msg_report_queue: 'app',
     auth_msg_resolve_reports: 'app',
+    // Marketplace moderation: app-callable, each self-gates on marketplace.moderate
+    // (via auth_effective_permissions), then reads the report queue or resolves
+    // reports across reporters.
+    auth_mkt_report_queue: 'app',
+    auth_mkt_resolve_reports: 'app',
     // Stamps an after-viewing message's expiry on first view; app-callable, gated
     // on the caller being a participant of the conversation.
     auth_msg_stamp_viewed: 'app',

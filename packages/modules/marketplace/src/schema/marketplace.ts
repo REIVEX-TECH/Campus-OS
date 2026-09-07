@@ -104,6 +104,31 @@ export const marketplaceSaved = pgTable(
   ],
 );
 
+export const marketplaceReports = pgTable(
+  'mkt_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    targetType: text('target_type').notNull(),
+    targetId: uuid('target_id').notNull(),
+    reporterId: uuid('reporter_id').notNull(),
+    reason: text('reason').notNull(),
+    note: text('note'),
+    status: text('status').notNull().default('open'),
+    resolution: text('resolution'),
+    resolvedBy: uuid('resolved_by'),
+    resolvedAt: tz('resolved_at'),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('mkt_reports_one_per_reporter_uq').on(t.targetType, t.targetId, t.reporterId),
+    index('mkt_reports_queue_idx').on(t.tenantId, t.status, t.createdAt),
+  ],
+);
+
 export type MarketplaceListing = typeof marketplaceListings.$inferSelect;
 export type MarketplaceListingPhoto = typeof marketplaceListingPhotos.$inferSelect;
 export type MarketplaceSaved = typeof marketplaceSaved.$inferSelect;
+export type MarketplaceReport = typeof marketplaceReports.$inferSelect;
