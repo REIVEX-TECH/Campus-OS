@@ -52,7 +52,14 @@ export const MODULES: ModuleCard[] = [
   { key: 'search', icon: 'search', path: '/search', soon: false, hideFromNav: true },
   { key: 'teachers', icon: 'users', path: '/teachers', soon: false },
   { key: 'rooms', icon: 'building', path: '/rooms', soon: false },
-  { key: 'marketplace', needsIdentity: true, icon: 'shopping-bag', soon: true },
+  {
+    key: 'marketplace',
+    needsIdentity: true,
+    icon: 'shopping-bag',
+    path: '/marketplace',
+    soon: false,
+    moduleId: 'marketplace',
+  },
   {
     key: 'communities',
     needsIdentity: true,

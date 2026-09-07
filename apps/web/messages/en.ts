@@ -435,6 +435,21 @@ export const en = {
   'marketplace.mod.failed': 'That did not go through.',
   'marketplace.mod.link': 'Moderation',
   'marketplace.mod.unknownMember': 'A member',
+  'marketplace.policy.link': 'Marketplace policy',
+  'marketplace.policy.heading': 'Marketplace policy',
+  'marketplace.policy.operator': 'Operated by {operator}.',
+  'marketplace.policy.termsTitle': 'Terms',
+  'marketplace.policy.termsBody':
+    'The marketplace is a place for students of this campus to buy and sell with each other. {operator} provides the platform but is not a party to any sale. Deals are between the buyer and the seller; meet in a safe public place on campus, check the item, and pay in cash on meetup. You are responsible for what you list and what you buy, and for following your campus rules and local law.',
+  'marketplace.policy.prohibitedTitle': 'Prohibited items and services',
+  'marketplace.policy.prohibitedBody':
+    'Do not list weapons, alcohol, drugs, vape or tobacco, prescription medicine, counterfeit or stolen goods, live animals, adult content, or anything illegal on campus or under local law. Do not list academic dishonesty of any kind, including assignment writing, exam or quiz help, or submitting work on someone else behalf. Listings that break this are removed, and repeat offenders lose access.',
+  'marketplace.policy.feesTitle': 'Fees',
+  'marketplace.policy.feesBody':
+    'Selling goods is free. There is no platform fee and no online payment: you pay cash when you meet. Paid services (gigs), when they are enabled, carry a platform fee shown to both sides before an order is placed.',
+  'marketplace.policy.refundsTitle': 'Refunds and disputes',
+  'marketplace.policy.refundsBody':
+    'Because goods are paid in cash on meetup, the platform does not process payments or refunds for them; inspect before you pay. For paid services, when they are enabled, a buyer may open a dispute within the stated window and the platform admin resolves it as a refund, a release, or a split.',
 
   'messages.heading': 'Messages',
   'messages.intro': 'Your private conversations. One to one, only the two of you.',

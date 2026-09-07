@@ -160,6 +160,15 @@ export default async function MarketplacePage({ params, searchParams }: Params &
             </Link>
           </div>
         ) : null}
+
+        <div className="px-1 pt-2 text-center">
+          <Link
+            href={`${base}/marketplace/policy`}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {t('marketplace.policy.link')}
+          </Link>
+        </div>
       </div>
     </PageShell>
   );
