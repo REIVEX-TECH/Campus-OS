@@ -14,6 +14,8 @@ export type SidebarItem = {
   icon: ModuleIconName;
   href: string;
   soon: boolean;
+  /** An unread count shown as a pill on the item (e.g. messages). */
+  badge?: number;
 };
 
 export type SidebarGroup = {
@@ -136,6 +138,11 @@ export function Sidebar({
                     <ModuleIcon name={n.icon} className="sidebar-icon-svg" />
                   </span>
                   <span className="sidebar-label">{n.label}</span>
+                  {n.badge ? (
+                    <span className="sidebar-label ml-auto shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-center text-[11px] font-semibold leading-none text-primary-foreground">
+                      {n.badge > 99 ? '99+' : n.badge}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}
