@@ -29,6 +29,7 @@ export type TopBarLabels = {
 };
 
 export type TopNotifications = { href: string; unread: number; label: string } | null;
+export type TopMessages = { href: string; count: number; label: string } | null;
 
 export function TopBar({
   tenantName,
@@ -38,6 +39,7 @@ export function TopBar({
   signInHref,
   account,
   notifications = null,
+  messages = null,
   firebase,
   labels,
 }: {
@@ -48,6 +50,7 @@ export function TopBar({
   signInHref: string;
   account: TopAccount;
   notifications?: TopNotifications;
+  messages?: TopMessages;
   firebase: FirebaseWebConfig | null;
   labels: TopBarLabels;
 }) {
@@ -118,6 +121,20 @@ export function TopBar({
             <SearchIcon />
           </button>
           <ThemeToggle label={labels.theme} />
+          {messages ? (
+            <Link
+              href={messages.href}
+              aria-label={messages.label}
+              className="ios-pressable relative grid h-9 w-9 place-items-center rounded-full text-foreground"
+            >
+              <MailIcon />
+              {messages.count > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold leading-4 text-primary-foreground">
+                  {messages.count > 99 ? '99+' : messages.count}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
           {notifications ? (
             <Link
               href={notifications.href}
@@ -173,6 +190,24 @@ function CloseIcon() {
       aria-hidden="true"
     >
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+function MailIcon() {
+  return (
+    <svg
+      className="h-[18px] w-[18px]"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
     </svg>
   );
 }
