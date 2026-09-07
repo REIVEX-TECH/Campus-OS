@@ -35,6 +35,7 @@
     "@campusos/module-communities": "workspace:*",
     "@campusos/module-identity": "workspace:*",
     "@campusos/module-lost-found": "workspace:*",
+    "@campusos/module-marketplace": "workspace:*",
     "@campusos/module-messages": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
