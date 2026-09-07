@@ -10,7 +10,8 @@
     "./schema": "./src/schema/index.ts",
     "./listings": "./src/listings.ts",
     "./write": "./src/write.ts",
-    "./input": "./src/input.ts"
+    "./input": "./src/input.ts",
+    "./expiry": "./src/expiry.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

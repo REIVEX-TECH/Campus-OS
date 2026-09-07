@@ -4,10 +4,16 @@ import { mediaUrl } from '@campusos/media';
 import { listingById } from '@campusos/module-marketplace/listings';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { MessageSellerButton } from '@/app/_components/marketplace/message-seller-button';
+import { SellerControls } from '@/app/_components/marketplace/seller-controls';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
-import { categoryLabel, conditionLabel, requireMarketplace } from '@/lib/marketplace';
+import {
+  categoryLabel,
+  conditionLabel,
+  marketplaceSettings,
+  requireMarketplace,
+} from '@/lib/marketplace';
 import { messagesEnabled, messagesSettings } from '@/lib/messages';
 import { composeLabels } from '@/lib/messages-labels';
 import { formatPkr } from '@/lib/money';
@@ -39,7 +45,16 @@ export default async function MarketplaceListingPage({ params }: Params) {
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
   const listing = await listingById(slug, listingId);
-  if (!listing || listing.status === 'removed') {
+  const actor = await currentActor();
+  const isOwn = Boolean(listing) && actor?.userId === listing?.sellerId;
+  const settings = marketplaceSettings(tenant);
+  // A sold listing stays viewable for a window, then hides from everyone but its
+  // seller (who keeps seeing it in their own listings).
+  const soldHidden =
+    listing?.status === 'sold' && listing.soldAt
+      ? Date.now() - listing.soldAt.getTime() > settings.soldVisibleDays * 86_400_000
+      : false;
+  if (!listing || listing.status === 'removed' || (soldHidden && !isOwn)) {
     return (
       <PageShell>
         <div className="flex flex-col gap-4">
@@ -56,8 +71,6 @@ export default async function MarketplaceListingPage({ params }: Params) {
     );
   }
 
-  const actor = await currentActor();
-  const isOwn = actor?.userId === listing.sellerId;
   const canMessage =
     Boolean(actor) &&
     !isOwn &&
@@ -144,6 +157,28 @@ export default async function MarketplaceListingPage({ params }: Params) {
             </Link>
           ) : null}
         </div>
+
+        {isOwn ? (
+          <div className="px-1">
+            <SellerControls
+              tenant={slug}
+              base={base}
+              listingId={listing.id}
+              status={listing.status}
+              labels={{
+                markReserved: t('marketplace.seller.markReserved'),
+                markSold: t('marketplace.seller.markSold'),
+                relist: t('marketplace.seller.relist'),
+                backToActive: t('marketplace.seller.backToActive'),
+                extend: t('marketplace.seller.extend'),
+                del: t('marketplace.seller.delete'),
+                delConfirm: t('marketplace.seller.deleteConfirm'),
+                working: t('marketplace.seller.working'),
+                failed: t('marketplace.seller.failed'),
+              }}
+            />
+          </div>
+        ) : null}
 
         <p className="px-1 text-xs text-muted-foreground">{t('marketplace.detail.cashOnMeetup')}</p>
 

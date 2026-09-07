@@ -274,3 +274,49 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   fake buffer would not do; the bytes are an inline base64 PNG rather than a
   committed binary fixture. `MEDIA_DATA_DIR` for the e2e web server points at a
   temp dir (the store creates it on first write).
+- **Lost & Found leaked photo files on withdraw/remove/expire.** Those transitions
+  only flipped `lf_items.status`; the `lf_item_photos` rows and object-store files
+  were never touched (the `removed_at` column was dead). Fix: `withdrawItem` and
+  `removeItem` hard-delete the photo rows in the same transaction and return the
+  storage keys; the web route deletes the files after commit (best-effort,
+  missing-object-safe). Scope is withdraw + remove per the brief; expire and resolve
+  still retain photos (resolved stays viewable; a GC sweep is the general answer),
+  flagged as a follow-up. The service's ownership/moderation gate is the access
+  check, not the tenant-only RLS on the photos table.
+- **"Cards and IDs" warning is a client-side conditional note** on the L&F post
+  form; no server change.
+
+## Block 1 — Marketplace, goods
+
+- **New module `packages/modules/marketplace`**, own bookkeeping table, opt-in via
+  `enabledModules` ('marketplace'). Added to the ROOT workspace deps (resolution is
+  walk-up, mirroring lost-found); not in apps/web deps or `transpilePackages`
+  (server-side domain logic only).
+- **`0000` mirrors the L&F `0000` §6 pattern**: `mkt_listings` + `mkt_listing_photos`,
+  `tenant_isolation` + FORCE on both, RESTRICTIVE insert seller-self / photo-owner-
+  self. No definer, no grant change, no money (goods are cash-on-meetup, no fee).
+- **Price is integer paisa (PKR) stored as bigint** so no amount overflows; a
+  per-listing cap (`maxPricePaisa`) guards a typo, not policy. `price_kind` =
+  fixed|negotiable; condition = new|like-new|used|for-parts; status =
+  active|reserved|sold|expired|removed.
+- **`mkt_listing_photos` has no dead `removed_at`** (unlike L&F): the marketplace
+  deletes photo rows + files on removal from the start.
+- **Contact info in a listing is refused** (a 7+ digit run or "whatsapp"/"wa.me")
+  so contact stays in the messages module (block/report/audit live there). A
+  usability guardrail, not a security boundary (moderation is).
+- **Message seller** reuses the messages `ComposeSheet` (new optional `initialDraft`)
+  with the listing title + link prefilled; shown only where messages is enabled and
+  the viewer is not the seller.
+- **Seller withdrawal is a soft-delete (`deleted_at`)**, not a status, keeping
+  'removed' for moderation. `setListingStatus` allows only active->reserved,
+  active/reserved->sold, {reserved,sold,expired}->active (relist).
+- **Sold-hide is a read filter** (`soldVisibleDays`, default 7) on the detail page;
+  **auto-expire is a plain tenant-context UPDATE** (the SELECT policy is tenant-based,
+  the L&F expiry precedent, so no owner-run definer is needed).
+- **`mkt_saved` is own-row RLS on `app.user_id` + tenant + FORCE** — per-user DATA
+  isolation (bookmarks), the standard own-row pattern, NOT a privilege decision, so
+  keying on `app.user_id` is correct (section 8 forbids it only for PRIVILEGE
+  decisions). [saved-listings PR]
+- **The module-hub card stays soon:true until Block 5**, where the flip to live +
+  LGU enablement + the `seo`/`shell` test updates happen together (flipping it early
+  broke `seo.spec`'s `/soon/marketplace` and `shell.spec`'s "Marketplace" soon-item).

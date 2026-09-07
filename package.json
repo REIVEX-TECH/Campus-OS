@@ -20,6 +20,7 @@
     "communities:archive": "tsx scripts/communities-archive.ts",
     "communities:karma": "tsx scripts/communities-karma.ts",
     "lostfound:expire": "tsx scripts/lost-found-expire.ts",
+    "marketplace:expire": "tsx scripts/marketplace-expire.ts",
     "messages:cleanup": "tsx scripts/messages-cleanup.ts",
     "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
     "db:seed": "tsx scripts/seed.ts",

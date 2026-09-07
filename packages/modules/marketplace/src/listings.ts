@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { withTenant } from '@campusos/db';
+import { withActorInTenant, withTenant } from '@campusos/db';
 
 /**
  * Reading marketplace listings. Browse and the listing page are tenant-scoped
@@ -244,5 +244,59 @@ export async function listingById(tenantId: string, id: string): Promise<Listing
         height: p.height,
       })),
     };
+  });
+}
+
+/** An owned listing, with the expiry the seller needs to see and act on. */
+export interface MyListingSummary extends ListingSummary {
+  expiresAt: Date | null;
+  /** Active and within the reminder window: surface the one-tap extend. */
+  expiringSoon: boolean;
+}
+
+/** Days before expiry an active listing is flagged "expiring soon" (see extend). */
+export const EXPIRY_NOTICE_DAYS = 7;
+
+/** A person's own listings in one tenant, any status (not deleted), newest first. */
+export async function myListings(userId: string, tenantId: string): Promise<MyListingSummary[]> {
+  return withActorInTenant(userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select l.id, l.title, l.price_paisa, l.price_kind, l.category, l.condition, l.status,
+               l.created_at, l.expires_at,
+               (l.status = 'active' and l.expires_at is not null
+                 and l.expires_at <= now() + (${EXPIRY_NOTICE_DAYS}::int * interval '1 day')) as expiring_soon,
+               (select p.thumb_key from mkt_listing_photos p
+                 where p.listing_id = l.id order by p.position asc limit 1) as thumb_key
+        from mkt_listings l
+        where l.tenant_id = ${tenantId} and l.seller_id = ${userId}::uuid and l.deleted_at is null
+        order by l.created_at desc, l.id desc
+        limit 100`)),
+    ] as Array<{
+      id: string;
+      title: string;
+      price_paisa: string | number;
+      price_kind: string;
+      category: string;
+      condition: string;
+      status: string;
+      created_at: string | Date;
+      expires_at: string | Date | null;
+      expiring_soon: boolean;
+      thumb_key: string | null;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      pricePaisa: Number(r.price_paisa),
+      priceKind: r.price_kind,
+      category: r.category,
+      condition: r.condition,
+      status: r.status,
+      createdAt: toDate(r.created_at),
+      thumbKey: r.thumb_key,
+      expiresAt: r.expires_at === null ? null : toDate(r.expires_at),
+      expiringSoon: r.expiring_soon,
+    }));
   });
 }
