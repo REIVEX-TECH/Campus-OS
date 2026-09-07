@@ -330,7 +330,7 @@ export async function sendMessage(
           ...(await tx.execute(sql`
             select count(*)::int as n from msg_messages
             where conversation_id = ${conversationId}::uuid
-              and created_at > ${conv.status_changed_at}::timestamptz`)),
+              and created_at >= ${conv.status_changed_at}::timestamptz`)),
         ] as { n: number }[];
         if ((cnt?.n ?? 0) >= 1) return err('not_allowed');
       } else {
@@ -604,7 +604,7 @@ export async function thread(
           ...(await tx.execute(sql`
             select count(*)::int as n from msg_messages
             where conversation_id = ${conversationId}::uuid
-              and created_at > ${conv.status_changed_at}::timestamptz`)),
+              and created_at >= ${conv.status_changed_at}::timestamptz`)),
         ] as { n: number }[];
         canSend = (c?.n ?? 0) === 0;
       }
