@@ -34,6 +34,7 @@ export function ComposeSheet({
   maxLength,
   labels,
   fixedRecipient,
+  initialDraft,
 }: {
   tenant: string;
   open: boolean;
@@ -42,6 +43,8 @@ export function ComposeSheet({
   maxLength: number;
   labels: ComposeLabels;
   fixedRecipient?: Recipient;
+  /** Prefilled body (e.g. a listing title + link when messaging a seller). */
+  initialDraft?: string;
 }) {
   // A fixed recipient (the profile Message button) always wins, so the sheet shows
   // "To: handle" + the body field and never the search; otherwise the picked one.
@@ -49,7 +52,7 @@ export function ComposeSheet({
   const recipient = fixedRecipient ?? picked;
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState<Recipient[]>([]);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialDraft ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
@@ -60,11 +63,11 @@ export function ComposeSheet({
     setPicked(null);
     setQuery('');
     setMatches([]);
-    setDraft('');
+    setDraft(initialDraft ?? '');
     setError(null);
     const raf = requestAnimationFrame(() => firstFieldRef.current?.focus());
     return () => cancelAnimationFrame(raf);
-  }, [open]);
+  }, [open, initialDraft]);
 
   // Debounced handle search while picking a recipient.
   useEffect(() => {
