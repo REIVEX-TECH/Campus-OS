@@ -13,10 +13,14 @@ import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import {
+  acceptRequest,
+  declineRequest,
   deleteForEveryone,
   editMessage,
   listInbox,
+  listRequests,
   markRead,
+  requestCount,
   sendMessage,
   setEphemerality,
   startConversation,
@@ -91,9 +95,16 @@ async function unverified(subject: string, tenant = 'aaa') {
   return actor;
 }
 
+/**
+ * Open an ACTIVE conversation: a new conversation is a request, so the recipient
+ * accepts it. Tests that exercise the request lifecycle itself use
+ * startConversation / acceptRequest / declineRequest directly instead.
+ */
 async function open(a: { userId: string }, b: { userId: string }, tenant = 'aaa') {
   const res = await startConversation(a, tenant, b.userId, settings);
   if (!res.ok) throw new Error(`start failed: ${res.error}`);
+  const acc = await acceptRequest(b, tenant, res.value.id);
+  if (!acc.ok) throw new Error(`accept failed: ${acc.error}`);
   return res.value.id;
 }
 
@@ -369,6 +380,8 @@ describe('direct messages ephemerality', () => {
     const started = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
     if (!started.ok) throw new Error('start failed');
     const id = started.value.id;
+    // Accept so it is an active chat: ephemerality applies only once active.
+    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'poof soon' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Visible while fresh.
@@ -393,6 +406,8 @@ describe('direct messages ephemerality', () => {
     const started = await startConversation(a, 'aaa', b.userId, settings, 'after_viewing');
     if (!started.ok) throw new Error('start failed');
     const id = started.value.id;
+    // Accept so it is an active chat: opening a request never stamps after_viewing.
+    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'read then gone' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Unread by b: no expiry yet.
@@ -426,5 +441,130 @@ describe('direct messages ephemerality', () => {
       )),
     ] as { expires_at: string | null }[];
     expect(row?.expires_at).not.toBeNull();
+  });
+});
+
+describe('direct messages requests', () => {
+  it('opens as a request: one message from the requester, the recipient accepts', async () => {
+    if (!split) return;
+    const a = await member('dm-req-a');
+    const b = await member('dm-req-b');
+    const res = await startConversation(a, 'aaa', b.userId, settings);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const id = res.value.id;
+    // The requester may send exactly one message while pending; a second is refused.
+    expect((await sendMessage(a, 'aaa', id, { body: 'can we talk?' }, settings)).ok).toBe(true);
+    expect(await sendMessage(a, 'aaa', id, { body: 'please' }, settings)).toMatchObject({
+      ok: false,
+      error: 'not_allowed',
+    });
+    // Not in the recipient's inbox; it is in their requests, once, with the message.
+    expect(await listInbox(b.userId, 'aaa')).toHaveLength(0);
+    const reqs = await listRequests(b.userId, 'aaa');
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0]).toMatchObject({ fromUserId: a.userId, message: 'can we talk?' });
+    expect(await requestCount(b.userId, 'aaa')).toBe(1);
+    // The recipient's reply accepts it: active, in both inboxes, no longer a request.
+    expect((await sendMessage(b, 'aaa', id, { body: 'sure' }, settings)).ok).toBe(true);
+    expect(await requestCount(b.userId, 'aaa')).toBe(0);
+    expect((await listInbox(b.userId, 'aaa')).map((c) => c.id)).toContain(id);
+    expect((await listInbox(a.userId, 'aaa')).map((c) => c.id)).toContain(id);
+    // The requester can now send freely.
+    expect((await sendMessage(a, 'aaa', id, { body: 'thanks' }, settings)).ok).toBe(true);
+  });
+
+  it('shows the requester their own request as an outbound "sent" entry, not a request', async () => {
+    if (!split) return;
+    const a = await member('dm-out-a');
+    const b = await member('dm-out-b');
+    const res = await startConversation(a, 'aaa', b.userId, settings);
+    if (!res.ok) throw new Error(res.error);
+    await sendMessage(a, 'aaa', res.value.id, { body: 'hi' }, settings);
+    const outbox = await listInbox(a.userId, 'aaa');
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({ id: res.value.id, outbound: true });
+    expect(await requestCount(a.userId, 'aaa')).toBe(0);
+    // The recipient can accept it explicitly, without replying.
+    expect((await acceptRequest(b, 'aaa', res.value.id)).ok).toBe(true);
+    expect((await listInbox(a.userId, 'aaa'))[0]).toMatchObject({ outbound: false });
+  });
+
+  it('declines: hidden from the recipient, still "sent" for the requester', async () => {
+    if (!split) return;
+    const a = await member('dm-dec-a');
+    const b = await member('dm-dec-b');
+    const res = await startConversation(a, 'aaa', b.userId, settings);
+    if (!res.ok) throw new Error(res.error);
+    const id = res.value.id;
+    await sendMessage(a, 'aaa', id, { body: 'hello' }, settings);
+    // Only the recipient may accept/decline; the requester cannot.
+    expect(await declineRequest(a, 'aaa', id)).toMatchObject({ ok: false, error: 'not_recipient' });
+    expect((await declineRequest(b, 'aaa', id)).ok).toBe(true);
+    // Gone from the recipient's requests and inbox...
+    expect(await listRequests(b.userId, 'aaa')).toHaveLength(0);
+    expect(await listInbox(b.userId, 'aaa')).toHaveLength(0);
+    // ...still the requester's own sent state.
+    const outbox = await listInbox(a.userId, 'aaa');
+    expect(outbox.map((c) => c.id)).toEqual([id]);
+    expect(outbox[0]?.outbound).toBe(true);
+    // No pushing another message into a declined request.
+    expect(await sendMessage(a, 'aaa', id, { body: 'again?' }, settings)).toMatchObject({
+      ok: false,
+      error: 'not_allowed',
+    });
+  });
+
+  it('bars the same requester from re-requesting a declined person for 30 days', async () => {
+    if (!split) return;
+    const a = await member('dm-30-a');
+    const b = await member('dm-30-b');
+    const res = await startConversation(a, 'aaa', b.userId, settings);
+    if (!res.ok) throw new Error(res.error);
+    await sendMessage(a, 'aaa', res.value.id, { body: 'hi' }, settings);
+    expect((await declineRequest(b, 'aaa', res.value.id)).ok).toBe(true);
+    // Immediately re-requesting is refused.
+    expect(await startConversation(a, 'aaa', b.userId, settings)).toMatchObject({
+      ok: false,
+      error: 'declined_recently',
+    });
+    // Past the window, a fresh request re-opens the (cleared) row.
+    await runAsMigrationRole(
+      `update msg_conversations set status_changed_at = now() - interval '31 days' where id = '${res.value.id}'`,
+    );
+    const again = await startConversation(a, 'aaa', b.userId, settings);
+    expect(again.ok).toBe(true);
+    if (again.ok) {
+      const t = await thread(a, 'aaa', again.value.id);
+      expect(t?.status).toBe('pending'); // re-opened as a fresh request
+      // A fresh one-message window: the requester may send again, and the recipient
+      // sees exactly the new message as the request (not the old declined one).
+      expect(
+        (await sendMessage(a, 'aaa', again.value.id, { body: 'still keen' }, settings)).ok,
+      ).toBe(true);
+      expect((await listRequests(b.userId, 'aaa')).map((r) => r.message)).toEqual(['still keen']);
+    }
+  });
+
+  it('does not stamp ephemerality while pending; the clock starts once active', async () => {
+    if (!split) return;
+    const a = await member('dm-peph-a');
+    const b = await member('dm-peph-b');
+    const res = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
+    if (!res.ok) throw new Error(res.error);
+    const id = res.value.id;
+    await sendMessage(a, 'aaa', id, { body: 'request' }, settings);
+    // The recipient's reply accepts and becomes active.
+    await sendMessage(b, 'aaa', id, { body: 'ok' }, settings);
+    const rows = [
+      ...(await withActorInTenant(b.userId, 'aaa', (tx) =>
+        tx.execute(sql`
+          select body, expires_at from msg_messages
+          where conversation_id = ${id}::uuid order by created_at asc`),
+      )),
+    ] as { body: string; expires_at: string | null }[];
+    // The pending request message never got an expiry; the first active one did.
+    expect(rows.find((r) => r.body === 'request')?.expires_at).toBeNull();
+    expect(rows.find((r) => r.body === 'ok')?.expires_at).not.toBeNull();
   });
 });

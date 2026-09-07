@@ -23,6 +23,12 @@ export const conversations = pgTable(
     participantB: uuid('participant_b').notNull(),
     /** 'never' | 'after_24h' | 'after_viewing' — how messages here expire. */
     ephemerality: text('ephemerality').notNull().default('never'),
+    /** 'pending' | 'active' | 'declined' — a new conversation starts as a request. */
+    status: text('status').notNull().default('active'),
+    /** Who opened the request (null for pre-existing chats). */
+    requestedBy: uuid('requested_by'),
+    /** When the status last changed (the 30-day re-request rule reads it). */
+    statusChangedAt: tz('status_changed_at'),
     lastMessageAt: tz('last_message_at'),
     createdAt,
   },
