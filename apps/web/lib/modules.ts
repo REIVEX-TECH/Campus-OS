@@ -76,6 +76,9 @@ export const MODULES: ModuleCard[] = [
     path: '/messages',
     soon: false,
     moduleId: 'messages',
+    // The top-bar mail icon (with its unread + requests badge) is the single entry
+    // point for messages, so it is not also a sidebar nav item.
+    hideFromNav: true,
   },
   { key: 'rides', needsIdentity: true, icon: 'car', soon: true },
   { key: 'map', icon: 'map', soon: true },

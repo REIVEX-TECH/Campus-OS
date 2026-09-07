@@ -81,7 +81,6 @@ export async function AppShell({
     icon: m.icon,
     href: m.soon ? `${base}/soon/${m.key}` : `${base}${m.path ?? ''}`,
     soon: m.soon,
-    badge: m.moduleId === 'messages' && msgTotal > 0 ? msgTotal : undefined,
   }));
   // The communities a signed in person has joined, as a second section.
   const groups: SidebarGroup[] = [];
