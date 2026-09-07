@@ -31,6 +31,7 @@ export type ListLabels = {
   unknownMember: string;
   noPreview: string;
   requestSent: string;
+  selectConversation: string;
 };
 
 /**
