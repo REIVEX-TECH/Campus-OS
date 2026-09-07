@@ -139,6 +139,12 @@ export function planRoute(
   platform: string | null = platformHost(),
   legacy: string = appDomain(),
 ): RoutePlan {
+  // /media is object storage (nginx in production, app/media/[...key] in dev). It is
+  // host-agnostic and must never be tenant-rewritten, or a request on a tenant
+  // subdomain would be sent to /u/{label}/media/... and 404. The matcher also skips
+  // it; this keeps planRoute correct on its own and unit-testable.
+  if (pathname === '/media' || pathname.startsWith('/media/')) return { action: 'next' };
+
   const onPlatform = isPlatformHost(host, platform);
 
   // Tenant subdomain of the tenant base (the platform host has no label).

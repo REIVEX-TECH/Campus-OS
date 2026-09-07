@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
@@ -16,6 +18,9 @@ for (const [key, value] of Object.entries(process.env)) {
 webServerEnv.TENANT_BASE_DOMAIN = `localhost:${PORT}`;
 webServerEnv.PLATFORM_HOST = `localhost:${PORT}`;
 webServerEnv.APP_DOMAIN = 'legacy.test';
+// Lost & Found (and marketplace) photo uploads need an object-store directory. The
+// LocalFsStore creates it on first write, so a temp dir is enough for the suite.
+webServerEnv.MEDIA_DATA_DIR = process.env.MEDIA_DATA_DIR ?? join(tmpdir(), 'campusos-e2e-media');
 
 // Runs `next start`, so build the app first (CI does `pnpm build` before e2e).
 export default defineConfig({

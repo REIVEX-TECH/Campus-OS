@@ -248,3 +248,29 @@ expires_at <= now()` within one tenant, and returns `ROW_COUNT`. (L&F's expire
   `expires_at <= now()`, so a message disappears from the UI the instant it
   expires regardless of when the 15-minute cron next runs. The cron is a
   storage-hygiene job, never the privacy boundary.
+
+---
+
+# Overnight run 2 — decisions log
+
+Newest at the bottom of each block. Same one-line-per-decision rule.
+
+## Block 0 — finish the media/L&F queue
+
+- **`/media` is excluded from the tenant rewrite in two places.** The matcher
+  negative-lookahead now lists `media` (so the middleware never runs for object
+  storage, mirroring `api`), and `planRoute` short-circuits `/media/...` to
+  `next` before the subdomain rewrite. The matcher is the real fix; the
+  `planRoute` guard is the unit-tested one, since matcher regexes are awkward to
+  assert. The bug it closes: on a tenant subdomain, `/media/x.webp` was being
+  rewritten to `/u/{label}/media/x.webp`, which 404s.
+- **`MEDIA_DATA_DIR` is now `requiredInProduction` in `app-env.vars.json`.** Photos
+  are no longer an optional feature (L&F is live, marketplace is coming), so the
+  boot check fails closed if it is unset in production rather than letting uploads
+  throw at runtime. The runtime read in `getObjectStore()` already threw; this
+  moves the failure to boot where it is visible.
+- **The e2e image-upload test posts a 1x1 PNG through the real pipeline and fetches
+  the resulting `/media` URL.** It needs a genuine image (sharp decodes it), so a
+  fake buffer would not do; the bytes are an inline base64 PNG rather than a
+  committed binary fixture. `MEDIA_DATA_DIR` for the e2e web server points at a
+  temp dir (the store creates it on first write).
