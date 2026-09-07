@@ -109,6 +109,12 @@ export default async function MarketplacePage({ params, searchParams }: Params &
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href={`${base}/marketplace/saved`}
+              className="ios-pressable inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
+            >
+              {t('marketplace.savedPage.link')}
+            </Link>
+            <Link
               href={`${base}/marketplace/mine`}
               className="ios-pressable inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
             >

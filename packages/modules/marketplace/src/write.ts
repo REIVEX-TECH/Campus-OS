@@ -2,7 +2,11 @@ import { sql } from 'drizzle-orm';
 import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { isVerifiedMember } from './access';
-import { marketplaceListingPhotos, marketplaceListings } from './schema/marketplace';
+import {
+  marketplaceListingPhotos,
+  marketplaceListings,
+  marketplaceSaved,
+} from './schema/marketplace';
 import type { MarketplaceSettings } from './manifest';
 import { hasContactInfo, listingInputSchema, type ListingInput } from './input';
 
@@ -211,4 +215,34 @@ export async function deleteListingPhotoRows(
       returning storage_key, thumb_key`)),
   ] as { storage_key: string; thumb_key: string }[];
   return rows.flatMap((r) => [r.storage_key, r.thumb_key]).filter((k): k is string => Boolean(k));
+}
+
+/** Save (bookmark) a listing for the actor. Idempotent (one row per pair). The
+ *  own-row RLS policy enforces user_id = the caller; we set it explicitly too. */
+export async function saveListing(
+  actor: { userId: string },
+  tenantId: string,
+  listingId: string,
+): Promise<Result<{ ok: true }, 'not_found'>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    await tx
+      .insert(marketplaceSaved)
+      .values({ tenantId, userId: actor.userId, listingId })
+      .onConflictDoNothing({ target: [marketplaceSaved.userId, marketplaceSaved.listingId] });
+    return ok({ ok: true });
+  });
+}
+
+/** Remove a saved listing for the actor. Idempotent. */
+export async function unsaveListing(
+  actor: { userId: string },
+  tenantId: string,
+  listingId: string,
+): Promise<Result<{ ok: true }, 'not_found'>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    await tx.execute(sql`
+      delete from mkt_saved
+      where user_id = ${actor.userId}::uuid and listing_id = ${listingId}::uuid`);
+    return ok({ ok: true });
+  });
 }

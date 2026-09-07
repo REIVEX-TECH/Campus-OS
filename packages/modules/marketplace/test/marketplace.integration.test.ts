@@ -13,13 +13,21 @@ import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { marketplaceListingPhotos, marketplaceListings } from '../src/schema/marketplace';
-import { listingById, myListings } from '../src/listings';
+import {
+  isListingSaved,
+  listingById,
+  myListings,
+  savedListings,
+  sellerActiveListings,
+} from '../src/listings';
 import {
   addListingPhoto,
   createListing,
   deleteListing,
   extendListing,
+  saveListing,
   setListingStatus,
+  unsaveListing,
 } from '../src/write';
 import { expireActiveListings } from '../src/expiry';
 
@@ -54,6 +62,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await runAsMigrationRole(
+    'truncate table "mkt_saved" restart identity cascade',
     'truncate table "mkt_listing_photos" restart identity cascade',
     'truncate table "mkt_listings" restart identity cascade',
     'truncate table "users" restart identity cascade',
@@ -309,5 +318,60 @@ describe('marketplace listing lifecycle', () => {
     );
     const afterAt = ([...after][0] as { expires_at: string }).expires_at;
     expect(new Date(afterAt).getTime()).toBeGreaterThan(new Date(beforeAt).getTime());
+  });
+});
+
+describe('marketplace saved listings', () => {
+  const settings = settingsSchema.parse({});
+
+  async function listingBy(seller: { userId: string }) {
+    const res = await createListing(
+      seller,
+      'aaa',
+      {
+        title: 'saved item',
+        pricePaisa: 500,
+        priceKind: 'fixed',
+        category: 'other',
+        condition: 'used',
+      },
+      settings,
+    );
+    if (!res.ok) throw new Error('create failed');
+    return res.value.id;
+  }
+
+  it('saves and unsaves a listing, private to the saver', async () => {
+    if (!split) return;
+    const seller = await member('mk-sv-seller');
+    const buyer = await member('mk-sv-buyer');
+    const other = await member('mk-sv-other');
+    const id = await listingBy(seller);
+
+    expect((await saveListing(buyer, 'aaa', id)).ok).toBe(true);
+    // Idempotent.
+    expect((await saveListing(buyer, 'aaa', id)).ok).toBe(true);
+    expect(await isListingSaved(buyer.userId, 'aaa', id)).toBe(true);
+    expect((await savedListings(buyer.userId, 'aaa')).map((l) => l.id)).toEqual([id]);
+
+    // Another member's saved list does not see it (own-row RLS).
+    expect(await isListingSaved(other.userId, 'aaa', id)).toBe(false);
+    expect(await savedListings(other.userId, 'aaa')).toHaveLength(0);
+
+    // Unsave removes it.
+    expect((await unsaveListing(buyer, 'aaa', id)).ok).toBe(true);
+    expect(await isListingSaved(buyer.userId, 'aaa', id)).toBe(false);
+    expect(await savedListings(buyer.userId, 'aaa')).toHaveLength(0);
+  });
+
+  it('lists a seller active listings for their profile', async () => {
+    if (!split) return;
+    const seller = await member('mk-sv-prof');
+    const a = await listingBy(seller);
+    const b = await listingBy(seller);
+    // A sold one is excluded from the profile's active list.
+    await setListingStatus(seller, 'aaa', b, 'sold');
+    const active = await sellerActiveListings('aaa', seller.userId);
+    expect(active.map((l) => l.id).sort()).toEqual([a].sort());
   });
 });
