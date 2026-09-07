@@ -71,6 +71,8 @@ export default async function LostFoundModPage({ params }: Params) {
             viewItem: t('lostFound.mod.viewItem'),
             remove: t('lostFound.mod.remove'),
             removePrompt: t('lostFound.mod.removePrompt'),
+            removeConfirm: t('lostFound.mod.removeConfirm'),
+            cancel: t('comments.cancel'),
             dismiss: t('lostFound.mod.dismiss'),
             working: t('lostFound.mod.working'),
           }}

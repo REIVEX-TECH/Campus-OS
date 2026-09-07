@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+// The app's field vocabulary, matching the community forms.
+const reasonField =
+  'ios-field h-10 w-full rounded-xl px-3.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 export interface ModQueueEntry {
   reportId: string;
   targetType: 'lf_item' | 'lf_claim';
@@ -24,6 +28,8 @@ export interface ModQueueLabels {
   viewItem: string;
   remove: string;
   removePrompt: string;
+  removeConfirm: string;
+  cancel: string;
   dismiss: string;
   working: string;
 }
@@ -42,6 +48,8 @@ export function LostFoundModQueue({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
 
   async function act(key: string, body: unknown) {
     setBusy(key);
@@ -51,6 +59,8 @@ export function LostFoundModQueue({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       });
+      setRemoving(null);
+      setReason('');
       router.refresh();
     } finally {
       setBusy(null);
@@ -81,51 +91,92 @@ export function LostFoundModQueue({
           <p className="text-[11px] text-muted-foreground">
             {labels.by.replace('{handle}', e.reporterHandle ?? '?')}
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {e.itemId ? (
-              <Link
-                href={`${base}/lost-found/${e.itemId}`}
-                className="text-xs font-medium text-primary"
-              >
-                {labels.viewItem}
-              </Link>
-            ) : null}
-            {e.targetType === 'lf_item' && e.itemId ? (
+          {removing === e.reportId ? (
+            <form
+              className="flex flex-col gap-2"
+              onSubmit={(ev) => {
+                ev.preventDefault();
+                if (reason.trim().length >= 2) {
+                  void act(e.reportId, {
+                    tenant,
+                    action: 'remove',
+                    itemId: e.itemId,
+                    reason: reason.trim(),
+                  });
+                }
+              }}
+            >
+              <input
+                className={reasonField}
+                value={reason}
+                onChange={(ev) => setReason(ev.target.value)}
+                placeholder={labels.removePrompt}
+                aria-label={labels.removePrompt}
+                maxLength={500}
+                autoFocus
+                required
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={busy === e.reportId || reason.trim().length < 2}
+                  className="ios-pressable rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive disabled:opacity-50"
+                >
+                  {busy === e.reportId ? labels.working : labels.removeConfirm}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy === e.reportId}
+                  onClick={() => {
+                    setRemoving(null);
+                    setReason('');
+                  }}
+                  className="ios-pressable rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground disabled:opacity-50"
+                >
+                  {labels.cancel}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {e.itemId ? (
+                <Link
+                  href={`${base}/lost-found/${e.itemId}`}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {labels.viewItem}
+                </Link>
+              ) : null}
+              {e.targetType === 'lf_item' && e.itemId ? (
+                <button
+                  type="button"
+                  disabled={busy === e.reportId}
+                  onClick={() => {
+                    setReason('');
+                    setRemoving(e.reportId);
+                  }}
+                  className="ios-pressable rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive disabled:opacity-50"
+                >
+                  {labels.remove}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={busy === e.reportId}
-                onClick={() => {
-                  const reason = window.prompt(labels.removePrompt);
-                  if (reason && reason.trim().length >= 2) {
-                    void act(e.reportId, {
-                      tenant,
-                      action: 'remove',
-                      itemId: e.itemId,
-                      reason: reason.trim(),
-                    });
-                  }
-                }}
-                className="rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive disabled:opacity-50"
+                onClick={() =>
+                  void act(e.reportId, {
+                    tenant,
+                    action: 'dismiss',
+                    targetType: e.targetType,
+                    targetId: e.targetId,
+                  })
+                }
+                className="ios-pressable rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground disabled:opacity-50"
               >
-                {busy === e.reportId ? labels.working : labels.remove}
+                {labels.dismiss}
               </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy === e.reportId}
-              onClick={() =>
-                void act(e.reportId, {
-                  tenant,
-                  action: 'dismiss',
-                  targetType: e.targetType,
-                  targetId: e.targetId,
-                })
-              }
-              className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground disabled:opacity-50"
-            >
-              {labels.dismiss}
-            </button>
-          </div>
+            </div>
+          )}
         </li>
       ))}
     </ul>

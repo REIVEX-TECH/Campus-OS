@@ -29,7 +29,13 @@ export interface LostFoundFormLabels {
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp'];
 
-/** Report an item: text fields, then upload each photo to the created item. */
+// The app's field vocabulary, matching the community post form exactly.
+const field =
+  'ios-field h-11 w-full rounded-xl px-3.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const area =
+  'ios-field min-h-24 w-full rounded-xl px-3.5 py-2.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+/** Post an item: text fields, then upload each photo to the created item. */
 export function PostItemForm({
   base,
   tenant,
@@ -115,7 +121,7 @@ export function PostItemForm({
             type="button"
             aria-pressed={kind === k}
             onClick={() => setKind(k)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${
+            className={`ios-pressable rounded-full px-4 py-1.5 text-sm font-medium ${
               kind === k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
             }`}
           >
@@ -127,7 +133,7 @@ export function PostItemForm({
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">{labels.title}</span>
         <input
-          className="ios-field"
+          className={field}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={labels.titlePlaceholder}
@@ -139,7 +145,7 @@ export function PostItemForm({
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">{labels.description}</span>
         <textarea
-          className="ios-field min-h-24"
+          className={area}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           maxLength={4000}
@@ -149,11 +155,7 @@ export function PostItemForm({
 
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">{labels.category}</span>
-        <select
-          className="ios-field"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        >
+        <select className={field} value={category} onChange={(e) => setCategory(e.target.value)}>
           {categories.map((c) => (
             <option key={c} value={c}>
               {labels.categoryLabels[c] ?? c}
@@ -167,7 +169,7 @@ export function PostItemForm({
           {labels.location} <span className="text-muted-foreground">({labels.optional})</span>
         </span>
         <input
-          className="ios-field"
+          className={field}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           placeholder={labels.locationPlaceholder}
@@ -181,7 +183,7 @@ export function PostItemForm({
             {labels.building} <span className="text-muted-foreground">({labels.optional})</span>
           </span>
           <select
-            className="ios-field"
+            className={field}
             value={buildingId}
             onChange={(e) => setBuildingId(e.target.value)}
           >
@@ -200,7 +202,7 @@ export function PostItemForm({
           {labels.date} <span className="text-muted-foreground">({labels.optional})</span>
         </span>
         <input
-          className="ios-field"
+          className={field}
           type="date"
           value={happenedOn}
           onChange={(e) => setHappenedOn(e.target.value)}
