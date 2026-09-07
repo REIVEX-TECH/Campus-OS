@@ -24,8 +24,12 @@ export interface LostFoundFormLabels {
   failed: string;
   tooLarge: string;
   badType: string;
+  cardsWarning: string;
   categoryLabels: Record<string, string>;
 }
+
+/** The category that carries a privacy caution (a real card or ID photo leaks PII). */
+const CARDS_CATEGORY = 'cards-and-ids';
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -162,6 +166,14 @@ export function PostItemForm({
             </option>
           ))}
         </select>
+        {category === CARDS_CATEGORY ? (
+          <p
+            role="note"
+            className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+          >
+            {labels.cardsWarning}
+          </p>
+        ) : null}
       </label>
 
       <label className="flex flex-col gap-1">
