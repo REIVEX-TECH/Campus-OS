@@ -27,6 +27,22 @@ export type Condition = (typeof CONDITIONS)[number];
 /** Where a seller prefers to meet; free text, kept short. Cash on meetup only. */
 export const MEETUP_MAX = 120;
 
+/** The default service (gig) categories a tenant starts with; a tenant may edit. */
+export const DEFAULT_SERVICE_CATEGORIES = [
+  'tutoring',
+  'design-and-art',
+  'writing-and-translation',
+  'programming-and-tech',
+  'video-and-photo',
+  'music-and-audio',
+  'events-and-errands',
+  'other',
+] as const;
+
+/** The package tiers a gig may offer, cheapest first. A gig needs at least one. */
+export const PACKAGE_TIERS = ['basic', 'standard', 'premium'] as const;
+export type PackageTier = (typeof PACKAGE_TIERS)[number];
+
 /** Tenant settings for the marketplace (goods). Services and money add their own. */
 export const settingsSchema = z.object({
   /** The categories a goods listing may be filed under. */
@@ -51,6 +67,24 @@ export const settingsSchema = z.object({
   expiryDays: z.number().int().min(7).max(365).default(30),
   /** Days a sold listing stays viewable before it hides. */
   soldVisibleDays: z.number().int().min(1).max(90).default(7),
+
+  // Services (gigs). Present whether or not the tenant enables the services flag;
+  // a tenant with only goods on simply never reads them.
+  /** The categories a gig may be filed under. */
+  serviceCategories: z
+    .array(z.string().min(1).max(40))
+    .min(1)
+    .default([...DEFAULT_SERVICE_CATEGORIES]),
+  /** Packages a single gig may offer (one to three tiers). */
+  maxPackagesPerGig: z.number().int().min(1).max(3).default(3),
+  /** Largest price a package may state, in paisa (PKR). Guards a typo, not policy. */
+  maxPackagePricePaisa: z.number().int().min(1).max(1_000_000_00).default(1_000_000_00),
+  /** Longest turnaround a package may promise, in days. */
+  maxDeliveryDays: z.number().int().min(1).max(90).default(30),
+  /** Most revisions a package may include. */
+  maxRevisions: z.number().int().min(0).max(20).default(10),
+  /** Days a delivered order waits for the buyer before it auto-completes. */
+  orderAutoCompleteDays: z.number().int().min(1).max(30).default(7),
 });
 
 export type MarketplaceSettings = z.infer<typeof settingsSchema>;

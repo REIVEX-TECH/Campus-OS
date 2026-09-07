@@ -12,7 +12,10 @@
     "./write": "./src/write.ts",
     "./input": "./src/input.ts",
     "./expiry": "./src/expiry.ts",
-    "./moderation": "./src/moderation.ts"
+    "./moderation": "./src/moderation.ts",
+    "./services-read": "./src/services-read.ts",
+    "./services-write": "./src/services-write.ts",
+    "./services-input": "./src/services-input.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
