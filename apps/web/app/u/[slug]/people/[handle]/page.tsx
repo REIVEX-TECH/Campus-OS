@@ -15,6 +15,9 @@ import {
 } from '@campusos/module-communities/profiles';
 import { memberPublicFacts } from '@campusos/module-identity/membership';
 import { conversationBetween } from '@campusos/module-messages/service';
+import { sellerActiveListings } from '@campusos/module-marketplace/listings';
+import { ListingCard } from '@/app/_components/marketplace/listing-card';
+import { conditionLabels, marketplaceEnabled } from '@/lib/marketplace';
 import { MessageButton } from '@/app/_components/messages/message-button';
 import { composeLabels } from '@/lib/messages-labels';
 import { messagesEnabled, messagesSettings } from '@/lib/messages';
@@ -82,9 +85,16 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
     );
   }
   const self = actor?.userId === profile.userId;
+  const marketplaceOn = marketplaceEnabled(tenant);
   const { tab: tabParam } = await searchParams;
   const tab =
-    tabParam === 'comments' ? 'comments' : tabParam === 'anonymous' && self ? 'anonymous' : 'posts';
+    tabParam === 'comments'
+      ? 'comments'
+      : tabParam === 'anonymous' && self
+        ? 'anonymous'
+        : tabParam === 'listings' && marketplaceOn
+          ? 'listings'
+          : 'posts';
   // Their own page shows what they wrote anonymously too; anyone else's shows
   // only the signed half, which is the whole point of keeping two.
   const karmaPromise: Promise<Karma | OwnKarma | null> = !settings.karmaVisible
@@ -92,13 +102,16 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
     : self && actor
       ? ownKarma(actor, slug)
       : publicKarma(slug, profile.userId);
-  const [posts, comments, karma, blocked, anonymous, facts] = await Promise.all([
+  const [posts, comments, karma, blocked, anonymous, facts, listings] = await Promise.all([
     tab === 'posts' ? postsByAuthor(slug, profile.userId) : Promise.resolve([]),
     tab === 'comments' ? commentsByAuthor(slug, profile.userId) : Promise.resolve([]),
     karmaPromise,
     actor && !self ? isBlocked(actor, slug, profile.userId) : Promise.resolve(false),
     tab === 'anonymous' && actor ? myAnonymousPosts(actor, slug) : Promise.resolve([]),
     memberPublicFacts(slug, profile.userId),
+    tab === 'listings' && marketplaceOn
+      ? sellerActiveListings(slug, profile.userId)
+      : Promise.resolve([]),
   ]);
   const memberSince = facts.memberSince
     ? new Intl.DateTimeFormat(tenant.locale, { month: 'long', year: 'numeric' }).format(
@@ -106,7 +119,17 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
       )
     : null;
   const here = `${base}/people/${profile.handle}`;
-  const tabs = ['posts', 'comments', ...(self ? (['anonymous'] as const) : [])] as const;
+  const tabs = [
+    'posts',
+    'comments',
+    ...(marketplaceOn ? (['listings'] as const) : []),
+    ...(self ? (['anonymous'] as const) : []),
+  ] as const;
+  const cardLabels = {
+    free: t('marketplace.price.free'),
+    negotiable: t('marketplace.card.negotiable'),
+    conditionLabels: conditionLabels(t),
+  };
   // For the Message button: an existing conversation links straight to it; none
   // opens the compose sheet (a request is created with its first message).
   const messagesOn = messagesEnabled(tenant);
@@ -219,7 +242,9 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
                 ? t('profile.posts')
                 : k === 'comments'
                   ? t('profile.comments')
-                  : t('profile.anonymous')}
+                  : k === 'listings'
+                    ? t('profile.listings')
+                    : t('profile.anonymous')}
             </Link>
           ))}
         </nav>
@@ -244,6 +269,18 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
                 </li>
               ))}
             </ol>
+          )
+        ) : tab === 'listings' ? (
+          listings.length === 0 ? (
+            <EmptyState title={t('profile.noListings')} />
+          ) : (
+            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {listings.map((listing) => (
+                <li key={listing.id}>
+                  <ListingCard listing={listing} base={base} labels={cardLabels} />
+                </li>
+              ))}
+            </ul>
           )
         ) : (
           (() => {
