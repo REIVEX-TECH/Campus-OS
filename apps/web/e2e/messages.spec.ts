@@ -40,7 +40,9 @@ test.describe.serial('messages, end to end', () => {
     await page.waitForURL(/\/u\/lgu\/messages\/[0-9a-f-]{8,}$/i);
     state.conversationId = new URL(page.url()).pathname.split('/').pop() ?? '';
     expect(state.conversationId).not.toBe('');
-    await expect(page.getByText(firstMessage)).toBeVisible();
+    // Scope to the thread's message list; on desktop the two-pane also shows the
+    // conversation preview on the left, so the text can appear more than once.
+    await expect(page.locator('ol').getByText(firstMessage)).toBeVisible();
     await expect(page.getByText('No messages yet. Say hello.')).toHaveCount(0);
   });
 
@@ -69,8 +71,9 @@ test.describe.serial('messages, end to end', () => {
   test('the recipient opens the thread and it renders the message', async ({ browser }) => {
     const page = await pageAs(browser, 'member');
     await page.goto(`/u/lgu/messages/${state.conversationId}`);
-    // The thread GET works for the other participant too.
-    await expect(page.getByText(firstMessage)).toBeVisible();
+    // The thread GET works for the other participant too. Scope to the message
+    // list, since the two-pane also shows this message as the list preview.
+    await expect(page.locator('ol').getByText(firstMessage)).toBeVisible();
     await expect(page.getByText('No messages yet. Say hello.')).toHaveCount(0);
   });
 
@@ -85,7 +88,7 @@ test.describe.serial('messages, end to end', () => {
 
     await sheet.getByPlaceholder('Search people by handle').fill(owner);
     // The recipients GET works: the match appears rather than "No one found."
-    await expect(sheet.getByText(owner)).toBeVisible();
+    await expect(sheet.getByText(owner).first()).toBeVisible();
     await expect(sheet.getByText('No one found.')).toHaveCount(0);
   });
 });
