@@ -46,6 +46,7 @@ export function conversationLabels(t: T): ConversationLabels {
     disappearsAfterViewing: t('messages.ephemeral.tagAfterViewing'),
     disappearsIn24h: t('messages.ephemeral.tagAfter24h'),
     hiddenAway: t('messages.ephemeral.hiddenAway'),
+    newMessages: t('messages.newMessages'),
   };
 }
 

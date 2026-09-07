@@ -40,7 +40,7 @@ export function MessagesScreen({
   const activeId = typeof params.id === 'string' ? params.id : null;
 
   return (
-    <div className="flex h-[calc(100svh-var(--topbar-h)-2.5rem)] gap-4">
+    <div className="flex h-[calc(100dvh-var(--topbar-h)-2.5rem)] gap-4 overflow-hidden">
       <aside
         className={`min-h-0 w-full flex-col overflow-y-auto lg:flex lg:w-80 lg:shrink-0 ${
           activeId ? 'hidden' : 'flex'

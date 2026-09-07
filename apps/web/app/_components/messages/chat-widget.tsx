@@ -128,7 +128,7 @@ export function ChatWidget({
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
           {inThread ? (
             <ThreadView
               key={widget.activeId}
@@ -144,12 +144,14 @@ export function ChatWidget({
               onLeave={() => widget.back()}
             />
           ) : (
-            <ConversationList
-              tenant={tenant}
-              labels={labels.list}
-              requestLabels={labels.request}
-              onSelect={(id) => widget.openThread(id)}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ConversationList
+                tenant={tenant}
+                labels={labels.list}
+                requestLabels={labels.request}
+                onSelect={(id) => widget.openThread(id)}
+              />
+            </div>
           )}
         </div>
       </section>

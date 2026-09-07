@@ -80,7 +80,7 @@ export function ThreadView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex items-center gap-2 px-1">
+      <div className="flex shrink-0 items-center gap-2 px-1">
         <IdentityAvatar seed={data.otherAvatarSeed ?? data.otherUserId} label={name} size={28} />
         {data.otherHandle ? (
           <Link
