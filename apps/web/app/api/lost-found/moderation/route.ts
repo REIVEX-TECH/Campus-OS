@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getObjectStore } from '@campusos/media';
 import { dismissReports, removeItem } from '@campusos/module-lost-found/moderation';
 import { lostFoundGate, refusalResponse } from '@/lib/lost-found-route';
 
@@ -24,10 +25,17 @@ export async function POST(request: Request) {
   const gate = await lostFoundGate(request, 'moderation', 60, bodySchema);
   if (!gate.ok) return gate.response;
   const data = gate.data;
-  const result =
-    data.action === 'remove'
-      ? await removeItem(gate.actor, gate.tenant.slug, data.itemId, data.reason)
-      : await dismissReports(gate.actor, gate.tenant.slug, data.targetType, data.targetId);
+  if (data.action === 'remove') {
+    const result = await removeItem(gate.actor, gate.tenant.slug, data.itemId, data.reason);
+    if (!result.ok) return refusalResponse(result.error);
+    // Photo rows are deleted with the removal; now remove the files from disk.
+    if (result.value.photoKeys.length > 0) {
+      const store = getObjectStore();
+      await Promise.all(result.value.photoKeys.map((k) => store.delete(k).catch(() => undefined)));
+    }
+    return Response.json({ ok: true });
+  }
+  const result = await dismissReports(gate.actor, gate.tenant.slug, data.targetType, data.targetId);
   if (!result.ok) return refusalResponse(result.error);
   return Response.json({ ok: true });
 }
