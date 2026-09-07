@@ -12,6 +12,7 @@
     "./auth": "./src/auth/index.ts",
     "./rbac": "./src/rbac/index.ts",
     "./storage": "./src/storage/index.ts",
+    "./payments": "./src/payments/index.ts",
     "./time": "./src/time/format.ts"
   },
   "scripts": {
