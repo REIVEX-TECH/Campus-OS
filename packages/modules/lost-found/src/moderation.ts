@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { lostFoundReports } from './schema/lost-found';
+import { deleteItemPhotoRows } from './write';
 
 /**
  * Reporting and moderation.
@@ -127,13 +128,15 @@ export async function dismissReports(
   });
 }
 
-/** Remove an item and resolve its reports. Moderator only. */
+/** Remove an item and resolve its reports. Moderator only. The item is down for
+ *  good, so its photo ROWS are deleted and the storage keys returned for the caller
+ *  to remove from object storage. */
 export async function removeItem(
   actor: { userId: string },
   tenantId: string,
   itemId: string,
   reason: string,
-): Promise<Result<Record<string, never>, ModerationRefusal>> {
+): Promise<Result<{ photoKeys: string[] }, ModerationRefusal>> {
   const r = reason.trim();
   if (r.length < 2 || r.length > 300) return err('invalid');
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
@@ -149,6 +152,6 @@ export async function removeItem(
     if (updated.length === 0) return err('not_found');
     await tx.execute(sql`
       select auth_lf_resolve_reports(${tenantId}, 'lf_item', ${itemId}::uuid, 'removed')`);
-    return ok({});
+    return ok({ photoKeys: await deleteItemPhotoRows(tx, itemId) });
   });
 }

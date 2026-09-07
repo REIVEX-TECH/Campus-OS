@@ -254,6 +254,17 @@ describe('lost & found write service', () => {
 
     const mine = await withdrawItem(owner, 'aaa', id);
     expect(mine.ok && mine.value.changed).toBe(true);
+    // Withdrawing deletes the photo rows and returns their storage keys so the web
+    // route can remove the files; nothing lingers in the DB.
+    if (mine.ok) {
+      expect(mine.value.photoKeys.sort()).toEqual(
+        ['lost-found/aa/x.webp', 'lost-found/aa/x_thumb.webp'].sort(),
+      );
+    }
+    const leftover = await withActorInTenant(owner.userId, 'aaa', (tx) =>
+      tx.execute(sql`select count(*)::int as n from lf_item_photos where item_id = ${id}::uuid`),
+    );
+    expect(([...leftover][0] as { n: number }).n).toBe(0);
 
     const another = await createItem(
       owner,
@@ -383,11 +394,44 @@ describe('lost & found moderation', () => {
     // A non-moderator cannot remove.
     expect((await removeItem(flagger, 'aaa', itemId, 'nope')).ok).toBe(false);
 
-    // The moderator removes: the item is gone from browse and the report resolved.
-    expect((await removeItem(mod, 'aaa', itemId, 'spam item')).ok).toBe(true);
+    // The reporter attaches a photo, so removal has files to clean up.
+    expect(
+      (
+        await addItemPhoto(
+          reporter,
+          'aaa',
+          itemId,
+          {
+            storageKey: 'lost-found/cd/m.webp',
+            thumbKey: 'lost-found/cd/m_thumb.webp',
+            contentType: 'image/webp',
+            width: 10,
+            height: 10,
+            byteSize: 100,
+          },
+          settings.maxPhotosPerItem,
+        )
+      ).ok,
+    ).toBe(true);
+
+    // The moderator removes: the item is gone from browse, the report resolved, and
+    // the photo rows deleted (their keys handed back for the file cleanup).
+    const removed = await removeItem(mod, 'aaa', itemId, 'spam item');
+    expect(removed.ok).toBe(true);
+    if (removed.ok) {
+      expect(removed.value.photoKeys.sort()).toEqual(
+        ['lost-found/cd/m.webp', 'lost-found/cd/m_thumb.webp'].sort(),
+      );
+    }
     expect((await moderationQueue(mod, 'aaa')).length).toBe(0);
     const browse = await listItems('aaa');
     expect(browse.items.some((i) => i.id === itemId)).toBe(false);
+    const leftover = await withActorInTenant(mod.userId, 'aaa', (tx) =>
+      tx.execute(
+        sql`select count(*)::int as n from lf_item_photos where item_id = ${itemId}::uuid`,
+      ),
+    );
+    expect(([...leftover][0] as { n: number }).n).toBe(0);
   });
 });
 
