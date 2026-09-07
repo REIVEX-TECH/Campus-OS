@@ -39,6 +39,13 @@ migration, so §6 (concrete SQL) applies.
   decision (it makes no write and grants nothing). `search_path = public`; REVOKE
   FROM PUBLIC then GRANT EXECUTE to the app; declared `app` in the DEFINER_INTENT
   registry (the grant-hygiene test enforces this).
+- **`user_blocks` moves FORCE → NO FORCE.** FORCE binds the owner too, so the
+  definer (run as owner) would still be filtered by the own-row policy and never see
+  the reverse block. NO FORCE lets the owner (this definer and migrations) read
+  across; the application role is a non-owner and stays fully bound by the unchanged
+  RESTRICTIVE own-row policy and the permissive tenant policy, so no app-facing read
+  or write widens. Same pattern as the moderation/identity definer-read tables; the
+  FORCE-parity test is updated to expect `user_blocks: false`.
 - **Status transitions are the recipient's own UPDATE**, already allowed by the
   participant `FOR ALL` policy (0000). Accept/decline add the business rule in the
   WHERE clause (`status = 'pending' AND requested_by <> actor`), so a non-recipient

@@ -11,6 +11,16 @@
 -- of the pair, so it never discloses a third party's blocks; the single new fact
 -- it yields is "this person blocked you", which is exactly the fact the refusal is
 -- built on. It reads nothing else and writes nothing.
+--
+-- user_blocks was FORCE (0000), which binds the owner too, so the definer -- run as
+-- the owner -- would still be filtered by the own-row policy and never see the
+-- reverse block. Drop FORCE so the owner (this definer, and migrations) reads
+-- across; the application role is a non-owner and stays fully bound by RLS (the
+-- RESTRICTIVE own-row policy and the permissive tenant policy are unchanged), so no
+-- app-facing read or write widens. This is the same NO-FORCE-for-a-definer-read
+-- pattern the moderation and identity tables use.
+ALTER TABLE "user_blocks" NO FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION auth_blocked_between(p_tenant_id text, p_other uuid)
 	RETURNS boolean
 	LANGUAGE sql

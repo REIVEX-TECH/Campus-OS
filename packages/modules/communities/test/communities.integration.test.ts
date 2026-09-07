@@ -199,7 +199,9 @@ describe('row security invariants', () => {
     communities: true,
     community_rules: true,
     community_mutes: true,
-    user_blocks: true,
+    // Read across both directions by auth_blocked_between (0012), so FORCE is off;
+    // the app role stays bound by the restrictive own-row policy.
+    user_blocks: false,
     post_flairs: true,
     user_flairs: true,
     posts: true,
