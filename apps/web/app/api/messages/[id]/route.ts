@@ -7,12 +7,45 @@ import {
   sendMessage,
   setEphemerality,
   setTyping,
+  thread,
   EPHEMERALITY,
 } from '@campusos/module-messages/service';
 import { blockUser, blockedBetween } from '@campusos/module-communities/blocks';
-import { messagesGate, refusalResponse } from '@/lib/messages-route';
+import { messagesGate, messagesReadGate, refusalResponse } from '@/lib/messages-route';
 
 export const dynamic = 'force-dynamic';
+
+/** One conversation's thread, for the client widget / two-pane. */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) {
+    return Response.json({ error: 'not_found' }, { status: 404 });
+  }
+  const gate = await messagesReadGate(request);
+  if (!gate.ok) return gate.response;
+  const t = await thread(gate.actor, gate.tenant.slug, id);
+  if (!t) return Response.json({ error: 'not_found' }, { status: 404 });
+  return Response.json({
+    id: t.id,
+    otherUserId: t.otherUserId,
+    otherHandle: t.otherHandle,
+    otherAvatarSeed: t.otherAvatarSeed,
+    otherLastReadAt: t.otherLastReadAt ? t.otherLastReadAt.toISOString() : null,
+    ephemerality: t.ephemerality,
+    status: t.status,
+    isRequester: t.isRequester,
+    canSend: t.canSend,
+    otherTyping: t.otherTyping,
+    messages: t.messages.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      body: m.body,
+      createdAt: m.createdAt.toISOString(),
+      editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+      deleted: m.deleted,
+    })),
+  });
+}
 
 const tenant = z.string().min(1).max(64);
 const bodySchema = z.discriminatedUnion('action', [

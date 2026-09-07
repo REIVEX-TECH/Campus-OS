@@ -68,6 +68,8 @@ export function Conversation({
   deleteWindowMinutes,
   reasons,
   labels,
+  onRefresh,
+  onLeave,
 }: {
   tenant: string;
   conversationId: string;
@@ -84,8 +86,19 @@ export function Conversation({
   deleteWindowMinutes: number;
   reasons: Reason[];
   labels: ConversationLabels;
+  /** Refresh the thread after an action or poll. Defaults to a route refresh (full
+   *  page); a client container (the chat widget) re-fetches instead. */
+  onRefresh?: () => void;
+  /** Where to go when a request is declined/blocked. Defaults to the inbox; the
+   *  widget returns to its list view. */
+  onLeave?: () => void;
 }) {
   const router = useRouter();
+  const refresh = onRefresh ?? (() => router.refresh());
+  const leave = onLeave ?? (() => router.push(inboxHref));
+  // The poll reads refresh through a ref so a changing onRefresh does not re-arm it.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   // A pending request the actor received: they accept/decline it here (or replying
   // accepts). A request the actor sent shows "Request sent" and no composer.
   const incoming = status === 'pending' && !isRequester;
@@ -137,12 +150,12 @@ export function Conversation({
       }).catch(() => undefined);
     void post({ action: 'read' });
     const timer = setInterval(() => {
-      if (!document.hidden) router.refresh();
+      if (!document.hidden) refreshRef.current();
     }, 3000);
     const onFocus = () => {
       if (!document.hidden) {
         void post({ action: 'read' });
-        router.refresh();
+        refreshRef.current();
       }
     };
     document.addEventListener('visibilitychange', onFocus);
@@ -152,7 +165,7 @@ export function Conversation({
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
     };
-  }, [conversationId, tenant, router]);
+  }, [conversationId, tenant]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -176,7 +189,7 @@ export function Conversation({
         setOptimistic((o) => o.filter((b) => b !== body));
         setError(labels.failed);
       } else {
-        router.refresh();
+        refresh();
       }
     } finally {
       setBusy(false);
@@ -196,12 +209,12 @@ export function Conversation({
   function edit(m: WireMessage) {
     const next = window.prompt(labels.edit, m.body)?.trim();
     if (!next || next === m.body) return;
-    void act(m.id, { action: 'edit', body: next }).then((ok) => ok && router.refresh());
+    void act(m.id, { action: 'edit', body: next }).then((ok) => ok && refresh());
   }
 
   function del(m: WireMessage) {
     if (!window.confirm(labels.del)) return;
-    void act(m.id, { action: 'delete' }).then((ok) => ok && router.refresh());
+    void act(m.id, { action: 'delete' }).then((ok) => ok && refresh());
   }
 
   function report(m: WireMessage) {
@@ -228,7 +241,7 @@ export function Conversation({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tenant, action: 'ephemerality', value }),
     }).then((res) => {
-      if (res.ok) router.refresh();
+      if (res.ok) refresh();
       else setError(labels.failed);
     });
   }
@@ -244,8 +257,8 @@ export function Conversation({
     setBusy(false);
     if (res?.ok) {
       // Accept: the thread becomes an active chat here. Decline/block: leave it.
-      if (action === 'accept') router.refresh();
-      else router.push(inboxHref);
+      if (action === 'accept') refresh();
+      else leave();
     } else {
       setError(labels.failed);
     }
