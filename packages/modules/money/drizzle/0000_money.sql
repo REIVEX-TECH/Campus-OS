@@ -136,6 +136,26 @@ END;
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION money_post_txn(uuid, jsonb) FROM PUBLIC;
--- Deliberately NOT granted to campusos_app: the ledger's only writers are the
--- owner-run finance definers, which keep EXECUTE through the owner's default
--- privileges. The application never posts to the ledger directly.
+-- REVOKE FROM PUBLIC is NOT enough: db-grants.sql sets ALTER DEFAULT PRIVILEGES so
+-- the owner's every new function is EXECUTEable by campusos_app by default. An
+-- owner-only definer must therefore revoke that grant BY NAME, exactly as
+-- auth_attach_role_internal (0019) and communities_karma_recompute do, or it is
+-- app-callable despite the intent. The finance definers that call this run as the
+-- owner, so they keep EXECUTE; the application loses it entirely. Only in a split
+-- database, and only where the app is NOT the owner (an unsplit dev database keeps
+-- app == owner and cannot hold the guarantee anyway).
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'campusos_app')
+	   AND (
+	     SELECT pg_get_userbyid(p.proowner) <> 'campusos_app'
+	     FROM pg_proc p
+	     WHERE p.proname = 'money_post_txn'
+	       AND p.pronamespace = 'public'::regnamespace
+	     LIMIT 1
+	   )
+	THEN
+		EXECUTE 'REVOKE ALL ON FUNCTION money_post_txn(uuid, jsonb) FROM campusos_app';
+	END IF;
+END
+$$;
