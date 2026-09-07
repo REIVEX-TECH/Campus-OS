@@ -52,15 +52,18 @@ test.describe.serial('messages, end to end', () => {
     await page.goto('/u/lgu/messages');
 
     // The inbox GET works: the request is in the Requests section, carrying its
-    // one message, not the "No messages yet" the read bug produced.
+    // one message, not the "No messages yet" the read bug produced. (The active
+    // chats list is still empty here, since the request is not yet accepted.)
     await expect(page.getByText(/Requests \(1\)/)).toBeVisible();
     await expect(page.getByText(owner)).toBeVisible();
     await expect(page.getByText(firstMessage)).toBeVisible();
-    await expect(page.getByText('No messages yet. Start one')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Accept', exact: true }).click();
-    // Accepting turns the request into an active chat; it leaves the requests list.
+    // Accepting turns the request into an active chat: it leaves the requests list
+    // and shows in the conversations list, so the empty state is gone.
     await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0);
+    await expect(page.getByText('No messages yet. Start one')).toHaveCount(0);
+    await expect(page.getByText(owner)).toBeVisible();
   });
 
   test('the recipient opens the thread and it renders the message', async ({ browser }) => {
