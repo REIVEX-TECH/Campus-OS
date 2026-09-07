@@ -113,12 +113,16 @@ describe('ledger append-only guarantees', () => {
   it('posts a balanced transaction and rejects an unbalanced one', async () => {
     if (!split) return;
     const seller = await findOrCreateUser({ subject: 'led-bal', email: 'led-bal@x.test' });
+    await runAsMigrationRole(
+      `insert into universities (slug,name,timezone) values ('aaa','A','Asia/Karachi') on conflict do nothing`,
+    );
     const orderId = randomUUID();
     await post(releaseEntries(seller.userId, orderId, 'aaa'));
-    const counted = [
-      ...(await getDb().execute(sql`select count(*)::int as n from ledger_entries`)),
-    ] as { n: number }[];
-    expect(counted[0]?.n).toBe(3);
+    // The post is atomic (one INSERT ... SELECT): the seller sees their own payable
+    // entry from it, at the released net amount, while the escrow and fee entries
+    // (not their own) stay hidden by the own-read RLS policy.
+    expect(await myBalancePaisa(seller, 'aaa', 'seller_payable')).toBe(90000);
+    expect((await myLedger(seller, 'aaa')).length).toBe(1);
 
     // An unbalanced set (sum <> 0) is refused.
     let threw = false;
