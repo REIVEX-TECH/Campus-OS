@@ -14,6 +14,7 @@ import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import {
   acceptRequest,
+  conversationBetween,
   declineRequest,
   deleteForEveryone,
   editMessage,
@@ -96,15 +97,17 @@ async function unverified(subject: string, tenant = 'aaa') {
 }
 
 /**
- * Open an ACTIVE conversation: a new conversation is a request, so the recipient
- * accepts it. Tests that exercise the request lifecycle itself use
+ * Open an EMPTY ACTIVE conversation for tests that just need a live thread: send the
+ * seed request, accept it, and clear the seed message (as the owner) so the thread
+ * starts empty. Tests that exercise the request lifecycle itself use
  * startConversation / acceptRequest / declineRequest directly instead.
  */
 async function open(a: { userId: string }, b: { userId: string }, tenant = 'aaa') {
-  const res = await startConversation(a, tenant, b.userId, settings);
+  const res = await startConversation(a, tenant, b.userId, 'hi', settings);
   if (!res.ok) throw new Error(`start failed: ${res.error}`);
   const acc = await acceptRequest(b, tenant, res.value.id);
   if (!acc.ok) throw new Error(`accept failed: ${acc.error}`);
+  await runAsMigrationRole(`delete from msg_messages where conversation_id = '${res.value.id}'`);
   return res.value.id;
 }
 
@@ -190,13 +193,13 @@ describe('direct messages service', () => {
     if (!split) return;
     const a = await member('dm-r-a');
     const b = await member('dm-r-b');
-    const first = await startConversation(a, 'aaa', b.userId, settings);
-    const again = await startConversation(b, 'aaa', a.userId, settings);
+    const first = await startConversation(a, 'aaa', b.userId, 'hi', settings);
+    const again = await startConversation(b, 'aaa', a.userId, 'hello back', settings);
     expect(first.ok && again.ok).toBe(true);
     if (first.ok && again.ok) {
       expect(again.value.id).toBe(first.value.id); // same pair, same row
       expect(first.value.created).toBe(true);
-      expect(again.value.created).toBe(false);
+      expect(again.value.created).toBe(false); // b replying accepts the request
     }
   });
 
@@ -205,13 +208,13 @@ describe('direct messages service', () => {
     const a = await member('dm-w-a');
     const u = await unverified('dm-w-u');
     // Default 'verified': an unverified recipient cannot be messaged.
-    expect(await startConversation(a, 'aaa', u.userId, settings)).toMatchObject({
+    expect(await startConversation(a, 'aaa', u.userId, 'hi', settings)).toMatchObject({
       ok: false,
       error: 'recipient_unavailable',
     });
     // An unverified INITIATOR cannot start one either.
     const b = await member('dm-w-b');
-    expect(await startConversation(u, 'aaa', b.userId, settings)).toMatchObject({
+    expect(await startConversation(u, 'aaa', b.userId, 'hi', settings)).toMatchObject({
       ok: false,
       error: 'not_verified',
     });
@@ -221,6 +224,7 @@ describe('direct messages service', () => {
         a,
         'aaa',
         u.userId,
+        'hi',
         settingsSchema.parse({ whoCanMessage: 'nobody' }),
       ),
     ).toMatchObject({ ok: false, error: 'not_allowed' });
@@ -230,12 +234,13 @@ describe('direct messages service', () => {
           a,
           'aaa',
           u.userId,
+          'hi',
           settingsSchema.parse({ whoCanMessage: 'anyone' }),
         )
       ).ok,
     ).toBe(true);
     // Never yourself.
-    expect(await startConversation(a, 'aaa', a.userId, settings)).toMatchObject({
+    expect(await startConversation(a, 'aaa', a.userId, 'hi', settings)).toMatchObject({
       ok: false,
       error: 'self',
     });
@@ -377,11 +382,9 @@ describe('direct messages ephemerality', () => {
     if (!split) return;
     const a = await member('dm-e24-a');
     const b = await member('dm-e24-b');
-    const started = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
-    if (!started.ok) throw new Error('start failed');
-    const id = started.value.id;
-    // Accept so it is an active chat: ephemerality applies only once active.
-    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
+    // An empty active chat, then turn on after_24h and send into it.
+    const id = await open(a, b);
+    expect((await setEphemerality(a, 'aaa', id, 'after_24h')).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'poof soon' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Visible while fresh.
@@ -403,11 +406,9 @@ describe('direct messages ephemerality', () => {
     if (!split) return;
     const a = await member('dm-ev-a');
     const b = await member('dm-ev-b');
-    const started = await startConversation(a, 'aaa', b.userId, settings, 'after_viewing');
-    if (!started.ok) throw new Error('start failed');
-    const id = started.value.id;
-    // Accept so it is an active chat: opening a request never stamps after_viewing.
-    expect((await acceptRequest(b, 'aaa', id)).ok).toBe(true);
+    // An empty active chat, then turn on after_viewing and send into it.
+    const id = await open(a, b);
+    expect((await setEphemerality(a, 'aaa', id, 'after_viewing')).ok).toBe(true);
     const sent = await sendMessage(a, 'aaa', id, { body: 'read then gone' }, settings);
     if (!sent.ok) throw new Error('send failed');
     // Unread by b: no expiry yet.
@@ -449,12 +450,11 @@ describe('direct messages requests', () => {
     if (!split) return;
     const a = await member('dm-req-a');
     const b = await member('dm-req-b');
-    const res = await startConversation(a, 'aaa', b.userId, settings);
+    const res = await startConversation(a, 'aaa', b.userId, 'can we talk?', settings);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const id = res.value.id;
-    // The requester may send exactly one message while pending; a second is refused.
-    expect((await sendMessage(a, 'aaa', id, { body: 'can we talk?' }, settings)).ok).toBe(true);
+    // The request already holds the one message; a second while pending is refused.
     expect(await sendMessage(a, 'aaa', id, { body: 'please' }, settings)).toMatchObject({
       ok: false,
       error: 'not_allowed',
@@ -478,9 +478,8 @@ describe('direct messages requests', () => {
     if (!split) return;
     const a = await member('dm-out-a');
     const b = await member('dm-out-b');
-    const res = await startConversation(a, 'aaa', b.userId, settings);
+    const res = await startConversation(a, 'aaa', b.userId, 'hi', settings);
     if (!res.ok) throw new Error(res.error);
-    await sendMessage(a, 'aaa', res.value.id, { body: 'hi' }, settings);
     const outbox = await listInbox(a.userId, 'aaa');
     expect(outbox).toHaveLength(1);
     expect(outbox[0]).toMatchObject({ id: res.value.id, outbound: true });
@@ -494,10 +493,9 @@ describe('direct messages requests', () => {
     if (!split) return;
     const a = await member('dm-dec-a');
     const b = await member('dm-dec-b');
-    const res = await startConversation(a, 'aaa', b.userId, settings);
+    const res = await startConversation(a, 'aaa', b.userId, 'hello', settings);
     if (!res.ok) throw new Error(res.error);
     const id = res.value.id;
-    await sendMessage(a, 'aaa', id, { body: 'hello' }, settings);
     // Only the recipient may accept/decline; the requester cannot.
     expect(await declineRequest(a, 'aaa', id)).toMatchObject({ ok: false, error: 'not_recipient' });
     expect((await declineRequest(b, 'aaa', id)).ok).toBe(true);
@@ -519,29 +517,23 @@ describe('direct messages requests', () => {
     if (!split) return;
     const a = await member('dm-30-a');
     const b = await member('dm-30-b');
-    const res = await startConversation(a, 'aaa', b.userId, settings);
+    const res = await startConversation(a, 'aaa', b.userId, 'hi', settings);
     if (!res.ok) throw new Error(res.error);
-    await sendMessage(a, 'aaa', res.value.id, { body: 'hi' }, settings);
     expect((await declineRequest(b, 'aaa', res.value.id)).ok).toBe(true);
     // Immediately re-requesting is refused.
-    expect(await startConversation(a, 'aaa', b.userId, settings)).toMatchObject({
+    expect(await startConversation(a, 'aaa', b.userId, 'again?', settings)).toMatchObject({
       ok: false,
       error: 'declined_recently',
     });
-    // Past the window, a fresh request re-opens the (cleared) row.
+    // Past the window, a fresh request re-opens the row with its new message.
     await runAsMigrationRole(
       `update msg_conversations set status_changed_at = now() - interval '31 days' where id = '${res.value.id}'`,
     );
-    const again = await startConversation(a, 'aaa', b.userId, settings);
+    const again = await startConversation(a, 'aaa', b.userId, 'still keen', settings);
     expect(again.ok).toBe(true);
     if (again.ok) {
-      const t = await thread(a, 'aaa', again.value.id);
-      expect(t?.status).toBe('pending'); // re-opened as a fresh request
-      // A fresh one-message window: the requester may send again, and the recipient
-      // sees exactly the new message as the request (not the old declined one).
-      expect(
-        (await sendMessage(a, 'aaa', again.value.id, { body: 'still keen' }, settings)).ok,
-      ).toBe(true);
+      expect((await thread(a, 'aaa', again.value.id))?.status).toBe('pending');
+      // The recipient sees exactly the new message as the request, not the old one.
       expect((await listRequests(b.userId, 'aaa')).map((r) => r.message)).toEqual(['still keen']);
     }
   });
@@ -550,10 +542,9 @@ describe('direct messages requests', () => {
     if (!split) return;
     const a = await member('dm-peph-a');
     const b = await member('dm-peph-b');
-    const res = await startConversation(a, 'aaa', b.userId, settings, 'after_24h');
+    const res = await startConversation(a, 'aaa', b.userId, 'request', settings, 'after_24h');
     if (!res.ok) throw new Error(res.error);
     const id = res.value.id;
-    await sendMessage(a, 'aaa', id, { body: 'request' }, settings);
     // The recipient's reply accepts and becomes active.
     await sendMessage(b, 'aaa', id, { body: 'ok' }, settings);
     const rows = [
@@ -566,5 +557,29 @@ describe('direct messages requests', () => {
     // The pending request message never got an expiry; the first active one did.
     expect(rows.find((r) => r.body === 'request')?.expires_at).toBeNull();
     expect(rows.find((r) => r.body === 'ok')?.expires_at).not.toBeNull();
+  });
+
+  it('cannot create a request without a message', async () => {
+    if (!split) return;
+    const a = await member('dm-nm-a');
+    const b = await member('dm-nm-b');
+    // A blank message is refused and creates nothing.
+    expect(await startConversation(a, 'aaa', b.userId, '   ', settings)).toMatchObject({
+      ok: false,
+      error: 'invalid',
+    });
+    expect(await conversationBetween(a, 'aaa', b.userId)).toBeNull();
+    // A real request creates the conversation and its one message together.
+    const res = await startConversation(a, 'aaa', b.userId, 'first', settings);
+    expect(res.ok && res.value.created).toBe(true);
+    expect((await listRequests(b.userId, 'aaa'))[0]?.message).toBe('first');
+    if (res.ok) {
+      // No empty pending exists: the request already carries its message, and a
+      // second from the requester while pending is refused.
+      expect(await sendMessage(a, 'aaa', res.value.id, { body: 'more' }, settings)).toMatchObject({
+        ok: false,
+        error: 'not_allowed',
+      });
+    }
   });
 });

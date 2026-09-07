@@ -120,24 +120,57 @@ async function recentInitiations(
 }
 
 /**
- * Open (or reuse) a 1:1 conversation with another member. A NEW conversation is a
- * request (status 'pending', with the actor as `requested_by`): it holds the one
- * message the requester then sends, until the recipient accepts or declines.
+ * Insert a message into a conversation and bump its last-activity. Ephemerality is
+ * stamped only when the conversation is active (a pending request never expires);
+ * after_viewing is stamped on first view, not here.
+ */
+async function insertMessage(
+  tx: TenantTransaction,
+  tenantId: string,
+  conversationId: string,
+  senderId: string,
+  body: string,
+  convEphemerality: string,
+  isActive: boolean,
+): Promise<string> {
+  const expires =
+    isActive && convEphemerality === 'after_24h' ? sql`now() + interval '24 hours'` : sql`null`;
+  const [row] = [
+    ...(await tx.execute(sql`
+      insert into msg_messages (tenant_id, conversation_id, sender_id, body, expires_at)
+      values (${tenantId}, ${conversationId}::uuid, ${senderId}::uuid, ${body}, ${expires})
+      returning id`)),
+  ] as { id: string }[];
+  await tx.execute(
+    sql`update msg_conversations set last_message_at = now() where id = ${conversationId}::uuid`,
+  );
+  return row!.id;
+}
+
+/**
+ * Open a 1:1 conversation with another member by sending the first message. A NEW
+ * conversation IS a request (status 'pending', the actor as `requested_by`) and is
+ * created together with that first message in one transaction, so a request never
+ * exists without a message. If a conversation already exists the message lands in
+ * it (accepting an inbound request, or continuing an active chat); a request the
+ * recipient DECLINED bars the same requester for 30 days, then re-opens.
  *
  * Initiating requires a verified membership; the tenant's `whoCanMessage` decides
- * whether the other party must be verified too, or whether messaging is off. A
- * request the recipient DECLINED bars the same requester for 30 days; after that a
- * fresh request re-opens the (cleared) row. Blocks are checked at the route.
+ * whether the other party must be verified too, or whether messaging is off. Blocks
+ * are checked at the route.
  */
 export async function startConversation(
   actor: { userId: string },
   tenantId: string,
   otherUserId: string,
+  body: string,
   settings: MessagesSettings,
   ephemerality: Ephemerality = 'never',
 ): Promise<Result<{ id: string; created: boolean }, SendRefusal>> {
   if (otherUserId === actor.userId) return err('self');
   if (settings.whoCanMessage === 'nobody') return err('not_allowed');
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.length > settings.maxBodyLength) return err('invalid');
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     if (!(await isMember(tx, otherUserId, tenantId))) return err('not_found');
@@ -151,7 +184,7 @@ export async function startConversation(
     // Lock the pair's row if it exists, so a decline/re-request decision is atomic.
     const [existing] = [
       ...(await tx.execute(sql`
-        select id, status, requested_by, status_changed_at
+        select id, status, requested_by, status_changed_at, ephemerality
         from msg_conversations
         where tenant_id = ${tenantId} and participant_a = ${a}::uuid and participant_b = ${b}::uuid
         for update`)),
@@ -160,12 +193,40 @@ export async function startConversation(
       status: string;
       requested_by: string | null;
       status_changed_at: string | Date | null;
+      ephemerality: string;
     }[];
 
     if (existing) {
-      // An open chat, or a request already in flight (either direction): reuse it.
-      if (existing.status === 'active' || existing.status === 'pending') {
+      if (existing.status === 'active') {
+        // An open chat: this is a normal message into it.
         await ensureOwnState(tx, tenantId, existing.id, actor.userId);
+        await insertMessage(
+          tx,
+          tenantId,
+          existing.id,
+          actor.userId,
+          trimmed,
+          existing.ephemerality,
+          true,
+        );
+        return ok({ id: existing.id, created: false });
+      }
+      if (existing.status === 'pending') {
+        if (existing.requested_by === actor.userId) return err('not_allowed'); // request already sent
+        // The recipient's message accepts the inbound request.
+        await tx.execute(sql`
+          update msg_conversations set status = 'active', status_changed_at = now()
+          where id = ${existing.id}::uuid`);
+        await ensureOwnState(tx, tenantId, existing.id, actor.userId);
+        await insertMessage(
+          tx,
+          tenantId,
+          existing.id,
+          actor.userId,
+          trimmed,
+          existing.ephemerality,
+          true,
+        );
         return ok({ id: existing.id, created: false });
       }
       // Declined. The original requester is barred for the re-request window; after
@@ -177,20 +238,17 @@ export async function startConversation(
       if (existing.requested_by === actor.userId && withinBlock) return err('declined_recently');
       if ((await recentInitiations(tx, tenantId, actor.userId)) >= settings.newConversationsPerDay)
         return err('rate_limited');
-      // Re-open as a fresh pending request. `status_changed_at` moves to now(), which
-      // starts a new one-message window (sendMessage counts messages after it), so
-      // the requester may send again even though the declined thread's message stays
-      // in the row (the app role has no DELETE on msg_messages, by design).
       await tx.execute(sql`
         update msg_conversations
            set status = 'pending', requested_by = ${actor.userId}::uuid,
                status_changed_at = now(), ephemerality = ${ephemerality}
          where id = ${existing.id}::uuid`);
       await ensureOwnState(tx, tenantId, existing.id, actor.userId);
+      await insertMessage(tx, tenantId, existing.id, actor.userId, trimmed, ephemerality, false);
       return ok({ id: existing.id, created: false });
     }
 
-    // A brand-new pair: open a pending request.
+    // A brand-new pair: open a pending request with its first message.
     if ((await recentInitiations(tx, tenantId, actor.userId)) >= settings.newConversationsPerDay)
       return err('rate_limited');
     const inserted = [
@@ -201,20 +259,34 @@ export async function startConversation(
         on conflict (tenant_id, participant_a, participant_b) do nothing
         returning id`)),
     ] as { id: string }[];
-    if (!inserted[0]) {
-      // Lost a race to a concurrent open of the same pair; reuse what is now there.
-      const [now] = [
-        ...(await tx.execute(sql`
-          select id from msg_conversations
-          where tenant_id = ${tenantId} and participant_a = ${a}::uuid and participant_b = ${b}::uuid
-          limit 1`)),
-      ] as { id: string }[];
-      if (!now) return err('not_found');
-      await ensureOwnState(tx, tenantId, now.id, actor.userId);
-      return ok({ id: now.id, created: false });
-    }
+    if (!inserted[0]) return err('not_allowed'); // lost a race to a concurrent open
     await ensureOwnState(tx, tenantId, inserted[0].id, actor.userId);
+    await insertMessage(tx, tenantId, inserted[0].id, actor.userId, trimmed, ephemerality, false);
     return ok({ id: inserted[0].id, created: true });
+  });
+}
+
+/**
+ * The conversation between the actor and another member, if one exists (any
+ * status). Lets the profile Message button decide whether to open the compose
+ * sheet (no conversation yet) or link straight to an existing thread.
+ */
+export async function conversationBetween(
+  actor: { userId: string },
+  tenantId: string,
+  otherUserId: string,
+): Promise<{ id: string; status: string; isRequester: boolean } | null> {
+  if (otherUserId === actor.userId) return null;
+  const [a, b] = orderPair(actor.userId, otherUserId);
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(sql`
+        select id, status, requested_by from msg_conversations
+        where tenant_id = ${tenantId} and participant_a = ${a}::uuid and participant_b = ${b}::uuid
+        limit 1`)),
+    ] as { id: string; status: string; requested_by: string | null }[];
+    if (!row) return null;
+    return { id: row.id, status: row.status, isRequester: row.requested_by === actor.userId };
   });
 }
 
@@ -258,7 +330,7 @@ export async function sendMessage(
           ...(await tx.execute(sql`
             select count(*)::int as n from msg_messages
             where conversation_id = ${conversationId}::uuid
-              and created_at > ${conv.status_changed_at}::timestamptz`)),
+              and created_at >= ${conv.status_changed_at}::timestamptz`)),
         ] as { n: number }[];
         if ((cnt?.n ?? 0) >= 1) return err('not_allowed');
       } else {
@@ -532,7 +604,7 @@ export async function thread(
           ...(await tx.execute(sql`
             select count(*)::int as n from msg_messages
             where conversation_id = ${conversationId}::uuid
-              and created_at > ${conv.status_changed_at}::timestamptz`)),
+              and created_at >= ${conv.status_changed_at}::timestamptz`)),
         ] as { n: number }[];
         canSend = (c?.n ?? 0) === 0;
       }

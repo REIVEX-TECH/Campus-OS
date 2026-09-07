@@ -29,6 +29,13 @@
       "when": 1756800303000,
       "tag": "0003_message_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1756800304000,
+      "tag": "0004_prune_empty_requests",
+      "breakpoints": true
     }
   ]
 }

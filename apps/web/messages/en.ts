@@ -359,6 +359,10 @@ export const en = {
   'messages.request.accept': 'Accept',
   'messages.request.decline': 'Decline',
   'messages.request.block': 'Block',
+  'messages.compose.title': 'Send a message',
+  'messages.compose.hint': 'This starts a request. They choose whether to reply.',
+  'messages.compose.declinedRecently': 'You recently sent a request. Try again later.',
+  'messages.compose.blocked': 'You cannot message this person.',
 
   'search.heading': 'Search',
   'search.intro':

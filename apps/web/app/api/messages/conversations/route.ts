@@ -5,9 +5,17 @@ import { messagesGate, refusalResponse } from '@/lib/messages-route';
 
 export const dynamic = 'force-dynamic';
 
-const bodySchema = z.object({ tenant: z.string().min(1).max(64), userId: z.string().uuid() });
+const bodySchema = z.object({
+  tenant: z.string().min(1).max(64),
+  userId: z.string().uuid(),
+  body: z.string().trim().min(1),
+});
 
-/** Open (or reuse) a 1:1 conversation with another member. */
+/**
+ * Open a 1:1 conversation with another member by sending its first message. A new
+ * conversation is a request; it is created together with the message (no empty
+ * request is ever made).
+ */
 export async function POST(request: Request): Promise<Response> {
   const gate = await messagesGate(request, 'start', 20, bodySchema);
   if (!gate.ok) return gate.response;
@@ -19,6 +27,7 @@ export async function POST(request: Request): Promise<Response> {
     gate.actor,
     gate.tenant.slug,
     gate.data.userId,
+    gate.data.body,
     gate.settings,
   );
   if (!result.ok) return refusalResponse(result.error);
