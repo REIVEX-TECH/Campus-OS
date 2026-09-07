@@ -83,6 +83,7 @@ export function listLabels(t: T) {
     unknownMember: t('messages.unknownMember'),
     noPreview: t('messages.noPreview'),
     requestSent: t('messages.request.sent'),
+    selectConversation: t('messages.selectConversation'),
   };
 }
 
