@@ -133,7 +133,10 @@ export async function gigById(tenantId: string, id: string): Promise<GigDetail |
     const [row] = [
       ...(await tx.execute(sql`
         select g.id, g.title, g.description, g.category, g.status, g.created_at, g.seller_id,
-               p.handle as seller_handle, p.avatar_seed as seller_avatar_seed
+               p.handle as seller_handle, p.avatar_seed as seller_avatar_seed,
+               (select count(*)::int from mkt_reviews rv where rv.gig_id = g.id) as rating_count,
+               (select avg(rv.rating)::float from mkt_reviews rv where rv.gig_id = g.id)
+                 as rating_avg
         from mkt_gigs g
         left join public_profiles p on p.user_id = g.seller_id
         where g.id = ${id}::uuid and g.tenant_id = ${tenantId} and g.deleted_at is null
@@ -148,6 +151,8 @@ export async function gigById(tenantId: string, id: string): Promise<GigDetail |
       seller_id: string;
       seller_handle: string | null;
       seller_avatar_seed: string | null;
+      rating_count: number;
+      rating_avg: number | null;
     }>;
     if (!row) return null;
     const pkgs = [
@@ -184,8 +189,8 @@ export async function gigById(tenantId: string, id: string): Promise<GigDetail |
         revisions: p.revisions,
         position: p.position,
       })),
-      ratingCount: 0,
-      ratingAvg: null,
+      ratingCount: Number(row.rating_count ?? 0),
+      ratingAvg: row.rating_avg === null ? null : Number(row.rating_avg),
     };
   });
 }

@@ -15,7 +15,10 @@
     "./moderation": "./src/moderation.ts",
     "./services-read": "./src/services-read.ts",
     "./services-write": "./src/services-write.ts",
-    "./services-input": "./src/services-input.ts"
+    "./services-input": "./src/services-input.ts",
+    "./orders-read": "./src/orders-read.ts",
+    "./orders-write": "./src/orders-write.ts",
+    "./orders-input": "./src/orders-input.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
