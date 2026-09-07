@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type WireMessage = {
@@ -46,6 +46,7 @@ export type ConversationLabels = {
   disappearsAfterViewing: string;
   disappearsIn24h: string;
   hiddenAway: string;
+  newMessages: string;
 };
 
 /**
@@ -112,7 +113,13 @@ export function Conversation({
   const [error, setError] = useState<string | null>(null);
   // After-viewing: blank the viewed messages the moment the viewer looks away.
   const [hideViewed, setHideViewed] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
+  // The message list is the only scroll region. These drive follow-to-newest and
+  // the "new messages" pill shown when the reader has scrolled up to read history.
+  const scrollRef = useRef<HTMLOListElement>(null);
+  const atBottomRef = useRef(true);
+  const firstScrollRef = useRef(true);
+  const prevCountRef = useRef(0);
+  const [showPill, setShowPill] = useState(false);
   const lastTypingRef = useRef(0);
 
   // Typing heartbeat: while the actor types in an ACTIVE chat, refresh their
@@ -182,9 +189,39 @@ export function Conversation({
     };
   }, [conversationId, tenant]);
 
+  const scrollToNewest = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    atBottomRef.current = true;
+    setShowPill(false);
+  }, []);
+
+  // Track whether the reader is at the bottom, so a new message can follow only
+  // when it should. A small threshold keeps "near the bottom" counting as bottom.
+  function onListScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    if (atBottomRef.current) setShowPill(false);
+  }
+
+  // Follow the newest message on open and when one arrives from either side, but
+  // only if the reader is already at the bottom; if they have scrolled up, leave
+  // them there and raise the pill instead.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
-  }, [initialMessages, optimistic]);
+    const first = firstScrollRef.current;
+    const grew = initialMessages.length > prevCountRef.current;
+    firstScrollRef.current = false;
+    prevCountRef.current = initialMessages.length;
+    if (first || atBottomRef.current) scrollToNewest(first ? 'auto' : 'smooth');
+    else if (grew) setShowPill(true);
+  }, [initialMessages, scrollToNewest]);
+
+  // The reader's own send always follows to the bottom.
+  useEffect(() => {
+    if (optimistic.length > 0) scrollToNewest('smooth');
+  }, [optimistic, scrollToNewest]);
 
   async function send() {
     const body = draft.trim();
@@ -287,9 +324,9 @@ export function Conversation({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {status === 'active' ? (
-        <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        <label className="flex shrink-0 items-center gap-2 px-1 text-xs text-muted-foreground">
           {labels.ephemeralityLabel}
           <select
             value={ephemerality}
@@ -304,7 +341,7 @@ export function Conversation({
       ) : null}
 
       {incoming ? (
-        <div className="ios-card flex flex-col gap-2 rounded-2xl p-3">
+        <div className="ios-card flex shrink-0 flex-col gap-2 rounded-2xl p-3">
           <p className="text-sm text-muted-foreground">{labels.requestIncomingHint}</p>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -335,82 +372,97 @@ export function Conversation({
         </div>
       ) : null}
 
-      <ol className="ios-card flex min-h-[40vh] flex-col gap-2 rounded-2xl p-3">
-        {initialMessages.length === 0 && optimistic.length === 0 ? (
-          <li className="m-auto text-sm text-muted-foreground">{labels.empty}</li>
-        ) : null}
-        {initialMessages.map((m) => {
-          const mine = m.senderId === selfUserId;
-          const editable =
-            mine && !m.deleted && now - Date.parse(m.createdAt) < editWindowMinutes * 60_000;
-          const deletable =
-            mine && !m.deleted && now - Date.parse(m.createdAt) < deleteWindowMinutes * 60_000;
-          return (
-            <li key={m.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
-              <div
-                className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                  mine ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                }`}
-              >
-                {m.deleted ? (
-                  <span className="italic opacity-70">{labels.deleted}</span>
-                ) : hideViewed && !mine && ephemerality === 'after_viewing' ? (
-                  <span className="italic opacity-70">{labels.hiddenAway}</span>
-                ) : (
-                  m.body
-                )}
-              </div>
-              <div className="mt-0.5 flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
-                {ephemeralTag && !m.deleted ? (
-                  <span className="inline-flex items-center gap-1 opacity-80">
-                    <ClockIcon />
-                    {ephemeralTag}
-                  </span>
-                ) : null}
-                {m.editedAt && !m.deleted ? <span>{labels.edited}</span> : null}
-                {editable ? (
-                  <button type="button" onClick={() => edit(m)} className="hover:underline">
-                    {labels.edit}
-                  </button>
-                ) : null}
-                {deletable ? (
-                  <button type="button" onClick={() => del(m)} className="hover:underline">
-                    {labels.del}
-                  </button>
-                ) : null}
-                {!mine && !m.deleted ? (
-                  <button type="button" onClick={() => report(m)} className="hover:underline">
-                    {labels.report}
-                  </button>
-                ) : null}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <ol
+          ref={scrollRef}
+          onScroll={onListScroll}
+          className="ios-card flex flex-1 flex-col gap-2 overflow-y-auto rounded-2xl p-3"
+        >
+          {initialMessages.length === 0 && optimistic.length === 0 ? (
+            <li className="m-auto text-sm text-muted-foreground">{labels.empty}</li>
+          ) : null}
+          {initialMessages.map((m) => {
+            const mine = m.senderId === selfUserId;
+            const editable =
+              mine && !m.deleted && now - Date.parse(m.createdAt) < editWindowMinutes * 60_000;
+            const deletable =
+              mine && !m.deleted && now - Date.parse(m.createdAt) < deleteWindowMinutes * 60_000;
+            return (
+              <li key={m.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                <div
+                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                    mine ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                  }`}
+                >
+                  {m.deleted ? (
+                    <span className="italic opacity-70">{labels.deleted}</span>
+                  ) : hideViewed && !mine && ephemerality === 'after_viewing' ? (
+                    <span className="italic opacity-70">{labels.hiddenAway}</span>
+                  ) : (
+                    m.body
+                  )}
+                </div>
+                <div className="mt-0.5 flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+                  {ephemeralTag && !m.deleted ? (
+                    <span className="inline-flex items-center gap-1 opacity-80">
+                      <ClockIcon />
+                      {ephemeralTag}
+                    </span>
+                  ) : null}
+                  {m.editedAt && !m.deleted ? <span>{labels.edited}</span> : null}
+                  {editable ? (
+                    <button type="button" onClick={() => edit(m)} className="hover:underline">
+                      {labels.edit}
+                    </button>
+                  ) : null}
+                  {deletable ? (
+                    <button type="button" onClick={() => del(m)} className="hover:underline">
+                      {labels.del}
+                    </button>
+                  ) : null}
+                  {!mine && !m.deleted ? (
+                    <button type="button" onClick={() => report(m)} className="hover:underline">
+                      {labels.report}
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+          {optimistic.map((body, i) => (
+            <li key={`opt-${i}`} className="flex flex-col items-end opacity-60">
+              <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+                {body}
               </div>
             </li>
-          );
-        })}
-        {optimistic.map((body, i) => (
-          <li key={`opt-${i}`} className="flex flex-col items-end opacity-60">
-            <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
-              {body}
-            </div>
-          </li>
-        ))}
-        {lastOwnRead ? (
-          <li className="px-1 text-right text-[11px] text-muted-foreground">{labels.read}</li>
+          ))}
+          {lastOwnRead ? (
+            <li className="px-1 text-right text-[11px] text-muted-foreground">{labels.read}</li>
+          ) : null}
+          {otherTyping ? (
+            <li className="px-1 text-xs italic text-muted-foreground">{labels.typing}</li>
+          ) : null}
+        </ol>
+        {showPill ? (
+          <button
+            type="button"
+            onClick={() => scrollToNewest('smooth')}
+            className="ios-pressable absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-card-strong)]"
+          >
+            {labels.newMessages}
+            <DownIcon />
+          </button>
         ) : null}
-        {otherTyping ? (
-          <li className="px-1 text-xs italic text-muted-foreground">{labels.typing}</li>
-        ) : null}
-        <div ref={endRef} />
-      </ol>
+      </div>
 
       {error ? (
-        <p role="status" className="px-1 text-sm text-muted-foreground">
+        <p role="status" className="shrink-0 px-1 text-sm text-muted-foreground">
           {error}
         </p>
       ) : null}
 
       {sentRequest ? (
-        <div className="ios-card flex flex-col gap-0.5 rounded-2xl p-3 text-sm">
+        <div className="ios-card flex shrink-0 flex-col gap-0.5 rounded-2xl p-3 text-sm">
           <span className="font-medium">{labels.requestSent}</span>
           <span className="text-muted-foreground">{labels.requestWaiting}</span>
         </div>
@@ -420,7 +472,7 @@ export function Conversation({
             e.preventDefault();
             void send();
           }}
-          className="flex flex-col gap-1"
+          className="flex shrink-0 flex-col gap-1"
         >
           {incoming ? (
             <p className="px-1 text-xs text-muted-foreground">{labels.requestComposerHint}</p>
@@ -456,6 +508,23 @@ export function Conversation({
         </form>
       )}
     </div>
+  );
+}
+
+function DownIcon() {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
   );
 }
 

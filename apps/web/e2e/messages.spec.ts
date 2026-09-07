@@ -75,6 +75,10 @@ test.describe.serial('messages, end to end', () => {
     // list, since the two-pane also shows this message as the list preview.
     await expect(page.locator('ol').getByText(firstMessage)).toBeVisible();
     await expect(page.getByText('No messages yet. Say hello.')).toHaveCount(0);
+    // The message list is its own scroll region, so the thread never scrolls the
+    // page. The composer stays put below it.
+    const overflowY = await page.locator('ol').evaluate((el) => getComputedStyle(el).overflowY);
+    expect(overflowY).toBe('auto');
   });
 
   test('the recipient search finds a member by handle', async ({ browser }) => {
