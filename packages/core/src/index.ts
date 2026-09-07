@@ -5,4 +5,5 @@ export * from './ingestion/index';
 export * from './auth/index';
 export * from './rbac/index';
 export * from './storage/index';
+export * from './payments/index';
 export * from './time/format';
