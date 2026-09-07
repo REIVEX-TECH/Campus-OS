@@ -107,12 +107,20 @@ export default async function MarketplacePage({ params, searchParams }: Params &
             <h1 className="text-2xl font-bold tracking-tight">{t('marketplace.heading')}</h1>
             <p className="max-w-prose text-sm text-muted-foreground">{t('marketplace.intro')}</p>
           </div>
-          <Link
-            href={`${base}/marketplace/post`}
-            className="ios-pressable inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
-            {t('marketplace.sell')}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`${base}/marketplace/mine`}
+              className="ios-pressable inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
+            >
+              {t('marketplace.mine.link')}
+            </Link>
+            <Link
+              href={`${base}/marketplace/post`}
+              className="ios-pressable inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              {t('marketplace.sell')}
+            </Link>
+          </div>
         </header>
 
         <BrowseControls

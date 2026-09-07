@@ -111,6 +111,94 @@ export async function addListingPhoto(
   });
 }
 
+/** How a listing's status may change by the seller. */
+export type ListingLifecycleRefusal = 'not_found' | 'not_allowed' | 'invalid';
+
+/** Which current statuses each target may be reached from (seller transitions). */
+const ALLOWED_FROM: Record<'active' | 'reserved' | 'sold', string[]> = {
+  reserved: ['active'],
+  sold: ['active', 'reserved'],
+  active: ['reserved', 'sold', 'expired'], // relist
+};
+
+/**
+ * The seller sets their own listing to reserved, sold, or back to active (relist).
+ * Stamps reserved_at / sold_at on entry and clears them when it returns to active.
+ * Only the seller's own, non-deleted listing moves, and only along an allowed edge.
+ */
+export async function setListingStatus(
+  actor: { userId: string },
+  tenantId: string,
+  listingId: string,
+  next: 'active' | 'reserved' | 'sold',
+): Promise<Result<{ changed: boolean }, ListingLifecycleRefusal>> {
+  const from = ALLOWED_FROM[next];
+  if (!from) return err('invalid');
+  const reservedAt =
+    next === 'reserved' ? sql`now()` : next === 'active' ? sql`null` : sql`reserved_at`;
+  const soldAt = next === 'sold' ? sql`now()` : next === 'active' ? sql`null` : sql`sold_at`;
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update mkt_listings
+           set status = ${next}, reserved_at = ${reservedAt}, sold_at = ${soldAt}, edited_at = now()
+        where id = ${listingId}::uuid and tenant_id = ${tenantId}
+          and seller_id = ${actor.userId}::uuid and deleted_at is null
+          and status in (${sql.join(
+            from.map((s) => sql`${s}`),
+            sql`, `,
+          )})
+        returning id`)),
+    ];
+    return ok({ changed: rows.length > 0 });
+  });
+}
+
+/**
+ * The seller takes their own listing down for good: soft-delete the row (so it
+ * leaves browse and the detail page) and delete its photo rows, returning the
+ * storage keys for the caller to remove the files.
+ */
+export async function deleteListing(
+  actor: { userId: string },
+  tenantId: string,
+  listingId: string,
+): Promise<Result<{ changed: boolean; photoKeys: string[] }, ListingLifecycleRefusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update mkt_listings set deleted_at = now(), edited_at = now()
+        where id = ${listingId}::uuid and tenant_id = ${tenantId}
+          and seller_id = ${actor.userId}::uuid and deleted_at is null
+        returning id`)),
+    ];
+    if (rows.length === 0) return ok({ changed: false, photoKeys: [] });
+    return ok({ changed: true, photoKeys: await deleteListingPhotoRows(tx, listingId) });
+  });
+}
+
+/** Push one's own active listing's expiry out by another full window (one-tap). */
+export async function extendListing(
+  actor: { userId: string },
+  tenantId: string,
+  listingId: string,
+  settings: MarketplaceSettings,
+): Promise<Result<{ changed: boolean }, ListingLifecycleRefusal>> {
+  const days = Math.max(1, Math.floor(settings.expiryDays));
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update mkt_listings
+           set expires_at = now() + (${days}::int * interval '1 day'),
+               expiry_notified_at = null, edited_at = now()
+        where id = ${listingId}::uuid and tenant_id = ${tenantId}
+          and seller_id = ${actor.userId}::uuid and status = 'active' and deleted_at is null
+        returning id`)),
+    ];
+    return ok({ changed: rows.length > 0 });
+  });
+}
+
 /** Delete a listing's photo rows and return their storage keys (full + thumb) so
  *  the caller can remove the files. Used when a listing is removed/withdrawn. */
 export async function deleteListingPhotoRows(

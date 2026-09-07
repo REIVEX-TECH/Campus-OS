@@ -11,8 +11,17 @@ import {
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
-import { migrationsFolder, migrationsTable } from '../src/manifest';
+import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { marketplaceListingPhotos, marketplaceListings } from '../src/schema/marketplace';
+import { listingById, myListings } from '../src/listings';
+import {
+  addListingPhoto,
+  createListing,
+  deleteListing,
+  extendListing,
+  setListingStatus,
+} from '../src/write';
+import { expireActiveListings } from '../src/expiry';
 
 /**
  * RLS for the marketplace: a listing is tenant-wide readable (anyone browses) but
@@ -155,5 +164,150 @@ describe('marketplace RLS', () => {
         }),
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('marketplace listing lifecycle', () => {
+  const settings = settingsSchema.parse({});
+
+  async function newListingId(seller: { userId: string }, title = 'phone') {
+    const res = await createListing(
+      seller,
+      'aaa',
+      { title, pricePaisa: 250000, priceKind: 'fixed', category: 'electronics', condition: 'used' },
+      settings,
+    );
+    if (!res.ok) throw new Error(`create failed: ${res.error}`);
+    return res.value.id;
+  }
+
+  it('refuses a phone number in the description, then creates a clean listing', async () => {
+    if (!split) return;
+    const seller = await member('mk-lc-contact');
+    const refused = await createListing(
+      seller,
+      'aaa',
+      {
+        title: 'textbook',
+        description: 'call me on 0300 1234567',
+        pricePaisa: 1000,
+        priceKind: 'fixed',
+        category: 'textbooks',
+        condition: 'used',
+      },
+      settings,
+    );
+    expect(refused).toMatchObject({ ok: false, error: 'contact_info' });
+    const ok = await createListing(
+      seller,
+      'aaa',
+      {
+        title: 'textbook',
+        pricePaisa: 1000,
+        priceKind: 'fixed',
+        category: 'textbooks',
+        condition: 'used',
+      },
+      settings,
+    );
+    expect(ok.ok).toBe(true);
+  });
+
+  it('moves active -> reserved -> sold -> active (relist), only for the seller', async () => {
+    if (!split) return;
+    const seller = await member('mk-lc-a');
+    const other = await member('mk-lc-b');
+    const id = await newListingId(seller);
+
+    // A non-seller cannot change status.
+    expect((await setListingStatus(other, 'aaa', id, 'reserved')).ok).toBe(true); // ok:true, changed:false
+    expect((await listingById('aaa', id))?.status).toBe('active');
+
+    expect((await setListingStatus(seller, 'aaa', id, 'reserved')).ok).toBe(true);
+    expect((await listingById('aaa', id))?.status).toBe('reserved');
+    expect((await setListingStatus(seller, 'aaa', id, 'sold')).ok).toBe(true);
+    const sold = await listingById('aaa', id);
+    expect(sold?.status).toBe('sold');
+    expect(sold?.soldAt).not.toBeNull();
+    // Relist clears the sold stamp.
+    expect((await setListingStatus(seller, 'aaa', id, 'active')).ok).toBe(true);
+    const relisted = await listingById('aaa', id);
+    expect(relisted?.status).toBe('active');
+    expect(relisted?.soldAt).toBeNull();
+  });
+
+  it('deletes the seller listing and its photo rows, returning the storage keys', async () => {
+    if (!split) return;
+    const seller = await member('mk-lc-del');
+    const id = await newListingId(seller);
+    expect(
+      (
+        await addListingPhoto(
+          seller,
+          'aaa',
+          id,
+          {
+            storageKey: 'marketplace/de/x.webp',
+            thumbKey: 'marketplace/de/x_thumb.webp',
+            contentType: 'image/webp',
+            width: 10,
+            height: 10,
+            byteSize: 100,
+          },
+          settings.maxPhotosPerListing,
+        )
+      ).ok,
+    ).toBe(true);
+    const res = await deleteListing(seller, 'aaa', id);
+    expect(res.ok && res.value.changed).toBe(true);
+    if (res.ok) {
+      expect(res.value.photoKeys.sort()).toEqual(
+        ['marketplace/de/x.webp', 'marketplace/de/x_thumb.webp'].sort(),
+      );
+    }
+    // Gone from reads and from the seller's own listings.
+    expect(await listingById('aaa', id)).toBeNull();
+    expect((await myListings(seller.userId, 'aaa')).some((l) => l.id === id)).toBe(false);
+  });
+
+  it('expires only overdue active listings; the seller can relist', async () => {
+    if (!split) return;
+    const seller = await member('mk-lc-exp');
+    const overdue = await newListingId(seller, 'overdue');
+    const fresh = await newListingId(seller, 'fresh');
+    await withTenant('aaa', (tx) =>
+      tx.execute(
+        sql`update mkt_listings set expires_at = now() - interval '1 hour' where id = ${overdue}::uuid`,
+      ),
+    );
+    const count = await expireActiveListings('aaa');
+    expect(count).toBe(1);
+    expect((await listingById('aaa', overdue))?.status).toBe('expired');
+    expect((await listingById('aaa', fresh))?.status).toBe('active');
+    // Relist the expired one.
+    expect((await setListingStatus(seller, 'aaa', overdue, 'active')).ok).toBe(true);
+    expect((await listingById('aaa', overdue))?.status).toBe('active');
+  });
+
+  it('extends an active listing only for its seller', async () => {
+    if (!split) return;
+    const seller = await member('mk-lc-ext');
+    const id = await newListingId(seller);
+    const before = await withTenant('aaa', (tx) =>
+      tx.execute(sql`select expires_at from mkt_listings where id = ${id}::uuid`),
+    );
+    const beforeAt = ([...before][0] as { expires_at: string }).expires_at;
+    // Force it near expiry, then extend.
+    await withTenant('aaa', (tx) =>
+      tx.execute(
+        sql`update mkt_listings set expires_at = now() + interval '1 day' where id = ${id}::uuid`,
+      ),
+    );
+    expect((await extendListing(seller, 'aaa', id, settings)).ok).toBe(true);
+    const after = await withTenant('aaa', (tx) =>
+      tx.execute(sql`select expires_at from mkt_listings where id = ${id}::uuid`),
+    );
+    const afterAt = ([...after][0] as { expires_at: string }).expires_at;
+    expect(new Date(afterAt).getTime()).toBeGreaterThan(new Date(beforeAt).getTime());
   });
 });
