@@ -17,9 +17,11 @@ test('the tenant app shell shows the module sidebar with the active page marked'
   // Search is not here: it lives in the top bar, on every page.
   await expect(nav.getByRole('link', { name: 'Search' })).toHaveCount(0);
 
-  // Coming-soon modules are present as non-link rows (no href to click).
-  await expect(nav.getByText('Marketplace')).toBeVisible();
-  await expect(nav.locator('a', { hasText: 'Marketplace' })).toHaveCount(0);
+  // Marketplace is a live module for LGU now, so it is a link.
+  await expect(nav.getByRole('link', { name: 'Marketplace' })).toBeVisible();
+  // A still-coming-soon module is present as a non-link row (no href to click).
+  await expect(nav.getByText('Rides')).toBeVisible();
+  await expect(nav.locator('a', { hasText: 'Rides' })).toHaveCount(0);
 
   // The desktop collapse toggle exists (icons-only reclaim), a labelled toggle.
   const collapse = page.getByRole('button', { name: 'Collapse sidebar' });

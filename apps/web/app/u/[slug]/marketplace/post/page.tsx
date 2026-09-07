@@ -110,6 +110,9 @@ export default async function MarketplacePostPage({ params }: Params) {
           maxUploadBytes={settings.maxUploadBytes}
           labels={labels}
         />
+        <Link href={`${base}/marketplace/policy`} className="px-1 text-xs font-medium text-primary">
+          {t('marketplace.policy.link')}
+        </Link>
       </div>
     </PageShell>
   );
