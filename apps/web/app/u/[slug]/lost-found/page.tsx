@@ -102,9 +102,9 @@ export default async function LostFoundPage({ params, searchParams }: PageProps)
             </Link>
             <Link
               href={`${base}/lost-found/post`}
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              className="ios-pressable rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
-              {t('lostFound.report')}
+              {t('lostFound.post')}
             </Link>
           </div>
         </header>

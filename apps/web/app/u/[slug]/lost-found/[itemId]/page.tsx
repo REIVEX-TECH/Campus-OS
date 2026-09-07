@@ -177,7 +177,7 @@ export default async function LostFoundItemPage({ params, searchParams }: PagePr
               {item.reporterHandle}
             </Link>
           ) : (
-            <span>{t('lostFound.reportedBy', { handle: '?' })}</span>
+            <span>{t('lostFound.postedBy', { handle: '?' })}</span>
           )}
           <span>· {reportedOn}</span>
         </div>
