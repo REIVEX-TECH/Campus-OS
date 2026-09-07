@@ -9,7 +9,10 @@ import { ChromeProvider } from './chrome-context';
 import { Sidebar, type SidebarGroup, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
 import { unreadCount } from '@campusos/module-communities/notifications';
-import { unreadCount as messagesUnread } from '@campusos/module-messages/service';
+import {
+  unreadCount as messagesUnread,
+  requestCount as messagesRequests,
+} from '@campusos/module-messages/service';
 import { TopBar } from './top-bar';
 
 /**
@@ -49,12 +52,17 @@ export async function AppShell({
   // Cheap when nobody is signed in: with no session cookie this does not touch
   // the database at all, so a public timetable pays nothing for it.
   const actor = await currentActor();
-  // Unread direct messages, for a badge on the Messages nav item (only where the
-  // module is on and someone is signed in).
-  const msgUnread =
-    actor && enabledModules.includes('messages')
-      ? await messagesUnread(actor.userId, tenantSlug)
-      : 0;
+  // Messages needing attention: unread messages plus inbound requests. One number
+  // for the top-bar mail icon and the sidebar item, only where the module is on and
+  // someone is signed in.
+  const messagesOn = Boolean(actor) && enabledModules.includes('messages');
+  const [msgUnread, msgRequests] = messagesOn
+    ? await Promise.all([
+        messagesUnread(actor!.userId, tenantSlug),
+        messagesRequests(actor!.userId, tenantSlug),
+      ])
+    : [0, 0];
+  const msgTotal = msgUnread + msgRequests;
   const items: SidebarItem[] = MODULES.filter(
     (m) => !m.hideFromNav && (!m.moduleId || enabledModules.includes(m.moduleId)),
   ).map((m) => ({
@@ -63,7 +71,7 @@ export async function AppShell({
     icon: m.icon,
     href: m.soon ? `${base}/soon/${m.key}` : `${base}${m.path ?? ''}`,
     soon: m.soon,
-    badge: m.moduleId === 'messages' && msgUnread > 0 ? msgUnread : undefined,
+    badge: m.moduleId === 'messages' && msgTotal > 0 ? msgTotal : undefined,
   }));
   // The communities a signed in person has joined, as a second section.
   const groups: SidebarGroup[] = [];
@@ -104,6 +112,15 @@ export async function AppShell({
             unread === null
               ? null
               : { href: `${base}/notifications`, unread, label: t('notifications.bell') }
+          }
+          messages={
+            messagesOn
+              ? {
+                  href: `${base}/messages`,
+                  count: msgTotal,
+                  label: t('module.messages.label'),
+                }
+              : null
           }
           firebase={firebaseWebConfig()}
           labels={{
