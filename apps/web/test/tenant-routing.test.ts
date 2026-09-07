@@ -59,6 +59,28 @@ describe('planRoute: tenant subdomain of TENANT_BASE_DOMAIN', () => {
   });
 });
 
+describe('planRoute: /media is never tenant-rewritten', () => {
+  // Object storage is host-agnostic (nginx in prod, app/media/[...key] in dev). A
+  // tenant subdomain must pass /media through, not rewrite it to /u/{label}/media.
+  it('passes /media through on a tenant subdomain, the platform host, and a legacy host', () => {
+    expect(
+      planRoute(
+        'lgu.campusos.reivex.io',
+        '/media/lost-found/ab/uuid.webp',
+        TENANT_BASE,
+        PLATFORM,
+        LEGACY,
+      ),
+    ).toEqual({ action: 'next' });
+    expect(planRoute(PLATFORM, '/media/x.webp', TENANT_BASE, PLATFORM, LEGACY)).toEqual({
+      action: 'next',
+    });
+    expect(planRoute('lgu.reivex.io', '/media/x.webp', TENANT_BASE, PLATFORM, LEGACY)).toEqual({
+      action: 'next',
+    });
+  });
+});
+
 describe('planRoute: platform root', () => {
   it('isPlatformHost matches the platform host (port-insensitive), not tenants', () => {
     expect(isPlatformHost('campusos.reivex.io', PLATFORM)).toBe(true);
