@@ -5,6 +5,7 @@ import { manifest as identityManifest } from '@campusos/module-identity/manifest
 import { manifest as lostFoundManifest } from '@campusos/module-lost-found/manifest';
 import { manifest as marketplaceManifest } from '@campusos/module-marketplace/manifest';
 import { manifest as messagesManifest } from '@campusos/module-messages/manifest';
+import { manifest as moneyManifest } from '@campusos/module-money/manifest';
 import { manifest as timetableManifest } from '@campusos/module-timetable/manifest';
 
 // Base (@campusos/db) migrations run first, then each module's migrations in
@@ -16,6 +17,7 @@ const modules = [
   lostFoundManifest,
   messagesManifest,
   marketplaceManifest,
+  moneyManifest,
 ];
 
 // Migrations are DDL, so they run as the schema owner rather than the runtime
