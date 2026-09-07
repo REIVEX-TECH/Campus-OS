@@ -300,3 +300,103 @@ export async function myListings(userId: string, tenantId: string): Promise<MyLi
     }));
   });
 }
+
+/** The listings a member has saved (their own bookmarks), newest save first. Only
+ *  live listings (not soft-deleted) are returned; status is included so the saver
+ *  can see a sold or expired one. */
+export async function savedListings(userId: string, tenantId: string): Promise<ListingSummary[]> {
+  return withActorInTenant(userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select l.id, l.title, l.price_paisa, l.price_kind, l.category, l.condition, l.status,
+               l.created_at,
+               (select p.thumb_key from mkt_listing_photos p
+                 where p.listing_id = l.id order by p.position asc limit 1) as thumb_key
+        from mkt_saved s
+        join mkt_listings l on l.id = s.listing_id
+        where s.user_id = ${userId}::uuid and l.deleted_at is null and l.status <> 'removed'
+        order by s.created_at desc
+        limit 100`)),
+    ] as Array<{
+      id: string;
+      title: string;
+      price_paisa: string | number;
+      price_kind: string;
+      category: string;
+      condition: string;
+      status: string;
+      created_at: string | Date;
+      thumb_key: string | null;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      pricePaisa: Number(r.price_paisa),
+      priceKind: r.price_kind,
+      category: r.category,
+      condition: r.condition,
+      status: r.status,
+      createdAt: toDate(r.created_at),
+      thumbKey: r.thumb_key,
+    }));
+  });
+}
+
+/** Whether the member has saved this listing (for the save button's state). */
+export async function isListingSaved(
+  userId: string,
+  tenantId: string,
+  listingId: string,
+): Promise<boolean> {
+  return withActorInTenant(userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select 1 from mkt_saved
+        where user_id = ${userId}::uuid and listing_id = ${listingId}::uuid limit 1`)),
+    ];
+    return rows.length > 0;
+  });
+}
+
+/** A seller's ACTIVE listings, for their public profile tab. A tenant read. */
+export async function sellerActiveListings(
+  tenantId: string,
+  sellerId: string,
+  limit = 12,
+): Promise<ListingSummary[]> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select l.id, l.title, l.price_paisa, l.price_kind, l.category, l.condition, l.status,
+               l.created_at,
+               (select p.thumb_key from mkt_listing_photos p
+                 where p.listing_id = l.id order by p.position asc limit 1) as thumb_key
+        from mkt_listings l
+        where l.tenant_id = ${tenantId} and l.seller_id = ${sellerId}::uuid
+          and l.status = 'active' and l.deleted_at is null
+        order by l.created_at desc, l.id desc
+        limit ${limit}`)),
+    ] as Array<{
+      id: string;
+      title: string;
+      price_paisa: string | number;
+      price_kind: string;
+      category: string;
+      condition: string;
+      status: string;
+      created_at: string | Date;
+      thumb_key: string | null;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      pricePaisa: Number(r.price_paisa),
+      priceKind: r.price_kind,
+      category: r.category,
+      condition: r.condition,
+      status: r.status,
+      createdAt: toDate(r.created_at),
+      thumbKey: r.thumb_key,
+    }));
+  });
+}

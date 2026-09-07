@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { mediaUrl } from '@campusos/media';
-import { listingById } from '@campusos/module-marketplace/listings';
+import { isListingSaved, listingById } from '@campusos/module-marketplace/listings';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { MessageSellerButton } from '@/app/_components/marketplace/message-seller-button';
+import { SaveButton } from '@/app/_components/marketplace/save-button';
 import { SellerControls } from '@/app/_components/marketplace/seller-controls';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
@@ -77,6 +78,8 @@ export default async function MarketplaceListingPage({ params }: Params) {
     messagesEnabled(tenant) &&
     (listing.status === 'active' || listing.status === 'reserved') &&
     listing.sellerHandle !== null;
+  const canSave = Boolean(actor) && !isOwn;
+  const saved = canSave ? await isListingSaved(actor!.userId, slug, listing.id) : false;
   const price =
     listing.pricePaisa === 0 ? t('marketplace.price.free') : formatPkr(listing.pricePaisa);
   const statusBadge =
@@ -182,20 +185,33 @@ export default async function MarketplaceListingPage({ params }: Params) {
 
         <p className="px-1 text-xs text-muted-foreground">{t('marketplace.detail.cashOnMeetup')}</p>
 
-        {canMessage && listing.sellerHandle ? (
-          <div className="px-1">
-            <MessageSellerButton
-              tenant={slug}
-              base={base}
-              sellerId={listing.sellerId}
-              sellerHandle={listing.sellerHandle}
-              sellerAvatarSeed={listing.sellerAvatarSeed ?? listing.sellerId}
-              listingTitle={listing.title}
-              listingPath={`/marketplace/${listing.id}`}
-              maxLength={messagesSettings(tenant).maxBodyLength}
-              label={t('marketplace.detail.messageSeller')}
-              labels={composeLabels(t)}
-            />
+        {canMessage || canSave ? (
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            {canMessage && listing.sellerHandle ? (
+              <MessageSellerButton
+                tenant={slug}
+                base={base}
+                sellerId={listing.sellerId}
+                sellerHandle={listing.sellerHandle}
+                sellerAvatarSeed={listing.sellerAvatarSeed ?? listing.sellerId}
+                listingTitle={listing.title}
+                listingPath={`/marketplace/${listing.id}`}
+                maxLength={messagesSettings(tenant).maxBodyLength}
+                label={t('marketplace.detail.messageSeller')}
+                labels={composeLabels(t)}
+              />
+            ) : null}
+            {canSave ? (
+              <SaveButton
+                tenant={slug}
+                listingId={listing.id}
+                initialSaved={saved}
+                labels={{
+                  save: t('marketplace.action.save'),
+                  saved: t('marketplace.action.saved'),
+                }}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

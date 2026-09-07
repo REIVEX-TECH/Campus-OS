@@ -403,6 +403,13 @@ export const en = {
   'marketplace.status.sold': 'Sold',
   'marketplace.status.expired': 'Expired',
   'marketplace.status.removed': 'Removed',
+  'marketplace.action.save': 'Save',
+  'marketplace.action.saved': 'Saved',
+  'marketplace.savedPage.heading': 'Saved listings',
+  'marketplace.savedPage.link': 'Saved',
+  'marketplace.savedPage.empty': 'You have not saved any listings.',
+  'marketplace.profile.tab': 'Listings',
+  'marketplace.profile.empty': 'No active listings.',
 
   'messages.heading': 'Messages',
   'messages.intro': 'Your private conversations. One to one, only the two of you.',

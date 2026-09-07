@@ -1,4 +1,13 @@
-import { bigint, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { universities } from '@campusos/db/schema';
 
 /**
@@ -76,5 +85,25 @@ export const marketplaceListingPhotos = pgTable(
   (t) => [index('mkt_listing_photos_listing_idx').on(t.listingId, t.position)],
 );
 
+export const marketplaceSaved = pgTable(
+  'mkt_saved',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => marketplaceListings.id, { onDelete: 'cascade' }),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('mkt_saved_uniq').on(t.userId, t.listingId),
+    index('mkt_saved_user_idx').on(t.tenantId, t.userId, t.createdAt),
+  ],
+);
+
 export type MarketplaceListing = typeof marketplaceListings.$inferSelect;
 export type MarketplaceListingPhoto = typeof marketplaceListingPhotos.$inferSelect;
+export type MarketplaceSaved = typeof marketplaceSaved.$inferSelect;
