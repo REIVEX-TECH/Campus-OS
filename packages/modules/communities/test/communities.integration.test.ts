@@ -2887,6 +2887,14 @@ describe('definer grant hygiene', () => {
     // reports across reporters.
     auth_mkt_report_queue: 'app',
     auth_mkt_resolve_reports: 'app',
+    // Marketplace orders: app-callable, each derives the actor from the GUC and
+    // acts only within the caller's own order (place / advance one edge) or, for
+    // auto-complete, finishes a delivered order past the window. Data ownership,
+    // not a platform privilege; deciding a dispute is a separate grant-gated
+    // definer that ships with the finance admin.
+    mkt_place_order: 'app',
+    mkt_order_transition: 'app',
+    mkt_order_autocomplete: 'app',
     // Stamps an after-viewing message's expiry on first view; app-callable, gated
     // on the caller being a participant of the conversation.
     auth_msg_stamp_viewed: 'app',
