@@ -262,6 +262,8 @@ export const en = {
   'lostFound.form.failed': 'That did not go through. You can try again.',
   'lostFound.form.tooLarge': 'One of those images is too large.',
   'lostFound.form.badType': 'Only JPEG, PNG or WebP images.',
+  'lostFound.form.cardsWarning':
+    'For a card or ID, do not upload a photo that shows the full number or details. Describe it instead, and let the owner claim it privately.',
   'lostFound.withdraw': 'Withdraw',
   'lostFound.withdrawing': 'Withdrawing',
   'lostFound.withdrawn': 'Withdrawn.',
