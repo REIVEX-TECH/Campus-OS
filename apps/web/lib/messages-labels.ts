@@ -43,6 +43,9 @@ export function conversationLabels(t: T): ConversationLabels {
     decline: t('messages.request.decline'),
     block: t('messages.request.block'),
     typing: t('messages.typing'),
+    disappearsAfterViewing: t('messages.ephemeral.tagAfterViewing'),
+    disappearsIn24h: t('messages.ephemeral.tagAfter24h'),
+    hiddenAway: t('messages.ephemeral.hiddenAway'),
   };
 }
 
