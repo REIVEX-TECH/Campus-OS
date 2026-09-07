@@ -43,6 +43,9 @@ export type ConversationLabels = {
   decline: string;
   block: string;
   typing: string;
+  disappearsAfterViewing: string;
+  disappearsIn24h: string;
+  hiddenAway: string;
 };
 
 /**
@@ -107,6 +110,8 @@ export function Conversation({
   const [busy, setBusy] = useState(false);
   const [optimistic, setOptimistic] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // After-viewing: blank the viewed messages the moment the viewer looks away.
+  const [hideViewed, setHideViewed] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const lastTypingRef = useRef(0);
 
@@ -137,6 +142,16 @@ export function Conversation({
   useEffect(() => {
     setOptimistic([]);
   }, [initialMessages]);
+
+  // After-viewing only: hide the messages the viewer has seen the moment their
+  // attention leaves (tab hidden). Leaving the thread or closing the widget unmounts
+  // the component, which removes them outright; this covers looking away in place.
+  useEffect(() => {
+    if (ephemerality !== 'after_viewing') return;
+    const onVis = () => setHideViewed(document.hidden);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [ephemerality]);
 
   // Mark read on open, poll every 3s while visible, and refresh immediately when
   // the tab regains focus (so new messages and the typing indicator do not wait up
@@ -230,6 +245,13 @@ export function Conversation({
 
   const now = Date.now();
   const lastReadMs = otherLastReadAt ? Date.parse(otherLastReadAt) : 0;
+  // A per-message tag naming how this conversation's messages disappear.
+  const ephemeralTag =
+    ephemerality === 'after_viewing'
+      ? labels.disappearsAfterViewing
+      : ephemerality === 'after_24h'
+        ? labels.disappearsIn24h
+        : null;
   const lastOwn = [...initialMessages]
     .reverse()
     .find((m) => m.senderId === selfUserId && !m.deleted);
@@ -330,9 +352,21 @@ export function Conversation({
                   mine ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}
               >
-                {m.deleted ? <span className="italic opacity-70">{labels.deleted}</span> : m.body}
+                {m.deleted ? (
+                  <span className="italic opacity-70">{labels.deleted}</span>
+                ) : hideViewed && !mine && ephemerality === 'after_viewing' ? (
+                  <span className="italic opacity-70">{labels.hiddenAway}</span>
+                ) : (
+                  m.body
+                )}
               </div>
               <div className="mt-0.5 flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+                {ephemeralTag && !m.deleted ? (
+                  <span className="inline-flex items-center gap-1 opacity-80">
+                    <ClockIcon />
+                    {ephemeralTag}
+                  </span>
+                ) : null}
                 {m.editedAt && !m.deleted ? <span>{labels.edited}</span> : null}
                 {editable ? (
                   <button type="button" onClick={() => edit(m)} className="hover:underline">
@@ -422,5 +456,23 @@ export function Conversation({
         </form>
       )}
     </div>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      className="h-3 w-3"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
   );
 }
