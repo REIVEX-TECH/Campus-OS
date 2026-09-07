@@ -43,7 +43,10 @@ export function ComposeSheet({
   labels: ComposeLabels;
   fixedRecipient?: Recipient;
 }) {
-  const [recipient, setRecipient] = useState<Recipient | null>(fixedRecipient ?? null);
+  // A fixed recipient (the profile Message button) always wins, so the sheet shows
+  // "To: handle" + the body field and never the search; otherwise the picked one.
+  const [picked, setPicked] = useState<Recipient | null>(null);
+  const recipient = fixedRecipient ?? picked;
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState<Recipient[]>([]);
   const [draft, setDraft] = useState('');
@@ -54,14 +57,14 @@ export function ComposeSheet({
   // Reset when opened; focus the first field.
   useEffect(() => {
     if (!open) return;
-    setRecipient(fixedRecipient ?? null);
+    setPicked(null);
     setQuery('');
     setMatches([]);
     setDraft('');
     setError(null);
     const raf = requestAnimationFrame(() => firstFieldRef.current?.focus());
     return () => cancelAnimationFrame(raf);
-  }, [open, fixedRecipient]);
+  }, [open]);
 
   // Debounced handle search while picking a recipient.
   useEffect(() => {
@@ -140,7 +143,7 @@ export function ComposeSheet({
             {!fixedRecipient ? (
               <button
                 type="button"
-                onClick={() => setRecipient(null)}
+                onClick={() => setPicked(null)}
                 className="ios-pressable ml-auto rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
                 {labels.cancel}
@@ -165,7 +168,7 @@ export function ComposeSheet({
                 <li key={m.userId}>
                   <button
                     type="button"
-                    onClick={() => setRecipient(m)}
+                    onClick={() => setPicked(m)}
                     className="ios-pressable flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-muted"
                   >
                     <IdentityAvatar seed={m.avatarSeed || m.userId} label={m.handle} size={28} />

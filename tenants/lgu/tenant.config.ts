@@ -22,7 +22,7 @@ export const lgu: TenantConfigInput = {
   allowedEmailDomains: ['lgu.edu.pk'],
   // Anyone with a verified lgu.edu.pk address joins as a student.
   joinMode: 'domain',
-  enabledModules: ['timetable', 'communities', 'lost-found'],
+  enabledModules: ['timetable', 'communities', 'lost-found', 'messages'],
   moduleSettings: {
     // Show karma (post/comment/total) on every profile. The render landed in the
     // profile work, but the display is gated behind this per-tenant setting, which

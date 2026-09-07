@@ -18,3 +18,25 @@ export function isSameOrigin(headers: Headers): boolean {
     return false;
   }
 }
+
+/**
+ * The read-side counterpart of isSameOrigin, for GET (never a state change).
+ *
+ * A browser omits Origin on a same-origin GET fetch, so isSameOrigin would
+ * wrongly refuse the page's own polling. A read needs a weaker guard: the
+ * SameSite=Lax session cookie is not sent on a cross site fetch (so a cross
+ * origin caller is unauthenticated anyway) and the same origin policy hides the
+ * response body from any cross origin script. So allow a missing Origin, and
+ * refuse only an Origin that is present and points at another host.
+ */
+export function isNotCrossOrigin(headers: Headers): boolean {
+  const origin = headers.get('origin');
+  if (!origin) return true;
+  const host = headers.get('x-forwarded-host') ?? headers.get('host');
+  if (!host) return false;
+  try {
+    return new URL(origin).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}

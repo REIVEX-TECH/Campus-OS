@@ -6,7 +6,7 @@ import { currentActor } from './auth';
 import { messagesEnabled, messagesSettings } from './messages';
 import { clientKey, rateLimit } from './rate-limit';
 import { readJson } from './read-json';
-import { isSameOrigin } from './same-origin';
+import { isNotCrossOrigin, isSameOrigin } from './same-origin';
 import { getTenantRegistry } from './tenants';
 
 /**
@@ -59,7 +59,7 @@ export type ReadGate =
   | { ok: false; response: Response };
 
 export async function messagesReadGate(request: Request): Promise<ReadGate> {
-  if (!isSameOrigin(request.headers)) {
+  if (!isNotCrossOrigin(request.headers)) {
     return { ok: false, response: Response.json({ error: 'origin' }, { status: 403 }) };
   }
   const actor = await currentActor();
