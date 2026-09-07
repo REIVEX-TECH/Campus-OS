@@ -122,6 +122,11 @@ beforeAll(async () => {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'marketplace', 'drizzle'),
     '__drizzle_migrations_marketplace',
   );
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'money', 'drizzle'),
+    '__drizzle_migrations_money',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
@@ -2895,6 +2900,10 @@ describe('definer grant hygiene', () => {
     mkt_place_order: 'app',
     mkt_order_transition: 'app',
     mkt_order_autocomplete: 'app',
+    // The money ledger's only writer: owner-only, never granted to the app. The
+    // finance actions that call it (confirm, release, payout, refund) ship with the
+    // finance admin, gated on a grant.
+    money_post_txn: 'owner',
     // Stamps an after-viewing message's expiry on first view; app-callable, gated
     // on the caller being a participant of the conversation.
     auth_msg_stamp_viewed: 'app',
