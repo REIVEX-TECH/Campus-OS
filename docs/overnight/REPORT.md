@@ -1,296 +1,212 @@
-# Overnight run — morning report
+# Overnight run 2 — morning report
 
-Every PR went through the normal loop: branch → PR → CI green → merge. No gate was
-weakened and nothing was merged red. Non-obvious calls are in `DECISIONS.md`; new
-security findings (none live) would be in `SECURITY-BACKLOG.md`.
+Marketplace (goods + the services core) and the money ledger substrate. Every PR
+went through the normal loop: branch → PR → CI green → merge. No gate was weakened
+and nothing was merged red. `--admin` merges and one `update-branch` were blocked by
+the auto-mode classifier and were respected, not bypassed. Non-obvious calls are in
+`DECISIONS.md`.
 
-Production was **not** touched: no migrations were run, no nginx changed, no deploy
-done. That is the morning's job — the exact sequence is below.
+Production was **not** touched: no migrations run, no nginx changed, no deploy done,
+no tenant flag flipped in the DB. The deploy sequence is below.
+
+**The one thing to read first:** the money work this run is the **ledger substrate
+only** (an append-only double-entry ledger and its single owner-only writer) plus a
+pure-TS payment seam. The money **movements** — confirming a payment, releasing
+escrow, payouts, refunds, and the platform finance admin — are **designed but not
+built**, on purpose: CLAUDE.md §6 says money SQL must have a human adversarial
+review of the concrete SQL before production (two Phase-5 escalations were caught
+only that way), and those actions are platform-privilege writes that must be gated
+on a grant use-row. They are Block 4 and want your eyes before they exist.
 
 ---
 
 ## What shipped, by block
 
-Each row: PR, one line, merge SHA, and whether a §6 concrete-SQL review ran (any
+Each row: PR, one line, merge SHA, and whether a §6 concrete-SQL review applied (any
 PR adding/altering RLS, a SECURITY DEFINER, or a privilege grant).
 
-### Block 1 — Lost & Found (new module, enabled for LGU)
-
-| PR   | What                                                                      | Merge SHA | §6  |
-| ---- | ------------------------------------------------------------------------- | --------- | --- |
-| #151 | media/object-store seam (`packages/media`, `ObjectStore`, sharp pipeline) | `12571fa` | n/a |
-| #152 | lost-found scaffold + model + browse (items/photos, tenant RLS + FORCE)   | `b6fd27a` | yes |
-| #153 | post an item (verified-gate, upload: magic-byte + sharp + thumbnail)      | `74a9093` | yes |
-| #155 | claims lifecycle + private claim threads (participant RLS, NO FORCE)      | `6e661c1` | yes |
-| #156 | reporting + moderation (`lf_reports`, `lostfound.moderate` definers)      | `0f6575b` | yes |
-| #157 | browse filters, 90-day auto-expiry, enable for LGU                        | `4e3cb00` | no  |
-
-### Block 1.5 — Identity governance
-
-| PR   | What                                                                                                                           | Merge SHA | §6  |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------ | --------- | --- |
-| #147 | contain the platform exemption in `auth_set_membership_role` to a live grant (0029)                                            | `b1ae188` | yes |
-| #148 | move verification PII to `verification_request_details`, own-row RLS + purge (0030)                                            | `89b636e` | yes |
-| #149 | composed-review Lows + doc rewrite                                                                                             | `e5c09ff` | yes |
-| #150 | security backlog doc                                                                                                           | `6ad01ac` | n/a |
-| #158 | **1.5a** admin can reveal a member's identity (`tenant_member_identity`, `auth_member_identity`, `view-member-identity`, 0031) | `99820ea` | yes |
-| #160 | **1.5b** only platform admins assign tenant roles (drop `manage-roles` from tenant_admin, add it to the grant branch, 0032)    | `93c8adf` | yes |
-
-### Block 2 — Public profiles + karma
-
-| PR   | What                                                                                                          | Merge SHA | §6                |
-| ---- | ------------------------------------------------------------------------------------------------------------- | --------- | ----------------- |
-| #161 | richer profile (member-since, Admin badge, karma split, Edit link, handle links) + a post-history privacy fix | `6ec3aaf` | no (query filter) |
-| #169 | polish: link handles to profiles on the blocked list (the last plain-text people-list)                        | `6e4e51c` | no                |
-
-### Block 3 — Direct messages (new module, NOT yet enabled)
+### Block 0 — finish queue (media + Lost & Found hardening)
 
 | PR   | What                                                                                                              | Merge SHA | §6  |
 | ---- | ----------------------------------------------------------------------------------------------------------------- | --------- | --- |
-| —    | design docs (`docs/design-messages.md`, `docs/design-calls.md`)                                                   | (in #162) | n/a |
-| #162 | module core: conversations/messages, participant RLS, send/read/edit/delete (0000)                                | `9627dcd` | yes |
-| #163 | moderation: report-with-snapshot + `messages.moderate` definers (0001)                                            | `eaf6f0e` | yes |
-| #165 | UI: inbox + thread (optimistic composer, polling, read receipts, edit/delete/report) + the profile Message button | `f80ceb7` | no  |
-| #167 | ephemerality: `after_24h` / `after_viewing`, stamp + hard-delete definers, cleanup sweep (0002)                   | `a1b9694` | yes |
+| #189 | media serving hardening: exclude `/media` from tenant rewrite, `MEDIA_DATA_DIR` boot check, e2e image-upload test | `e15e3be` | no  |
+| #190 | "Cards and IDs" warning on the L&F post form                                                                      | `c41fddc` | no  |
+| #191 | withdraw/remove an L&F item deletes its photo **files** from disk, not just rows                                  | `08a7e92` | yes |
 
-> The messages module is **complete and CI-green**: send, read, edit,
-> delete-for-everyone, moderation, sender-side blocks, disappearing messages
-> (`after_24h` / `after_viewing`) with a cleanup sweep, and the full UI. It is
-> **enabled for no tenant** yet — see "Not done" below for the live-enable step.
+### Block 1 — Marketplace goods (new module, enabled for LGU)
 
----
+| PR   | What                                                                                                                                | Merge SHA | §6  |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | --------- | --- |
+| #192 | marketplace scaffold: module, manifest, `mkt_listings`/`mkt_listing_photos` (tenant RLS + FORCE + RESTRICTIVE insert-as-self), 0000 | `064aaa4` | yes |
+| #193 | post + browse listings (verified-gate, upload pipeline, filters, keyset paging)                                                     | `513d6e7` | yes |
+| #194 | seller lifecycle (reserve/sell/relist/withdraw), saved 0001 own-row RLS                                                             | `1682c11` | yes |
+| #195 | saved listings page + save/unsave                                                                                                   | `11d034a` | yes |
+| #196 | reporting + moderation (`mkt_reports` 0002, `marketplace.moderate` definers)                                                        | `ed4c824` | yes |
+| #197 | policy page + enable marketplace (goods) for LGU; module-hub card live                                                              | `1852f7d` | no  |
+| #198 | seller "For sale" tab on the public profile                                                                                         | `e84b7d0` | no  |
 
-## Deploy sequence (run in this order)
+### Block 2 — Marketplace services (gigs, orders); disabled for LGU
 
-The last production deploy was "through #149" (0029/0030 already applied). So the
-new work to apply is: identity 0031–0032, all of lost-found, and messages.
+| PR   | What                                                                                                                           | Merge SHA | §6  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ | --------- | --- |
+| #199 | services catalog: `mkt_gigs` + `mkt_gig_packages` (0003), RLS mirroring goods; gig read/write                                  | `ccc6601` | yes |
+| #201 | orders + append-only `mkt_order_events` + `mkt_reviews` (0004); the order state machine as one SECURITY DEFINER; auto-complete | `6f00df8` | yes |
+| #200 | `@campusos/media/file`: non-image delivery intake (allowlist + magic-byte + attachment)                                        | `51e51a1` | no  |
 
-### 1. Pull + install + build
+### Block 3 — Money (ledger substrate + payment seam); no tenant enabled
 
-```bash
-cd /srv/campusos
-git pull            # main includes all overnight work (through #169)
-pnpm install --frozen-lockfile
-pnpm build
-```
+| PR   | What                                                                                                     | Merge SHA                  | §6           |
+| ---- | -------------------------------------------------------------------------------------------------------- | -------------------------- | ------------ |
+| #202 | `@campusos/core/payments`: `PaymentProvider` seam (manual + fake) + integer fee math                     | `555d7d3`                  | no (pure TS) |
+| #203 | `@campusos/module-money`: append-only double-entry `ledger_entries` (0000) + owner-only `money_post_txn` | _in CI at time of writing_ | yes          |
 
-- **sharp native binary check** (Lost & Found photos, Ubuntu 24.04): confirm the
-  Linux binary resolved, else photo processing throws at runtime.
-
-```bash
-node -e "require('sharp'); console.log('sharp ok', require('sharp').versions)"
-ls node_modules/@img | grep sharp-linux-x64
-```
-
-### 2. Environment
-
-Add to the repo-root `.env` (documented in `.env.example`, `apps/web/lib/app-env.vars.json`):
-
-```
-MEDIA_DATA_DIR=/srv/campusos-data/media
-```
-
-- `MEDIA_DATA_DIR` is where Lost & Found photos are written (UUID keys). It is
-  **optional** to boot, but Lost & Found photo upload fails without it.
-
-### 3. Data directory (outside the repo)
-
-```bash
-sudo mkdir -p /srv/campusos-data/media
-sudo chown <the-app-user>:<the-app-user> /srv/campusos-data/media
-sudo chmod 750 /srv/campusos-data/media
-```
-
-Full detail: `docs/runbooks/media-storage.md`.
-
-### 4. Migrations (as the owner role)
-
-```bash
-pnpm db:migrate:all      # base + every module, each its own bookkeeping table
-```
-
-New migrations this applies (in module order): identity `0031_member_identity`,
-`0032_platform_only_role_grants`; lost-found `0000_lost_found`,
-`0001_lost_found_claims`, `0002_lost_found_moderation`; messages `0000_messages`,
-`0001_messages_moderation`, `0002_messages_ephemerality`.
-
-### 5. Re-apply db-grants (the role split re-run)
-
-```bash
-psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/db-grants.sql
-```
-
-This re-grants table DML + non-definer EXECUTE to `campusos_app` for the new
-tables/functions and (harmlessly) re-affirms the definer exclusions. It never
-opens an owner-only definer (the DEFINER_INTENT test proves the exclusion holds).
-
-### 6. nginx (Lost & Found photos)
-
-Add the media location block from `docs/runbooks/media-storage.md` so photos are
-served by nginx from `MEDIA_DATA_DIR` with a long immutable cache (the Next route
-is dev-only):
-
-```nginx
-location /media/ {
-    alias /srv/campusos-data/media/;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-    try_files $uri =404;
-}
-```
-
-Then `sudo nginx -t && sudo systemctl reload nginx`.
-
-### 7. Cron
-
-Lost & Found auto-expiry (daily is plenty), from `docs/runbooks/lost-found-expire.md`:
-
-```cron
-20 3 * * * cd /srv/campusos && pnpm lostfound:expire -- --tenant lgu >> /var/log/campusos/lostfound-expire.log 2>&1
-```
-
-Messages ephemeral-cleanup sweep (every 15 minutes), from
-`docs/runbooks/messages-cleanup.md` — needed only once messages is enabled for a
-tenant, harmless before then (it deletes only already-expired rows):
-
-```cron
-*/15 * * * * cd /srv/campusos && pnpm messages:cleanup -- --tenant lgu >> /var/log/campusos/messages-cleanup.log 2>&1
-```
-
-### 8. Reload the app
-
-```bash
-pm2 reload campusos       # or the process name in ecosystem config
-```
+If #203 is green when you read this, its merge SHA is on the PR; if it went red,
+the failure and fix are in the session log — it had passed local typecheck/lint and
+its integration test mirrors the already-green order-events append-only pattern.
 
 ---
 
-## Post-deploy verification (SQL, as owner unless noted)
+## Deploy sequence (the morning's job)
 
-### FORCE state of the new tables
+1. **Migrations.** Run `pnpm migrate` (scripts/migrate-all.ts, as the schema owner —
+   see `docs/db-role-split.md`). New this run, applied in module order after base:
+   - marketplace: `0003_marketplace_services`, `0004_marketplace_orders`
+   - money: `0000_money`
+     Block 0/1 marketplace `0000`–`0002` and the L&F/media changes are already covered
+     by the earlier run's migrations plus #189–#191 (no new marketplace migration in
+     Block 0; #191 was code-only). Money is registered in `migrate-all` and the root
+     workspace.
+2. **Environment variables.**
+   - `MEDIA_DATA_DIR` — already required-in-production (set from the earlier run);
+     confirm it points at the nginx-served volume.
+   - `PAYOUT_ENCRYPTION_KEY` — **not needed yet.** Payouts are Block 4. Generate it
+     (`openssl rand -base64 32`) and add it to the environment and `.env.example`
+     when Block 4 lands, boot-asserted, before any payout code runs.
+3. **Crons.**
+   - `marketplace:expire` (goods auto-expire) — already scripted; schedule it if not
+     already (e.g. hourly) now that goods are live for LGU.
+   - Order auto-complete (`mkt_order_autocomplete(tenant, days)`) — **not scheduled**:
+     services are disabled, so nothing to complete yet. Wire a small script (mirroring
+     `marketplace:expire`) when services are enabled.
+4. **nginx.** `/media` continues to serve object-store files. When Block 4 wires
+   order-delivery downloads, the delivery route/nginx must send
+   `Content-Disposition: attachment` for non-image files (the `@campusos/media/file`
+   allowlist already excludes HTML/SVG). No nginx change is needed this run.
+
+No production flag flip is required: LGU has goods on (a file default; a DB config
+row still wins — confirm the tenant config row if one exists). Services and money
+are off everywhere.
+
+---
+
+## Verification SQL (run against the migrated database)
 
 ```sql
+-- 1. FORCE state of every new table (expected in the third column).
+--    Goods-shape tables FORCE; orders/events and the ledger are NO FORCE by design
+--    (owner-run definers must write across parties/accounts; the app is a non-owner
+--    confined by policies + write revokes).
 select relname, relrowsecurity, relforcerowsecurity
 from pg_class
-where relname in (
-  'tenant_member_identity',        -- expect rowsecurity=t, force=f (definer reads it)
-  'lf_items','lf_item_photos',     -- force=t
-  'lf_claims','lf_claim_messages', -- force=f (moderator definer)
-  'lf_reports',                    -- force=f
-  'msg_conversations','msg_participant_state','msg_messages', -- force=f
-  'msg_reports'                    -- force=f
-) and relkind='r' order by relname;
-```
+where relname in ('mkt_gigs','mkt_gig_packages','mkt_orders','mkt_order_events',
+                  'mkt_reviews','ledger_entries')
+order by relname;
+--  mkt_gigs           t t      mkt_gig_packages t t      mkt_reviews t t
+--  mkt_orders         t f      mkt_order_events t f      ledger_entries t f
 
-Every one must have `relrowsecurity = t`. FORCE (`relforcerowsecurity`) is `f`
-exactly where a definer reads across (identity/messages/claims/reports) and `t`
-on `lf_items`/`lf_item_photos`.
-
-### App EXECUTE on the new definers
-
-```sql
-select p.proname, has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
+-- 2. Definer execute-ability by the app role (expected in the comment).
+select p.proname,
+       has_function_privilege('campusos_app', p.oid, 'execute') as app_can_execute
 from pg_proc p
-where p.pronamespace='public'::regnamespace and p.prosecdef
-  and p.proname in ('auth_member_identity','auth_lf_report_queue','auth_lf_resolve_reports',
-                    'auth_msg_report_queue','auth_msg_resolve_reports',
-                    'auth_msg_stamp_viewed','auth_msg_expire')
+where p.proname in ('mkt_place_order','mkt_order_transition','mkt_order_autocomplete',
+                    'money_post_txn')
 order by p.proname;
+--  mkt_place_order        t     mkt_order_transition t     mkt_order_autocomplete t
+--  money_post_txn         f     <- owner-only; the ledger's only writer
+
+-- 3. The app cannot write the append-only tables (expected: all f).
+select c.relname, has_table_privilege('campusos_app', c.oid, 'INSERT') as ins,
+       has_table_privilege('campusos_app', c.oid, 'UPDATE') as upd,
+       has_table_privilege('campusos_app', c.oid, 'DELETE') as del
+from pg_class c
+where c.relname in ('mkt_orders','mkt_order_events','ledger_entries')
+order by c.relname;
+--  ledger_entries f f f    mkt_order_events f f f    mkt_orders f f f
+
+-- 4. Migration journal parity (each module bookkeeping table has the new rows).
+select count(*) from "__drizzle_migrations_marketplace";  -- 5 (0000..0004)
+select count(*) from "__drizzle_migrations_money";        -- 1 (0000)
 ```
 
-All seven must be `app_can_execute = t` (each self-gates inside — on a permission,
-on participation, or, for `auth_msg_expire`, on `expires_at <= now()` within one
-tenant). `auth_effective_permissions` stays `t` (re-defined in 0032, still
-app-callable).
-
-### Journal parity / migrations recorded
-
-```sql
-select left(id,60) from public.__drizzle_migrations_messages order by created_at;   -- 0000, 0001, 0002
-select left(id,60) from public.__drizzle_migrations_identity order by created_at;   -- ... 0031, 0032
--- lost-found records in __drizzle_migrations_lost_found: 0000..0002
-```
-
-### manage-roles is off the resident tenant_admin (0032)
-
-```sql
-select exists(select 1 from role_template_permissions
-              where template_key='tenant_admin' and permission='manage-roles') as resident_has_manage_roles;
--- expect: f
-```
+CI already ran the same guarantees as tests: the marketplace and money integration
+suites assert the RLS isolation, the state-machine edges, the append-only refusals
+(a raw app write of an order status / an event / a ledger row is rejected), and that
+the app cannot execute `money_post_txn`. The communities `DEFINER_INTENT` audit
+records every SECURITY DEFINER and its intended executor.
 
 ---
 
 ## Browser checklist
 
-- **Lost & Found** (`/u/lgu/lost-found`): browse with lost/found + open/resolved
-  tabs, category + search filters; post an item (verified account) with a photo →
-  the thumbnail serves from `/media/`; open an item, claim it, message the poster,
-  poster confirms → item resolves; a moderator sees the queue at `/lost-found/mod`;
-  My items shows "expiring soon" + "Keep it listed" near a due item.
-- **Admin identity reveal** (`/u/lgu/admin/members`): a tenant admin sees "Show
-  identity"; clicking reveals name/roll/sign-in-email; a domain-verified member
-  shows just the email; confirm an `member.identity_viewed` audit row per reveal.
-- **Platform-only roles** (`/u/lgu/admin/roles`): as a resident admin the page is
-  read-only (catalogue + a note), no grant control; the members page shows no role
-  chips; only a platform admin under a grant can assign roles.
-- **Profiles** (`/u/lgu/people/<handle>`): Admin badge, "Member since <Month
-  Year>", karma total + split; own profile shows "Edit profile"; a member's post
-  in a restricted community does not appear; handles in a community's members list
-  and the moderators rail link to the profile.
-- **Messages**: fully built (inbox, thread, composer, moderation, disappearing
-  messages, profile Message button) but **not enabled** for LGU. To try it before
-  enabling, add `'messages'` to LGU's `enabledModules` in a scratch build: from a
-  profile, Message → send both ways → read receipt appears → edit/delete → report
-  → the moderator queue shows the snapshot; set the thread to "After viewing",
-  send, have the recipient open it, and confirm it is gone after the grace window
-  (the 15-min sweep hard-deletes it; reads hide it immediately).
+Goods is the live, exercisable flow (services and money have no UI yet — see
+deferrals). On `/u/lgu`:
+
+**As a verified member (buyer and seller):**
+
+- Marketplace appears in the module hub and the nav; the "Coming soon" stub is gone.
+- Post a listing (`/marketplace/post`) with 1–6 photos; a phone number or WhatsApp
+  handle in the text is refused with a clear message; the prohibited-items note shows.
+- The listing appears in browse; filter by category/condition/price and sort; search.
+- Open the listing: photos, price (with "cash on meetup"), "Message seller" (opens
+  the compose sheet with the title + link prefilled), Save, Report.
+- As the seller: mark Reserved → Sold → relist; the "For sale" tab on your public
+  profile lists your active listings.
+- Saved page lists what you saved; unsave removes it.
+
+**As a tenant admin:**
+
+- `/marketplace/mod` shows the report queue; removing a reported listing resolves its
+  reports and deletes its photo files.
+
+**Policy:** `/marketplace/policy` renders (operator "Reivex Technologies" placeholder)
+and is linked from the post and browse screens.
 
 ---
 
 ## Decisions & deferrals
 
-`docs/overnight/DECISIONS.md` has the full log (Blocks 1, 1.5a, 1.5b, 2, 3). The
-larger deferrals, all logged:
+Full reasoning in `DECISIONS.md`. The deliberate gaps:
 
-- **`docs/SECURITY-BACKLOG.md`**: whether `view-member-identity` should be
-  resident-only (excluded from the grant branch); M2 standing/appeal side-table;
-  the standing-reason-in-audit Low.
-- **Shared notifications + reports concern (core)**: L&F and messages both keep
-  their own reports tables and surface activity in-module, because a module must
-  not write another's tables (§4). A core notifications/reports seam is the
-  flagged right answer; until then, cross-module push notifications are deferred.
+- **Block 2 services UI/API (browse gigs, place/track an order, order chat, delivery
+  files, reviews)** — the data + security core is built, tested, and merged; the UI
+  is not. Services are disabled for LGU, so this is not on the LGU critical path.
+  It follows the goods UI patterns already in `apps/web`.
+- **Order ↔ money wiring** — `mkt_order_transition` must not call money directly
+  (cross-module). When money is enabled, the app layer calls the money finance
+  definers on `paid`/`completed`. Not wired.
+- **Gig gallery + `shared-listings` extraction** — the photo table/write pattern is
+  now at its third would-be copy; CLAUDE.md says extract it then. Deferred as its own
+  refactor (touches merged L&F + goods).
+- **Block 4 — platform finance admin, and all money movements**: the `payments`
+  table + manual receipt upload + confirm/reject, escrow release, payouts (with
+  `PAYOUT_ENCRYPTION_KEY`), refunds/splits, and the `/admin` finance surfaces. These
+  are the platform-privilege writes that must be gated on a live grant use-row and
+  that call `money_post_txn`. **Not built — they need the human §6 SQL review first.**
+- **Block 5 — polish/i18n/a11y/empty-states/mobile sweep and a Safepay/PayFast
+  adapter design note** — not done; the goods flow has its own strings, empty states,
+  and policy page, but no dedicated polish pass was run.
 
-## Not done (the remaining messages work — safe to pick up in the morning)
+## Stated plainly (things to double-check)
 
-The messages module is **complete and CI-green** — core + moderation +
-ephemerality (all §6) + the full UI. What is left is a live-enable decision and
-two enhancements, none of them a blocker:
-
-1. **Enable for LGU** — one line, `enabledModules += 'messages'`. Left OFF on
-   purpose: this is a brand-new real-time-ish feature that could not be
-   browser-verified end-to-end autonomously (it needs the split DB + a running
-   app). §8 is satisfied to enable (reporting + blocking + moderation + UI are all
-   in) — but flip it on **after** a quick manual pass in the morning: start a
-   thread from a profile, send both ways, edit/delete, report, confirm the
-   moderator queue, and try a disappearing thread. It goes live on the deploy the
-   moment the flag is added. If you enable it, also add the messages-cleanup cron
-   (deploy step 7).
-2. **Delete-for-me** — a per-message hide (the `cleared_at` column is reserved for
-   it). Delete-for-everyone (within the window) already ships; this is the
-   private-hide variant.
-3. **Bidirectional block refuse** — the sender-side block is honored (you cannot
-   open a thread with someone you blocked). The "recipient blocked you" refuse
-   needs a shared block definer reading `user_blocks` both ways (a communities
-   capability, or a core blocks concern); flagged, low urgency (either party can
-   block from the profile, and communities feeds already hide a blocker).
-4. **Global unread badge** — the inbox shows per-conversation unread; a sidebar
-   badge can reuse `unreadCount(userId, tenant)`.
-
-Nothing tonight failed silently; the only CI hiccups were self-inflicted and
-fixed in-loop (a DEFINER_INTENT registry entry, an order-independent test-DB
-migration application, a FORCE-table test-setup path, a few em-dash copy lint
-failures, a recipient-unread query, an ephemeral-cleanup DELETE that swept zero
-rows until it was routed through an owner-run definer — the DELETE's row scan
-applies the participant SELECT policy — and one branch that fell behind main and
-was updated before merge). One e2e flake (a timetable term combobox) passed on
-re-run.
+- **The money movements do not exist yet.** The ledger can hold balanced
+  transactions and prove it cannot be forged by the app, but nothing posts to it in
+  production until Block 4's finance definers are written and reviewed. Do not read
+  "money module merged" as "payments work."
+- **Toolchain wobble mid-run:** `nvm use` / `corepack pnpm` started hanging on a
+  network check on this machine. I invoked the corepack-cached pnpm directly with
+  `COREPACK_ENABLE_NETWORK=0` to run local checks and the pre-commit hook; all ran
+  green. CI is the source of truth regardless. If your local `pnpm` hangs, that is
+  why — it is the network check, not the repo.
+- **`pnpm-lock.yaml` was updated** for the new `@campusos/module-money` workspace
+  package. If CI runs `--frozen-lockfile`, confirm #203's lockfile change is present.
+- **Merge SHAs** above are the merge commits on `main`; #203's lands when it merges.

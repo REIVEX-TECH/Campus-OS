@@ -320,3 +320,70 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
 - **The module-hub card stays soon:true until Block 5**, where the flip to live +
   LGU enablement + the `seo`/`shell` test updates happen together (flipping it early
   broke `seo.spec`'s `/soon/marketplace` and `shell.spec`'s "Marketplace" soon-item).
+
+## Block 2 — Marketplace services (gigs, orders)
+
+- **Services live in the marketplace module, behind a separate flag**
+  (`marketplace-services`), not a new module: goods and services share categories,
+  moderation, and the media pipeline. A gig is text + one-to-three tiered packages
+  (`mkt_gigs` / `mkt_gig_packages`, migration 0003), RLS mirroring goods
+  (tenant-isolation + FORCE + RESTRICTIVE insert-as-self).
+- **Gig photos deferred.** A gallery would be the THIRD copy of the photo
+  table/write pattern (L&F, goods, gigs) — the point CLAUDE.md says to extract into
+  `shared-listings`. That refactor touches merged code and is risky overnight, so
+  gigs ship text+packages+reviews; the gallery + extraction is a logged follow-up.
+- **The order state machine is one SECURITY DEFINER** (`mkt_order_transition`,
+  migration 0004): it locks the order row `FOR UPDATE`, derives the actor's role
+  (buyer/seller) FROM THE ORDER, validates the edge for that role and status, writes
+  status + timestamps, and appends one `mkt_order_events` row — atomically. Keying
+  on `app.user_id` here is DATA ownership (is the actor this order's party), the
+  accepted use, NOT a privilege decision.
+- **Orders are created only by `mkt_place_order`**, which derives the price/turnaround
+  snapshot from the package itself, so a raw write cannot forge the agreed amount.
+- **Append-only, no app writes**: `INSERT/UPDATE/DELETE` on `mkt_orders` and
+  `mkt_order_events` are revoked from `campusos_app` by name; the app only SELECTs
+  its own (party RLS). Same discipline as the membership tables (0019). Reviews are
+  tenant-wide read, buyer-written once (RESTRICTIVE "earned" check + unique).
+- **payment_mode cash|online**: cash skips awaiting_payment/paid (accept ->
+  in_progress); online goes requested -> awaiting_payment -> paid -> in_progress.
+  The `paid` edge is buyer-triggered for now; Block 4 adds the ledger write and
+  payment verification. This keeps the workflow shippable without the money rail.
+- **Dispute RESOLUTION is deliberately NOT in the state machine**: opening a dispute
+  is a buyer action, but deciding one is a platform privilege that must be gated on a
+  grant (§8) — it ships with the finance admin (Block 4), not here.
+- **Delivery files extend `@campusos/media` with `./file`** (migration-free):
+  `validateUploadFile` does a magic-byte check against a small allowlist (pdf, zip,
+  docx, xlsx, pptx), stored as sent and served `Content-Disposition: attachment`.
+- **Services stay disabled for LGU** (goods only), per the brief.
+
+## Block 3 — Money
+
+- **The payment vendor seam is `@campusos/core/payments`** (§2): `PaymentProvider`
+  with `ManualTransferProvider` (production default, no paid gateway) and
+  `FakeProvider` (tests). Fee math is integer paisa, rounding down
+  (`PLATFORM_FEE_BPS = 1000` = 10%), the single TS source of truth.
+- **The ledger is a new platform-level module `@campusos/module-money`** (no routes,
+  nav, or tenant settings — tenant admins never see finance). `ledger_entries` is
+  append-only, double-entry; balances are sums, never stored; every transaction's
+  amounts sum to zero.
+- **`money_post_txn` is the ledger's ONLY writer**: owner-only SECURITY DEFINER,
+  revoked from PUBLIC and never granted to the app, enforcing sum-to-zero, non-zero
+  entries, and idempotency per `txn_id`. The app can neither write `ledger_entries`
+  nor execute the writer (both proven in the integration test).
+- **`tenant_id` on the ledger is a plain slug, no FK**, so no tenant lifecycle
+  cascade can mutate an append-only financial row.
+- **Deferred to Block 4 (finance admin), NOT built — needs the human §6 SQL review**
+  the brief mandates (money escalations were caught only at implementation review
+  twice): the `payments` table + manual receipt upload + confirm/reject, escrow
+  release on order completion, payouts with `PAYOUT_ENCRYPTION_KEY`, refunds/splits,
+  and the platform `/admin` finance surfaces. All are platform-privilege actions to
+  be gated on a live platform grant use-row (unforgeable), and all call
+  `money_post_txn` (owner->owner) to move money atomically with the ledger.
+
+## Environment note (2026-09-08, during the run)
+
+- Mid-run, `nvm use` and `corepack pnpm` began hanging on a network check on this
+  machine. Worked around by invoking the corepack-cached pnpm directly via the
+  Node binary with `COREPACK_ENABLE_NETWORK=0` (bypassing corepack's network
+  verification). All local typecheck/lint and the money commit hook ran green this
+  way; CI (its own clean environment) is the authoritative gate.
