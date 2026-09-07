@@ -6,6 +6,12 @@ import { useState } from 'react';
 import { GetVerified } from '@/app/_components/get-verified';
 import { ReportButton, type ReportLabels } from '@/app/_components/lost-found/report-button';
 
+// The app's field vocabulary, matching the community forms.
+const claimArea =
+  'ios-field min-h-20 w-full rounded-xl px-3.5 py-2.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const replyField =
+  'ios-field h-10 flex-1 rounded-xl px-3.5 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 export interface ClaimLabels {
   button: string;
   intro: string;
@@ -120,7 +126,7 @@ export function ClaimArea({
         >
           <p className="text-sm text-muted-foreground">{labels.intro}</p>
           <textarea
-            className="ios-field min-h-20"
+            className={claimArea}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder={labels.messagePlaceholder}
@@ -255,7 +261,7 @@ export function ClaimArea({
                       }}
                     >
                       <input
-                        className="ios-field flex-1"
+                        className={replyField}
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
                         placeholder={labels.send}

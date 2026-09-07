@@ -2,6 +2,10 @@
 
 import { useState } from 'react';
 
+// The app's field vocabulary, matching the community forms.
+const noteField =
+  'ios-field h-10 w-full rounded-xl px-3.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 export interface ReportLabels {
   button: string;
   intro: string;
@@ -69,6 +73,7 @@ export function ReportButton({
           <label key={r.value} className="flex items-center gap-2 text-sm">
             <input
               type="radio"
+              className="size-4 accent-primary"
               name={`report-${targetId}`}
               value={r.value}
               checked={reason === r.value}
@@ -79,7 +84,7 @@ export function ReportButton({
         ))}
       </div>
       <input
-        className="ios-field"
+        className={noteField}
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder={labels.notePlaceholder}
