@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withActorInTenant } from '@campusos/db';
+import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { isMember, isVerifiedMember } from './access';
 import type { MessagesSettings } from './manifest';
@@ -21,11 +21,18 @@ export type SendRefusal =
   | 'not_found'
   | 'invalid'
   | 'rate_limited'
+  | 'declined_recently'
   | 'too_late';
+
+/** Accept/decline a request. */
+export type RequestRefusal = 'not_found' | 'not_pending' | 'not_recipient';
 
 /** How a conversation's messages expire. */
 export const EPHEMERALITY = ['never', 'after_24h', 'after_viewing'] as const;
 export type Ephemerality = (typeof EPHEMERALITY)[number];
+
+/** How long a declined request bars the same requester from re-requesting. */
+const REREQUEST_BLOCK_DAYS = 30;
 
 export interface ConversationSummary {
   id: string;
@@ -35,6 +42,18 @@ export interface ConversationSummary {
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
   unread: number;
+  /** True when this is the actor's own outbound request (shown as "Request sent"). */
+  outbound: boolean;
+}
+
+/** An inbound request awaiting the actor's accept/decline. */
+export interface RequestSummary {
+  id: string;
+  fromUserId: string;
+  fromHandle: string | null;
+  fromAvatarSeed: string | null;
+  message: string | null;
+  createdAt: Date;
 }
 
 export interface ThreadMessage {
@@ -54,6 +73,10 @@ export interface Thread {
   otherAvatarSeed: string | null;
   otherLastReadAt: Date | null;
   ephemerality: string;
+  /** 'pending' | 'active' | 'declined'. */
+  status: string;
+  /** True when the actor is the one who opened this (still-)request. */
+  isRequester: boolean;
   messages: ThreadMessage[];
 }
 
@@ -66,10 +89,43 @@ function orderPair(x: string, y: string): [string, string] {
   return x < y ? [x, y] : [y, x];
 }
 
+/** The initiator's own read-state row (the recipient's is made when they read). */
+async function ensureOwnState(
+  tx: TenantTransaction,
+  tenantId: string,
+  conversationId: string,
+  userId: string,
+): Promise<void> {
+  await tx.execute(sql`
+    insert into msg_participant_state (tenant_id, conversation_id, participant_id, last_read_at)
+    values (${tenantId}, ${conversationId}::uuid, ${userId}::uuid, now())
+    on conflict (conversation_id, participant_id) do nothing`);
+}
+
+/** How many requests this actor has opened (or re-opened) in the last day. */
+async function recentInitiations(
+  tx: TenantTransaction,
+  tenantId: string,
+  userId: string,
+): Promise<number> {
+  const [r] = [
+    ...(await tx.execute(sql`
+      select count(*)::int as n from msg_conversations
+      where tenant_id = ${tenantId} and requested_by = ${userId}::uuid
+        and status_changed_at > now() - interval '1 day'`)),
+  ] as { n: number }[];
+  return r?.n ?? 0;
+}
+
 /**
- * Open (or reuse) a 1:1 conversation with another member. Initiating requires a
- * verified membership; the tenant's `whoCanMessage` decides whether the other
- * party must be verified too, or whether messaging is off entirely.
+ * Open (or reuse) a 1:1 conversation with another member. A NEW conversation is a
+ * request (status 'pending', with the actor as `requested_by`): it holds the one
+ * message the requester then sends, until the recipient accepts or declines.
+ *
+ * Initiating requires a verified membership; the tenant's `whoCanMessage` decides
+ * whether the other party must be verified too, or whether messaging is off. A
+ * request the recipient DECLINED bars the same requester for 30 days; after that a
+ * fresh request re-opens the (cleared) row. Blocks are checked at the route.
  */
 export async function startConversation(
   actor: { userId: string },
@@ -90,51 +146,73 @@ export async function startConversation(
       return err('recipient_unavailable');
 
     const [a, b] = orderPair(actor.userId, otherUserId);
-    // New-conversations-per-day cap, counted on the actor's initiations.
-    const [recent] = [
+    // Lock the pair's row if it exists, so a decline/re-request decision is atomic.
+    const [existing] = [
       ...(await tx.execute(sql`
-        select count(*)::int as n from msg_conversations
-        where tenant_id = ${tenantId}
-          and (participant_a = ${actor.userId}::uuid or participant_b = ${actor.userId}::uuid)
-          and created_at > now() - interval '1 day'`)),
-    ] as { n: number }[];
+        select id, status, requested_by, status_changed_at
+        from msg_conversations
+        where tenant_id = ${tenantId} and participant_a = ${a}::uuid and participant_b = ${b}::uuid
+        for update`)),
+    ] as {
+      id: string;
+      status: string;
+      requested_by: string | null;
+      status_changed_at: string | Date | null;
+    }[];
 
-    // Reuse an existing pair, else create it. The unique (tenant, a, b) makes the
-    // insert idempotent; a conflict means the conversation already existed.
+    if (existing) {
+      // An open chat, or a request already in flight (either direction): reuse it.
+      if (existing.status === 'active' || existing.status === 'pending') {
+        await ensureOwnState(tx, tenantId, existing.id, actor.userId);
+        return ok({ id: existing.id, created: false });
+      }
+      // Declined. The original requester is barred for the re-request window; after
+      // it (or coming from the other party) a fresh request re-opens the row.
+      const changed = toDate(existing.status_changed_at);
+      const withinBlock =
+        changed !== null &&
+        changed.getTime() > Date.now() - REREQUEST_BLOCK_DAYS * 24 * 60 * 60 * 1000;
+      if (existing.requested_by === actor.userId && withinBlock) return err('declined_recently');
+      if ((await recentInitiations(tx, tenantId, actor.userId)) >= settings.newConversationsPerDay)
+        return err('rate_limited');
+      // Re-open as a fresh pending request. `status_changed_at` moves to now(), which
+      // starts a new one-message window (sendMessage counts messages after it), so
+      // the requester may send again even though the declined thread's message stays
+      // in the row (the app role has no DELETE on msg_messages, by design).
+      await tx.execute(sql`
+        update msg_conversations
+           set status = 'pending', requested_by = ${actor.userId}::uuid,
+               status_changed_at = now(), ephemerality = ${ephemerality}
+         where id = ${existing.id}::uuid`);
+      await ensureOwnState(tx, tenantId, existing.id, actor.userId);
+      return ok({ id: existing.id, created: false });
+    }
+
+    // A brand-new pair: open a pending request.
+    if ((await recentInitiations(tx, tenantId, actor.userId)) >= settings.newConversationsPerDay)
+      return err('rate_limited');
     const inserted = [
       ...(await tx.execute(sql`
-        insert into msg_conversations (tenant_id, participant_a, participant_b, ephemerality)
-        values (${tenantId}, ${a}::uuid, ${b}::uuid, ${ephemerality})
+        insert into msg_conversations
+          (tenant_id, participant_a, participant_b, ephemerality, status, requested_by, status_changed_at)
+        values (${tenantId}, ${a}::uuid, ${b}::uuid, ${ephemerality}, 'pending', ${actor.userId}::uuid, now())
         on conflict (tenant_id, participant_a, participant_b) do nothing
         returning id`)),
     ] as { id: string }[];
-    let id: string;
-    let created: boolean;
-    if (inserted[0]) {
-      if ((recent?.n ?? 0) >= settings.newConversationsPerDay) {
-        // Undo: over the daily cap. (The insert ran to learn it was new.)
-        await tx.execute(sql`delete from msg_conversations where id = ${inserted[0].id}::uuid`);
-        return err('rate_limited');
-      }
-      id = inserted[0].id;
-      created = true;
-    } else {
-      const [existing] = [
+    if (!inserted[0]) {
+      // Lost a race to a concurrent open of the same pair; reuse what is now there.
+      const [now] = [
         ...(await tx.execute(sql`
           select id from msg_conversations
           where tenant_id = ${tenantId} and participant_a = ${a}::uuid and participant_b = ${b}::uuid
           limit 1`)),
       ] as { id: string }[];
-      if (!existing) return err('not_found');
-      id = existing.id;
-      created = false;
+      if (!now) return err('not_found');
+      await ensureOwnState(tx, tenantId, now.id, actor.userId);
+      return ok({ id: now.id, created: false });
     }
-    // The initiator's own read-state row (the recipient's is made when they read).
-    await tx.execute(sql`
-      insert into msg_participant_state (tenant_id, conversation_id, participant_id, last_read_at)
-      values (${tenantId}, ${id}::uuid, ${actor.userId}::uuid, now())
-      on conflict (conversation_id, participant_id) do nothing`);
-    return ok({ id, created });
+    await ensureOwnState(tx, tenantId, inserted[0].id, actor.userId);
+    return ok({ id: inserted[0].id, created: true });
   });
 }
 
@@ -152,11 +230,43 @@ export async function sendMessage(
   if (body.length > settings.maxBodyLength) return err('invalid');
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
-      ...(await tx.execute(
-        sql`select id, ephemerality from msg_conversations where id = ${conversationId}::uuid limit 1`,
-      )),
-    ] as { id: string; ephemerality: string }[];
+      ...(await tx.execute(sql`
+        select id, ephemerality, status, requested_by, status_changed_at
+        from msg_conversations where id = ${conversationId}::uuid for update`)),
+    ] as {
+      id: string;
+      ephemerality: string;
+      status: string;
+      requested_by: string | null;
+      status_changed_at: string | Date | null;
+    }[];
     if (!conv) return err('not_found'); // RLS hides conversations the actor is not in
+
+    // Request rules. A declined request is closed to the requester (they still see
+    // "Request sent"); a pending one holds the requester's single message, and the
+    // recipient's first message accepts it.
+    let status = conv.status;
+    if (status === 'declined') return err('not_allowed');
+    if (status === 'pending') {
+      if (conv.requested_by === actor.userId) {
+        // One message per request: count only messages since the request opened
+        // (status_changed_at), so a re-request after a decline starts fresh without
+        // deleting the old thread.
+        const [cnt] = [
+          ...(await tx.execute(sql`
+            select count(*)::int as n from msg_messages
+            where conversation_id = ${conversationId}::uuid
+              and created_at > ${conv.status_changed_at}::timestamptz`)),
+        ] as { n: number }[];
+        if ((cnt?.n ?? 0) >= 1) return err('not_allowed');
+      } else {
+        await tx.execute(sql`
+          update msg_conversations set status = 'active', status_changed_at = now()
+          where id = ${conversationId}::uuid`);
+        status = 'active';
+      }
+    }
+
     // A reply-to must be a message in this same conversation (RLS-visible).
     let replyTo: string | null = null;
     if (parsed.data.replyToId) {
@@ -168,9 +278,13 @@ export async function sendMessage(
       ] as { id: string }[];
       replyTo = r ? r.id : null;
     }
+    // Ephemerality applies only once active: a pending request message never
+    // expires (a request accepted later starts the clock only on later messages).
     // after_24h expires at send; after_viewing is stamped on first view; never = null.
     const expires =
-      conv.ephemerality === 'after_24h' ? sql`now() + interval '24 hours'` : sql`null`;
+      status === 'active' && conv.ephemerality === 'after_24h'
+        ? sql`now() + interval '24 hours'`
+        : sql`null`;
     const [row] = [
       ...(await tx.execute(sql`
         insert into msg_messages (tenant_id, conversation_id, sender_id, body, reply_to_id, expires_at)
@@ -191,11 +305,16 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
         with mine as (
           select c.id,
                  case when c.participant_a = ${userId}::uuid then c.participant_b else c.participant_a end as other,
-                 c.last_message_at, c.created_at
+                 c.last_message_at, c.created_at, c.status
           from msg_conversations c
-          where c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid
+          where (c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid)
+            and (
+              c.status = 'active'
+              or (c.requested_by = ${userId}::uuid and c.status in ('pending', 'declined'))
+            )
         )
         select mine.id, mine.other, mine.last_message_at,
+               (mine.status <> 'active') as outbound,
                p.handle as other_handle, p.avatar_seed as other_avatar_seed,
                (select case when m.deleted_at is not null then null else m.body end
                   from msg_messages m where m.conversation_id = mine.id
@@ -218,6 +337,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
       other_handle: string | null;
       other_avatar_seed: string | null;
       last_message_at: string | Date | null;
+      outbound: boolean;
       preview: string | null;
       unread: number | null;
     }>;
@@ -229,6 +349,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
       lastMessageAt: toDate(r.last_message_at),
       lastMessagePreview: r.preview,
       unread: r.unread ?? 0,
+      outbound: r.outbound === true,
     }));
   });
 }
@@ -236,6 +357,118 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
 /** The unread total across all the actor's conversations, for a sidebar badge. */
 export async function unreadCount(userId: string, tenantId: string): Promise<number> {
   return (await listInbox(userId, tenantId)).reduce((n, c) => n + c.unread, 0);
+}
+
+/**
+ * The requests awaiting this actor's decision: pending conversations they did not
+ * open. Kept out of the inbox and counted separately from unread.
+ */
+export async function listRequests(userId: string, tenantId: string): Promise<RequestSummary[]> {
+  return withActorInTenant(userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select c.id,
+               case when c.participant_a = ${userId}::uuid then c.participant_b else c.participant_a end as from_user,
+               c.created_at,
+               p.handle as from_handle, p.avatar_seed as from_avatar_seed,
+               -- the request's own message: the one sent since this request opened
+               -- (so a re-request shows its new message, not the declined thread's).
+               (select m.body from msg_messages m
+                  where m.conversation_id = c.id and m.created_at >= c.status_changed_at
+                  order by m.created_at asc limit 1) as message
+        from msg_conversations c
+        left join public_profiles p
+          on p.user_id = case when c.participant_a = ${userId}::uuid then c.participant_b else c.participant_a end
+        where (c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid)
+          and c.status = 'pending'
+          and c.requested_by <> ${userId}::uuid
+        order by c.created_at desc`)),
+    ] as Array<{
+      id: string;
+      from_user: string;
+      from_handle: string | null;
+      from_avatar_seed: string | null;
+      message: string | null;
+      created_at: string | Date;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      fromUserId: r.from_user,
+      fromHandle: r.from_handle,
+      fromAvatarSeed: r.from_avatar_seed,
+      message: r.message,
+      createdAt: toDate(r.created_at)!,
+    }));
+  });
+}
+
+/** How many requests await this actor's decision (for the tab count). */
+export async function requestCount(userId: string, tenantId: string): Promise<number> {
+  return withActorInTenant(userId, tenantId, async (tx) => {
+    const [r] = [
+      ...(await tx.execute(sql`
+        select count(*)::int as n from msg_conversations c
+        where (c.participant_a = ${userId}::uuid or c.participant_b = ${userId}::uuid)
+          and c.status = 'pending' and c.requested_by <> ${userId}::uuid`)),
+    ] as { n: number }[];
+    return r?.n ?? 0;
+  });
+}
+
+/** Why an accept/decline did not apply, for a precise refusal. */
+async function requestRefusal(
+  tx: TenantTransaction,
+  conversationId: string,
+): Promise<RequestRefusal> {
+  const [conv] = [
+    ...(await tx.execute(
+      sql`select status, requested_by from msg_conversations where id = ${conversationId}::uuid limit 1`,
+    )),
+  ] as { status: string; requested_by: string | null }[];
+  if (!conv) return 'not_found';
+  if (conv.status !== 'pending') return 'not_pending';
+  return 'not_recipient'; // pending, but the actor is the requester
+}
+
+/** The recipient accepts a request: the conversation becomes an active chat. */
+export async function acceptRequest(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+): Promise<Result<{ ok: true }, RequestRefusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update msg_conversations set status = 'active', status_changed_at = now()
+        where id = ${conversationId}::uuid and status = 'pending'
+          and requested_by <> ${actor.userId}::uuid
+        returning id`)),
+    ];
+    if (rows.length > 0) return ok({ ok: true });
+    return err(await requestRefusal(tx, conversationId));
+  });
+}
+
+/**
+ * The recipient declines a request. The requester is not notified; they keep
+ * seeing "Request sent". Blocking on decline is composed at the route.
+ */
+export async function declineRequest(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+): Promise<Result<{ ok: true }, RequestRefusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update msg_conversations set status = 'declined', status_changed_at = now()
+        where id = ${conversationId}::uuid and status = 'pending'
+          and requested_by <> ${actor.userId}::uuid
+        returning id`)),
+    ];
+    if (rows.length > 0) return ok({ ok: true });
+    return err(await requestRefusal(tx, conversationId));
+  });
 }
 
 /** One conversation's messages, oldest first, with the other side's read marker. */
@@ -248,7 +481,7 @@ export async function thread(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(sql`
-        select c.id, c.ephemerality,
+        select c.id, c.ephemerality, c.status, c.requested_by,
                case when c.participant_a = ${actor.userId}::uuid then c.participant_b else c.participant_a end as other,
                p.handle as other_handle, p.avatar_seed as other_avatar_seed
         from msg_conversations c
@@ -258,6 +491,8 @@ export async function thread(
     ] as {
       id: string;
       ephemerality: string;
+      status: string;
+      requested_by: string | null;
       other: string;
       other_handle: string | null;
       other_avatar_seed: string | null;
@@ -292,6 +527,8 @@ export async function thread(
       otherAvatarSeed: conv.other_avatar_seed,
       otherLastReadAt: otherState ? toDate(otherState.last_read_at) : null,
       ephemerality: conv.ephemerality,
+      status: conv.status,
+      isRequester: conv.requested_by === actor.userId,
       messages: rows.map((m) => ({
         id: m.id,
         senderId: m.sender_id,
@@ -319,10 +556,13 @@ export async function markRead(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [conv] = [
       ...(await tx.execute(
-        sql`select id from msg_conversations where id = ${conversationId}::uuid limit 1`,
+        sql`select id, status from msg_conversations where id = ${conversationId}::uuid limit 1`,
       )),
-    ] as { id: string }[];
+    ] as { id: string; status: string }[];
     if (!conv) return err('not_found');
+    // Opening a request does not mark it read, and never triggers after-viewing
+    // expiry; read state and the view stamp begin once the conversation is active.
+    if (conv.status !== 'active') return ok({ ok: true });
     await tx.execute(sql`
       insert into msg_participant_state (tenant_id, conversation_id, participant_id, last_read_at)
       values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, now())

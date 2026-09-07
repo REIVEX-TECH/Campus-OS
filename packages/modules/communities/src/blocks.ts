@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import type { Refusal } from './access';
@@ -55,6 +55,29 @@ export async function unblockUser(
         ),
       );
     return ok({ blocked: false });
+  });
+}
+
+/**
+ * Whether the actor and `otherUserId` are in a block relationship in EITHER
+ * direction. Own-row RLS lets the actor see only their own blocks, so the reverse
+ * ("did they block me?") is read through the `auth_blocked_between` definer (0012),
+ * which is scoped to the caller. Used to refuse a direct-message request or send
+ * when either party has blocked the other.
+ */
+export async function blockedBetween(
+  actor: { userId: string },
+  tenantId: string,
+  otherUserId: string,
+): Promise<boolean> {
+  if (otherUserId === actor.userId) return false;
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(
+        sql`select auth_blocked_between(${tenantId}, ${otherUserId}::uuid) as blocked`,
+      )),
+    ] as { blocked: boolean }[];
+    return row?.blocked === true;
   });
 }
 

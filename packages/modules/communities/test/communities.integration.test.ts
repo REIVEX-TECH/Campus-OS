@@ -56,7 +56,7 @@ import {
   setPinned,
 } from '../src/mod-actions';
 import { listAutomodRules, setAutomodRules } from '../src/automod';
-import { blockUser, listBlocked, unblockUser } from '../src/blocks';
+import { blockUser, blockedBetween, listBlocked, unblockUser } from '../src/blocks';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { listMembers, listModerators } from '../src/members';
 import { acceptRules, listRules, needsRulesAcceptance, setRules } from '../src/rules';
@@ -1321,6 +1321,21 @@ describe('moderation', () => {
       value: { blocked: false },
     });
     expect(await titles(blocker)).toContain('Signed post');
+  });
+
+  it('reports a block in both directions via auth_blocked_between (for direct messages)', async () => {
+    const a = await member('bb-a');
+    const b = await member('bb-b');
+    const c = await member('bb-c');
+    expect(await blockUser(a, 'aaa', b.userId)).toEqual({ ok: true, value: { blocked: true } });
+    // The blocker sees the relationship, and so does the blocked party, whose own
+    // RLS hides the raw row: they never blocked A, yet they are blocked-between.
+    expect(await blockedBetween(a, 'aaa', b.userId)).toBe(true);
+    expect(await isBlocked(b, 'aaa', a.userId)).toBe(false);
+    expect(await blockedBetween(b, 'aaa', a.userId)).toBe(true);
+    // An uninvolved pair is not blocked, in either direction.
+    expect(await blockedBetween(a, 'aaa', c.userId)).toBe(false);
+    expect(await blockedBetween(c, 'aaa', a.userId)).toBe(false);
   });
 
   it('lets the tenant oversee every community and dissolve one, and nobody else', async () => {
@@ -2847,6 +2862,9 @@ describe('definer grant hygiene', () => {
     communities_karma_vote: 'app',
     communities_notify: 'app',
     communities_unmask: 'app',
+    // A caller-scoped, bidirectional block check for cross-module composition
+    // (direct-message requests/sends). Self-scoped: the caller is always one side.
+    auth_blocked_between: 'app',
     // Lost & Found moderation: app-callable, each self-gates on lostfound.moderate
     // (via auth_effective_permissions) inside the body, then reads the report queue
     // or resolves reports across users (the M1/M2 moderator-definer pattern).
