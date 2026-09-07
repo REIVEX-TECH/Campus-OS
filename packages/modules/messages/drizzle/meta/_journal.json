@@ -36,6 +36,13 @@
       "when": 1756800304000,
       "tag": "0004_prune_empty_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1756800305000,
+      "tag": "0005_typing_indicator",
+      "breakpoints": true
     }
   ]
 }

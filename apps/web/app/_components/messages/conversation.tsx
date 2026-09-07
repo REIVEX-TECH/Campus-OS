@@ -42,6 +42,7 @@ export type ConversationLabels = {
   accept: string;
   decline: string;
   block: string;
+  typing: string;
 };
 
 /**
@@ -61,6 +62,7 @@ export function Conversation({
   status,
   isRequester,
   canSend,
+  otherTyping,
   inboxHref,
   editWindowMinutes,
   deleteWindowMinutes,
@@ -76,6 +78,7 @@ export function Conversation({
   status: string;
   isRequester: boolean;
   canSend: boolean;
+  otherTyping: boolean;
   inboxHref: string;
   editWindowMinutes: number;
   deleteWindowMinutes: number;
@@ -92,13 +95,39 @@ export function Conversation({
   const [optimistic, setOptimistic] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const lastTypingRef = useRef(0);
+
+  // Typing heartbeat: while the actor types in an ACTIVE chat, refresh their
+  // typing_until at most every 2s; clear it on send or blur. A no-op elsewhere.
+  function typingHeartbeat() {
+    if (status !== 'active') return;
+    const now = Date.now();
+    if (now - lastTypingRef.current < 2000) return;
+    lastTypingRef.current = now;
+    void fetch(`/api/messages/${conversationId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant, action: 'typing', on: true }),
+    }).catch(() => undefined);
+  }
+  function clearTyping() {
+    if (status !== 'active' || lastTypingRef.current === 0) return;
+    lastTypingRef.current = 0;
+    void fetch(`/api/messages/${conversationId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant, action: 'typing', on: false }),
+    }).catch(() => undefined);
+  }
 
   // The server render is the truth: once it updates, drop the optimistic bubbles.
   useEffect(() => {
     setOptimistic([]);
   }, [initialMessages]);
 
-  // Mark read on open, then poll while the tab is visible.
+  // Mark read on open, poll every 3s while visible, and refresh immediately when
+  // the tab regains focus (so new messages and the typing indicator do not wait up
+  // to 3s after returning).
   useEffect(() => {
     const post = (body: Record<string, unknown>) =>
       fetch(`/api/messages/${conversationId}`, {
@@ -110,7 +139,19 @@ export function Conversation({
     const timer = setInterval(() => {
       if (!document.hidden) router.refresh();
     }, 3000);
-    return () => clearInterval(timer);
+    const onFocus = () => {
+      if (!document.hidden) {
+        void post({ action: 'read' });
+        router.refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [conversationId, tenant, router]);
 
   useEffect(() => {
@@ -124,6 +165,7 @@ export function Conversation({
     setError(null);
     setOptimistic((o) => [...o, body]);
     setDraft('');
+    clearTyping();
     try {
       const res = await fetch(`/api/messages/${conversationId}`, {
         method: 'POST',
@@ -308,6 +350,9 @@ export function Conversation({
         {lastOwnRead ? (
           <li className="px-1 text-right text-[11px] text-muted-foreground">{labels.read}</li>
         ) : null}
+        {otherTyping ? (
+          <li className="px-1 text-xs italic text-muted-foreground">{labels.typing}</li>
+        ) : null}
         <div ref={endRef} />
       </ol>
 
@@ -336,7 +381,11 @@ export function Conversation({
           <div className="flex items-end gap-2">
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                typingHeartbeat();
+              }}
+              onBlur={clearTyping}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();

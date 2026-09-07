@@ -49,6 +49,8 @@ export const participantState = pgTable(
     lastReadAt: tz('last_read_at'),
     /** Delete-for-me: this participant sees no message on or before here. */
     clearedAt: tz('cleared_at'),
+    /** Typing indicator: this participant is typing until here (active chats only). */
+    typingUntil: tz('typing_until'),
     createdAt,
   },
   (t) => [
