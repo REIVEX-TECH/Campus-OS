@@ -9,6 +9,7 @@ import { ChromeProvider } from './chrome-context';
 import { Sidebar, type SidebarGroup, type SidebarItem } from './sidebar';
 import { SkipLink } from './skip-link';
 import { unreadCount } from '@campusos/module-communities/notifications';
+import { unreadCount as messagesUnread } from '@campusos/module-messages/service';
 import { TopBar } from './top-bar';
 
 /**
@@ -48,6 +49,12 @@ export async function AppShell({
   // Cheap when nobody is signed in: with no session cookie this does not touch
   // the database at all, so a public timetable pays nothing for it.
   const actor = await currentActor();
+  // Unread direct messages, for a badge on the Messages nav item (only where the
+  // module is on and someone is signed in).
+  const msgUnread =
+    actor && enabledModules.includes('messages')
+      ? await messagesUnread(actor.userId, tenantSlug)
+      : 0;
   const items: SidebarItem[] = MODULES.filter(
     (m) => !m.hideFromNav && (!m.moduleId || enabledModules.includes(m.moduleId)),
   ).map((m) => ({
@@ -56,6 +63,7 @@ export async function AppShell({
     icon: m.icon,
     href: m.soon ? `${base}/soon/${m.key}` : `${base}${m.path ?? ''}`,
     soon: m.soon,
+    badge: m.moduleId === 'messages' && msgUnread > 0 ? msgUnread : undefined,
   }));
   // The communities a signed in person has joined, as a second section.
   const groups: SidebarGroup[] = [];
