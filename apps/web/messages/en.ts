@@ -519,6 +519,11 @@ export const en = {
   'marketplace.order.cancelRequest': 'Cancel request',
   'marketplace.order.cancel': 'Cancel order',
   'marketplace.order.cancelConfirm': 'Cancel this order?',
+  'marketplace.order.start': 'Start work',
+  'marketplace.order.deliver': 'Mark delivered',
+  'marketplace.order.acceptDelivery': 'Accept delivery',
+  'marketplace.order.acceptConfirm': 'Accept this delivery and complete the order?',
+  'marketplace.order.requestRevision': 'Request a revision',
   'marketplace.order.paymentTitle': 'Payment',
   'marketplace.order.paymentPlaceholder':
     'Online payment through the platform is coming soon. Payment instructions will appear here.',
