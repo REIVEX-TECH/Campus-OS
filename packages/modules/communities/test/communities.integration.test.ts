@@ -2856,6 +2856,12 @@ describe('definer grant hygiene', () => {
     auth_find_member_by_email: 'app',
     auth_grant_admin_for_txn: 'app',
     auth_grant_platform_admin: 'app',
+    // M3: platform-admin stamp + the role-definition write definers it gates.
+    auth_begin_platform_admin: 'app',
+    auth_platform_admin_for_txn: 'app',
+    auth_write_role_template: 'app',
+    auth_set_role_template_permissions: 'app',
+    auth_delete_role_template: 'app',
     auth_handle_is_reserved: 'app',
     auth_join_as_student: 'app',
     auth_member_identity: 'app',
