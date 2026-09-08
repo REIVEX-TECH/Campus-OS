@@ -77,6 +77,16 @@ Make it executable and run it nightly (03:30, after the Lost & Found expiry at
 Watch `/var/log/campusos/backup.log`; a non-zero exit (the script is `set -e`)
 leaves a visible error. Alert on "backup ok" not appearing, not just on errors.
 
+`scripts/backup-check.sh` **is** shipped and does exactly that "did it appear"
+check for you: it exits non-zero if the newest `campusos-*.dump.gpg` in
+`$BACKUP_DIR` is missing or older than `MAX_AGE_HOURS` (default 26 = the 24h
+cadence plus a 2h grace). Run it from its own cron a few hours after the dump so a
+missed night pages someone, rather than relying on a human noticing a silent log:
+
+```cron
+0 8 * * * cd /srv/campusos && BACKUP_DIR=/srv/campusos-backups ./scripts/backup-check.sh >> /var/log/campusos/backup-check.log 2>&1
+```
+
 ## 2. Restore
 
 To restore onto a fresh host (disaster recovery) or into a scratch database (the

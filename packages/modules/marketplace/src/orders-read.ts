@@ -267,3 +267,53 @@ export async function reviewsForGig(
     return { reviews, count, average };
   });
 }
+
+/** Public reviews across a seller's gigs, for their profile, plus the average. */
+export async function reviewsForSeller(
+  tenantId: string,
+  sellerId: string,
+): Promise<{ reviews: GigReview[]; count: number; average: number | null }> {
+  return withTenant(tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select r.id, r.rating, r.body, r.created_at, p.handle as reviewer_handle
+        from mkt_reviews r
+        left join public_profiles p on p.user_id = r.reviewer_id
+        where r.tenant_id = ${tenantId} and r.seller_id = ${sellerId}::uuid
+        order by r.created_at desc, r.id desc
+        limit 100`)),
+    ] as Array<{
+      id: string;
+      rating: number;
+      body: string;
+      created_at: string | Date;
+      reviewer_handle: string | null;
+    }>;
+    const reviews = rows.map((r) => ({
+      id: r.id,
+      rating: Number(r.rating),
+      body: r.body,
+      reviewerHandle: r.reviewer_handle,
+      createdAt: toDate(r.created_at)!,
+    }));
+    const count = reviews.length;
+    const average = count === 0 ? null : reviews.reduce((s, r) => s + r.rating, 0) / count;
+    return { reviews, count, average };
+  });
+}
+
+/** The buyer's own review of an order, if they have left one. Party-scoped by RLS. */
+export async function orderReview(
+  actor: { userId: string },
+  tenantId: string,
+  orderId: string,
+): Promise<{ rating: number; body: string } | null> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(sql`
+        select rating, body from mkt_reviews
+        where order_id = ${orderId}::uuid and reviewer_id = ${actor.userId}::uuid limit 1`)),
+    ] as { rating: number; body: string }[];
+    return row ? { rating: Number(row.rating), body: row.body } : null;
+  });
+}

@@ -92,6 +92,21 @@ export function ThreadView({
         ) : (
           <span className="truncate text-sm font-semibold">{name}</span>
         )}
+        <button
+          type="button"
+          onClick={async () => {
+            if (!window.confirm(labels.clearConfirm)) return;
+            const res = await fetch(`/api/messages/${conversationId}`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tenant, action: 'clear' }),
+            }).catch(() => undefined);
+            if (res?.ok) void refetch();
+          }}
+          className="ios-pressable ml-auto shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+        >
+          {labels.clearChat}
+        </button>
       </div>
       <Conversation
         tenant={tenant}

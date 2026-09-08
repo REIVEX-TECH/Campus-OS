@@ -14,6 +14,7 @@ import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import {
   acceptRequest,
+  clearConversation,
   conversationBetween,
   declineRequest,
   deleteForEveryone,
@@ -616,5 +617,39 @@ describe('direct messages requests', () => {
         error: 'not_allowed',
       });
     }
+  });
+});
+
+describe('delete-for-me (clear conversation)', () => {
+  it('clears the thread for one side only, and a later message reopens it', async () => {
+    if (!split) return;
+    const a = await member('clr-a');
+    const b = await member('clr-b');
+    const id = await open(a, b);
+    await sendMessage(a, 'aaa', id, { body: 'one' }, settings);
+    await sendMessage(b, 'aaa', id, { body: 'two' }, settings);
+    expect((await thread(a, 'aaa', id))?.messages).toHaveLength(2);
+
+    // A clears it: A sees nothing, B still sees both.
+    expect((await clearConversation(a, 'aaa', id)).ok).toBe(true);
+    expect((await thread(a, 'aaa', id))?.messages).toHaveLength(0);
+    expect((await thread(b, 'aaa', id))?.messages).toHaveLength(2);
+
+    // A new message after the clear reappears for A (from that point on).
+    await sendMessage(b, 'aaa', id, { body: 'three' }, settings);
+    expect((await thread(a, 'aaa', id))?.messages.map((m) => m.body)).toEqual(['three']);
+    expect((await thread(b, 'aaa', id))?.messages).toHaveLength(3);
+  });
+
+  it('refuses clearing a conversation the actor is not in', async () => {
+    if (!split) return;
+    const a = await member('clr-o-a');
+    const b = await member('clr-o-b');
+    const nosy = await member('clr-o-nosy');
+    const id = await open(a, b);
+    expect(await clearConversation(nosy, 'aaa', id)).toMatchObject({
+      ok: false,
+      error: 'not_found',
+    });
   });
 });

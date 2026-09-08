@@ -24,6 +24,8 @@ export type ConversationLabels = {
   read: string;
   edit: string;
   del: string;
+  clearChat: string;
+  clearConfirm: string;
   report: string;
   reportPrompt: string;
   reportNote: string;

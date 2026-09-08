@@ -443,3 +443,12 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   containment-on-a-GUC — the containment that §8 governs (no grant visitor may edit the
   catalogue) is keyed on the unforgeable `auth_under_tenant_grant()` use-row. All five
   definers are 'app' in DEFINER_INTENT (the resolver-granting pattern of 0018).
+- **A6 backup freshness check** — `docs/runbooks/backup.md` already matches main
+  (nightly `pg_dump`/encrypt/rsync + a human restore drill), so the only gap was
+  noticing a night with no dump. Added `scripts/backup-check.sh` (shipped, unlike the
+  host-specific `backup.sh` the runbook only documents): it exits non-zero if the
+  newest `campusos-*.dump.gpg` in `$BACKUP_DIR` is missing or older than
+  `MAX_AGE_HOURS` (default 26 = 24h cadence + 2h grace). Checks the LOCAL backup dir,
+  not the off-box copy (that is the remote's own alarm), and reports the newest dump's
+  age. The restore drill stays a human step by design (needs real PG client tools and
+  the operator's private GPG key, neither in CI).

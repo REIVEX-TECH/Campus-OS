@@ -16,8 +16,10 @@ import {
 import { memberPublicFacts } from '@campusos/module-identity/membership';
 import { conversationBetween } from '@campusos/module-messages/service';
 import { sellerActiveListings } from '@campusos/module-marketplace/listings';
+import { reviewsForSeller } from '@campusos/module-marketplace/orders-read';
 import { ListingCard } from '@/app/_components/marketplace/listing-card';
-import { conditionLabels, marketplaceEnabled } from '@/lib/marketplace';
+import { ReviewList } from '@/app/_components/marketplace/review-list';
+import { conditionLabels, marketplaceEnabled, marketplaceServicesEnabled } from '@/lib/marketplace';
 import { MessageButton } from '@/app/_components/messages/message-button';
 import { composeLabels } from '@/lib/messages-labels';
 import { messagesEnabled, messagesSettings } from '@/lib/messages';
@@ -113,6 +115,10 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
       ? sellerActiveListings(slug, profile.userId)
       : Promise.resolve([]),
   ]);
+  // A seller's service reviews, shown on their profile when services are enabled.
+  const sellerReviews = marketplaceServicesEnabled(tenant)
+    ? await reviewsForSeller(slug, profile.userId)
+    : null;
   const memberSince = facts.memberSince
     ? new Intl.DateTimeFormat(tenant.locale, { month: 'long', year: 'numeric' }).format(
         facts.memberSince,
@@ -314,6 +320,19 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
             );
           })()
         )}
+        {sellerReviews && sellerReviews.count > 0 ? (
+          <ReviewList
+            reviews={sellerReviews.reviews}
+            count={sellerReviews.count}
+            average={sellerReviews.average}
+            labels={{
+              heading: t('marketplace.review.sellerHeading'),
+              summary: t('marketplace.review.summary'),
+              empty: t('marketplace.review.empty'),
+              anon: t('marketplace.gig.aSeller'),
+            }}
+          />
+        ) : null}
       </div>
     </PageShell>
   );
