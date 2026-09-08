@@ -93,7 +93,9 @@ export default async function NotificationsPage({ params, searchParams }: PagePr
       id: n.id,
       createdAt: n.createdAt,
       fresh: n.readAt === null,
-      href: n.link ?? `${base}`,
+      // Emitters store a base-relative path (e.g. "orders/abc"); prepend the tenant
+      // base so it works on the platform host and custom domains alike.
+      href: n.link ? `${base}/${n.link.replace(/^\/+/, '')}` : base,
       line: t(notificationLineKey(n.kind), { who }),
       detail: title,
       meta: '',

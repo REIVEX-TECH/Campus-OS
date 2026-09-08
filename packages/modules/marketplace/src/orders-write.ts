@@ -1,7 +1,29 @@
 import { sql } from 'drizzle-orm';
-import { withActorInTenant } from '@campusos/db';
+import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
+import { notifyInTx } from '@campusos/module-notifications/notify';
 import { isVerifiedMember } from './access';
+
+/** Tell the counterpart on an order that it moved, inside the same transaction. */
+async function notifyOrderParty(
+  tx: TenantTransaction,
+  orderId: string,
+  actorId: string,
+): Promise<void> {
+  const [order] = [
+    ...(await tx.execute(sql`
+      select buyer_id, seller_id, title from mkt_orders where id = ${orderId}::uuid limit 1`)),
+  ] as { buyer_id: string; seller_id: string; title: string }[];
+  if (!order) return;
+  const recipient = order.buyer_id === actorId ? order.seller_id : order.buyer_id;
+  await notifyInTx(tx, {
+    userId: recipient,
+    kind: 'services.order_update',
+    payload: { title: order.title },
+    link: `orders/${orderId}`,
+    actorId,
+  });
+}
 import { placeOrderInputSchema, reviewInputSchema, type PlaceOrderInput } from './orders-input';
 import type { OrderTargetStatus } from './orders-input';
 
@@ -39,6 +61,8 @@ export async function placeOrder(
           select mkt_place_order(${tenantId}, ${data.gigId}::uuid, ${data.packageId}::uuid,
                                  ${data.paymentMode}, ${data.requirements ?? ''}) as id`)),
       ] as { id: string }[];
+      // Tell the seller a request came in.
+      await notifyOrderParty(tx, row!.id, actor.userId);
       return ok({ id: row!.id });
     });
   } catch {
@@ -68,6 +92,8 @@ export async function transitionOrder(
           select mkt_order_transition(${tenantId}, ${orderId}::uuid, ${to}, ${note ?? ''})
             as outcome`)),
       ] as { outcome: TransitionOutcome }[];
+      // On a real move, tell the other party.
+      if (row!.outcome === 'ok') await notifyOrderParty(tx, orderId, actor.userId);
       return ok({ outcome: row!.outcome });
     });
   } catch {

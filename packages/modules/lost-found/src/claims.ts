@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
+import { notifyInTx } from '@campusos/module-notifications/notify';
 import { isVerifiedMember } from './access';
 import { lostFoundClaimMessages, lostFoundClaims } from './schema/lost-found';
 
@@ -59,9 +60,9 @@ export async function openClaim(
     if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
     const [item] = [
       ...(await tx.execute(sql`
-        select reporter_id, status from lf_items
+        select reporter_id, status, title from lf_items
         where id = ${itemId}::uuid and tenant_id = ${tenantId} and deleted_at is null limit 1`)),
-    ] as { reporter_id: string; status: string }[];
+    ] as { reporter_id: string; status: string; title: string }[];
     if (!item) return err('not_found');
     if (item.reporter_id === actor.userId) return err('own_item');
     if (item.status !== 'open') return err('not_open');
@@ -74,6 +75,14 @@ export async function openClaim(
       })
       .returning({ id: lostFoundClaims.id });
     if (!row) return err('exists');
+    // Tell the item's reporter someone claimed it.
+    await notifyInTx(tx, {
+      userId: item.reporter_id,
+      kind: 'lostfound.claim_opened',
+      payload: { title: item.title },
+      link: `lost-found/${itemId}`,
+      actorId: actor.userId,
+    });
     return ok({ id: row.id });
   });
 }
@@ -90,14 +99,31 @@ export async function sendClaimMessage(
     // RLS returns the claim only to a participant; a stranger sees nothing.
     const [claim] = [
       ...(await tx.execute(sql`
-        select id, status from lf_claims
-        where id = ${claimId}::uuid and tenant_id = ${tenantId} limit 1`)),
-    ] as { id: string; status: string }[];
+        select c.id, c.status, c.item_id, c.claimant_id, i.reporter_id, i.title
+        from lf_claims c join lf_items i on i.id = c.item_id
+        where c.id = ${claimId}::uuid and c.tenant_id = ${tenantId} limit 1`)),
+    ] as {
+      id: string;
+      status: string;
+      item_id: string;
+      claimant_id: string;
+      reporter_id: string;
+      title: string;
+    }[];
     if (!claim) return err('not_found');
     const [row] = await tx
       .insert(lostFoundClaimMessages)
       .values({ tenantId, claimId, senderId: actor.userId, body: text })
       .returning({ id: lostFoundClaimMessages.id });
+    // Tell the other participant (the claimant, or the item's reporter).
+    const other = claim.claimant_id === actor.userId ? claim.reporter_id : claim.claimant_id;
+    await notifyInTx(tx, {
+      userId: other,
+      kind: 'lostfound.claim_message',
+      payload: { title: claim.title },
+      link: `lost-found/${claim.item_id}`,
+      actorId: actor.userId,
+    });
     return ok({ id: row!.id });
   });
 }
@@ -111,15 +137,18 @@ export async function confirmClaim(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [claim] = [
       ...(await tx.execute(sql`
-        select c.id, c.item_id, c.status as claim_status, i.reporter_id, i.status as item_status
+        select c.id, c.item_id, c.claimant_id, c.status as claim_status,
+               i.reporter_id, i.status as item_status, i.title
         from lf_claims c join lf_items i on i.id = c.item_id
         where c.id = ${claimId}::uuid and c.tenant_id = ${tenantId} limit 1`)),
     ] as {
       id: string;
       item_id: string;
+      claimant_id: string;
       claim_status: string;
       reporter_id: string;
       item_status: string;
+      title: string;
     }[];
     if (!claim) return err('not_found');
     if (claim.reporter_id !== actor.userId) return err('not_allowed');
@@ -132,9 +161,29 @@ export async function confirmClaim(
       update lf_items
       set status = 'resolved', resolved_via_claim_id = ${claimId}::uuid, resolved_at = now(), edited_at = now()
       where id = ${claim.item_id}::uuid`);
-    await tx.execute(sql`
-      update lf_claims set status = 'denied', decided_at = now()
-      where item_id = ${claim.item_id}::uuid and status = 'pending' and id <> ${claimId}::uuid`);
+    const denied = [
+      ...(await tx.execute(sql`
+        update lf_claims set status = 'denied', decided_at = now()
+        where item_id = ${claim.item_id}::uuid and status = 'pending' and id <> ${claimId}::uuid
+        returning claimant_id`)),
+    ] as { claimant_id: string }[];
+    // Tell the approved claimant, and everyone else the item is now resolved.
+    await notifyInTx(tx, {
+      userId: claim.claimant_id,
+      kind: 'lostfound.claim_approved',
+      payload: { title: claim.title },
+      link: `lost-found/${claim.item_id}`,
+      actorId: actor.userId,
+    });
+    for (const d of denied) {
+      await notifyInTx(tx, {
+        userId: d.claimant_id,
+        kind: 'lostfound.item_resolved',
+        payload: { title: claim.title },
+        link: `lost-found/${claim.item_id}`,
+        actorId: actor.userId,
+      });
+    }
     return ok({});
   });
 }
@@ -148,16 +197,29 @@ export async function rejectClaim(
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const [claim] = [
       ...(await tx.execute(sql`
-        select c.status as claim_status, i.reporter_id
+        select c.status as claim_status, c.item_id, c.claimant_id, i.reporter_id, i.title
         from lf_claims c join lf_items i on i.id = c.item_id
         where c.id = ${claimId}::uuid and c.tenant_id = ${tenantId} limit 1`)),
-    ] as { claim_status: string; reporter_id: string }[];
+    ] as {
+      claim_status: string;
+      item_id: string;
+      claimant_id: string;
+      reporter_id: string;
+      title: string;
+    }[];
     if (!claim) return err('not_found');
     if (claim.reporter_id !== actor.userId) return err('not_allowed');
     if (claim.claim_status !== 'pending') return err('not_found');
     await tx.execute(
       sql`update lf_claims set status = 'denied', decided_at = now() where id = ${claimId}::uuid`,
     );
+    await notifyInTx(tx, {
+      userId: claim.claimant_id,
+      kind: 'lostfound.claim_denied',
+      payload: { title: claim.title },
+      link: `lost-found/${claim.item_id}`,
+      actorId: actor.userId,
+    });
     return ok({});
   });
 }
