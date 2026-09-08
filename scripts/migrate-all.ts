@@ -6,6 +6,7 @@ import { manifest as lostFoundManifest } from '@campusos/module-lost-found/manif
 import { manifest as marketplaceManifest } from '@campusos/module-marketplace/manifest';
 import { manifest as messagesManifest } from '@campusos/module-messages/manifest';
 import { manifest as moneyManifest } from '@campusos/module-money/manifest';
+import { manifest as notificationsManifest } from '@campusos/module-notifications/manifest';
 import { manifest as timetableManifest } from '@campusos/module-timetable/manifest';
 
 // Base (@campusos/db) migrations run first, then each module's migrations in
@@ -14,6 +15,8 @@ const modules = [
   timetableManifest,
   identityManifest,
   communitiesManifest,
+  // Notifications owns the shared table communities creates, so it runs right after.
+  notificationsManifest,
   lostFoundManifest,
   messagesManifest,
   marketplaceManifest,

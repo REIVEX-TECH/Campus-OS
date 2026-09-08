@@ -39,6 +39,7 @@
     "@campusos/module-marketplace": "workspace:*",
     "@campusos/module-messages": "workspace:*",
     "@campusos/module-money": "workspace:*",
+    "@campusos/module-notifications": "workspace:*",
     "@campusos/module-timetable": "workspace:*",
     "@campusos/tenants": "workspace:*",
     "@commitlint/cli": "^19.6.1",
