@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { conversationBetween } from '@campusos/module-messages/service';
-import { orderById } from '@campusos/module-marketplace/orders-read';
+import { orderById, orderFiles } from '@campusos/module-marketplace/orders-read';
 import { MessageButton } from '@/app/_components/messages/message-button';
+import { DeliveryUpload } from '@/app/_components/marketplace/delivery-upload';
 import { OrderControls } from '@/app/_components/marketplace/order-controls';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
@@ -61,7 +62,11 @@ export default async function OrderPage({ params }: Params) {
   const counterpartId = role === 'buyer' ? order.sellerId : order.buyerId;
 
   const messagesOn = messagesEnabled(tenant);
-  const existingConvo = messagesOn ? await conversationBetween(actor, slug, counterpartId) : null;
+  const [existingConvo, files] = await Promise.all([
+    messagesOn ? conversationBetween(actor, slug, counterpartId) : Promise.resolve(null),
+    orderFiles(actor, slug, orderId),
+  ]);
+  const canDeliverFiles = role === 'seller' && ['in_progress', 'delivered'].includes(order.status);
   const statusText = (s: string) =>
     STATUS_KEYS[s] ? t(STATUS_KEYS[s] as Parameters<typeof t>[0]) : s;
 
@@ -144,6 +149,41 @@ export default async function OrderPage({ params }: Params) {
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">
               {order.requirements}
             </p>
+          </section>
+        ) : null}
+
+        {files.length > 0 || canDeliverFiles ? (
+          <section className="flex flex-col gap-2 px-1">
+            <h2 className="text-sm font-semibold">{t('marketplace.order.delivery')}</h2>
+            {files.length > 0 ? (
+              <ul className="ios-card flex flex-col rounded-2xl p-2">
+                {files.map((f) => (
+                  <li key={f.id}>
+                    <a
+                      href={`/api/marketplace/orders/${order.id}/files/${f.id}?tenant=${slug}`}
+                      className="ios-pressable flex items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm hover:bg-muted"
+                    >
+                      <span className="truncate">{f.filename}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {Math.max(1, Math.round(f.byteSize / 1024))} KB
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {canDeliverFiles ? (
+              <DeliveryUpload
+                tenant={slug}
+                orderId={order.id}
+                labels={{
+                  attach: t('marketplace.order.attachFile'),
+                  uploading: t('marketplace.gig.working'),
+                  failed: t('marketplace.form.failed'),
+                  hint: t('marketplace.order.deliveryHint'),
+                }}
+              />
+            ) : null}
           </section>
         ) : null}
 

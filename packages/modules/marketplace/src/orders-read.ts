@@ -167,6 +167,65 @@ export async function orderById(
   });
 }
 
+export interface OrderFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  uploadedBy: string;
+  createdAt: Date;
+}
+
+/** The delivery files on an order, for a party. Empty if not theirs (RLS). */
+export async function orderFiles(
+  actor: { userId: string },
+  tenantId: string,
+  orderId: string,
+): Promise<OrderFile[]> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        select id, filename, content_type, byte_size, uploaded_by, created_at
+        from mkt_order_files where order_id = ${orderId}::uuid
+        order by created_at asc, id asc`)),
+    ] as Array<{
+      id: string;
+      filename: string;
+      content_type: string;
+      byte_size: number;
+      uploaded_by: string;
+      created_at: string | Date;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      contentType: r.content_type,
+      byteSize: Number(r.byte_size),
+      uploadedBy: r.uploaded_by,
+      createdAt: toDate(r.created_at)!,
+    }));
+  });
+}
+
+/** One delivery file's storage key + display fields, for the download route. Null
+ *  when the caller is not a party (RLS returns no row). */
+export async function orderFileForDownload(
+  actor: { userId: string },
+  tenantId: string,
+  orderId: string,
+  fileId: string,
+): Promise<{ storageKey: string; filename: string; contentType: string } | null> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [row] = [
+      ...(await tx.execute(sql`
+        select storage_key, filename, content_type from mkt_order_files
+        where id = ${fileId}::uuid and order_id = ${orderId}::uuid limit 1`)),
+    ] as { storage_key: string; filename: string; content_type: string }[];
+    if (!row) return null;
+    return { storageKey: row.storage_key, filename: row.filename, contentType: row.content_type };
+  });
+}
+
 export interface GigReview {
   id: string;
   rating: number;
