@@ -124,6 +124,27 @@ export const marketplaceReviews = pgTable(
   ],
 );
 
+export const marketplaceOrderFiles = pgTable(
+  'mkt_order_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => marketplaceOrders.id, { onDelete: 'cascade' }),
+    storageKey: text('storage_key').notNull(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    uploadedBy: uuid('uploaded_by').notNull(),
+    createdAt,
+  },
+  (t) => [index('mkt_order_files_order_idx').on(t.orderId, t.createdAt)],
+);
+
 export type MarketplaceOrder = typeof marketplaceOrders.$inferSelect;
 export type MarketplaceOrderEvent = typeof marketplaceOrderEvents.$inferSelect;
 export type MarketplaceReview = typeof marketplaceReviews.$inferSelect;
+export type MarketplaceOrderFile = typeof marketplaceOrderFiles.$inferSelect;

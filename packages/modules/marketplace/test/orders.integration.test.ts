@@ -14,8 +14,13 @@ import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
 import { createGig } from '../src/services-write';
 import { gigById } from '../src/services-read';
-import { placeOrder, transitionOrder, writeReview } from '../src/orders-write';
-import { listMyOrders, orderById, reviewsForGig } from '../src/orders-read';
+import {
+  addOrderDeliveryFile,
+  placeOrder,
+  transitionOrder,
+  writeReview,
+} from '../src/orders-write';
+import { listMyOrders, orderById, orderFiles, reviewsForGig } from '../src/orders-read';
 
 /**
  * The order lifecycle is the security core of services: status moves ONLY through
@@ -52,6 +57,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await runAsMigrationRole(
+    'truncate table "mkt_order_files" restart identity cascade',
     'truncate table "mkt_reviews" restart identity cascade',
     'truncate table "mkt_order_events" restart identity cascade',
     'truncate table "mkt_orders" restart identity cascade',
@@ -349,5 +355,50 @@ describe('reviews and auto-complete', () => {
     expect(Number(n)).toBe(1);
     expect((await orderById(buyer, 'aaa', stale))?.status).toBe('completed');
     expect((await orderById(buyer, 'aaa', fresh))?.status).toBe('delivered');
+  });
+});
+
+describe('order delivery files', () => {
+  const file = {
+    storageKey: 'marketplace/deliveries/ab/x.pdf',
+    filename: 'final.pdf',
+    contentType: 'application/pdf',
+    byteSize: 12345,
+  };
+
+  it('lets only the seller attach a file, and both parties read it', async () => {
+    if (!split) return;
+    const seller = await member('ord-file-seller');
+    const buyer = await member('ord-file-buyer');
+    const nosy = await member('ord-file-nosy');
+    const { gigId, packageId } = await gigWithPackage(seller);
+    const id = await newOrder(buyer, gigId, packageId, 'cash');
+    await transitionOrder(seller, 'aaa', id, 'in_progress');
+
+    // The buyer cannot attach a delivery file.
+    expect(await addOrderDeliveryFile(buyer, 'aaa', id, file)).toMatchObject({
+      ok: false,
+      error: 'not_allowed',
+    });
+    // The seller can.
+    expect((await addOrderDeliveryFile(seller, 'aaa', id, file)).ok).toBe(true);
+
+    // Both parties see it; a third member sees nothing (party RLS).
+    expect((await orderFiles(seller, 'aaa', id)).map((f) => f.filename)).toEqual(['final.pdf']);
+    expect((await orderFiles(buyer, 'aaa', id)).map((f) => f.filename)).toEqual(['final.pdf']);
+    expect(await orderFiles(nosy, 'aaa', id)).toHaveLength(0);
+  });
+
+  it('refuses a file before work starts (wrong status)', async () => {
+    if (!split) return;
+    const seller = await member('ord-file-early');
+    const buyer = await member('ord-file-early-b');
+    const { gigId, packageId } = await gigWithPackage(seller);
+    const id = await newOrder(buyer, gigId, packageId, 'cash');
+    // Still 'requested': no delivery files yet.
+    expect(await addOrderDeliveryFile(seller, 'aaa', id, file)).toMatchObject({
+      ok: false,
+      error: 'not_allowed',
+    });
   });
 });

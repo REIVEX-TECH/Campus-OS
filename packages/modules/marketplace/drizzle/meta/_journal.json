@@ -43,6 +43,13 @@
       "when": 1756800405000,
       "tag": "0005_marketplace_gig_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1756800406000,
+      "tag": "0006_marketplace_order_files",
+      "breakpoints": true
     }
   ]
 }

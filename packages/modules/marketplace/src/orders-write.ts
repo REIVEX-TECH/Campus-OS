@@ -101,6 +101,42 @@ export async function transitionOrder(
   }
 }
 
+export interface DeliveryFileInput {
+  storageKey: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+}
+
+/**
+ * Record a stored delivery file against an order. The RLS insert policy is the
+ * boundary: only the order's seller, on their own in-progress or delivered order,
+ * as themselves. A refused insert (not the seller, wrong status) surfaces as
+ * 'not_allowed'.
+ */
+export async function addOrderDeliveryFile(
+  actor: { userId: string },
+  tenantId: string,
+  orderId: string,
+  file: DeliveryFileInput,
+): Promise<Result<{ id: string }, 'not_allowed'>> {
+  try {
+    return await withActorInTenant(actor.userId, tenantId, async (tx) => {
+      const [row] = [
+        ...(await tx.execute(sql`
+          insert into mkt_order_files
+            (tenant_id, order_id, storage_key, filename, content_type, byte_size, uploaded_by)
+          values (${tenantId}, ${orderId}::uuid, ${file.storageKey}, ${file.filename},
+                  ${file.contentType}, ${file.byteSize}, ${actor.userId}::uuid)
+          returning id`)),
+      ] as { id: string }[];
+      return ok({ id: row!.id });
+    });
+  } catch {
+    return err('not_allowed');
+  }
+}
+
 export type ReviewRefusal = 'invalid' | 'not_found' | 'not_buyer' | 'not_completed' | 'exists';
 
 /**

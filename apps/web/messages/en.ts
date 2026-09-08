@@ -533,6 +533,9 @@ export const en = {
   'marketplace.order.paymentPlaceholder':
     'Online payment through the platform is coming soon. Payment instructions will appear here.',
   'marketplace.order.messageChat': 'Message about this order',
+  'marketplace.order.delivery': 'Delivery',
+  'marketplace.order.attachFile': 'Attach a delivery file',
+  'marketplace.order.deliveryHint': 'PDF, ZIP, or Office documents, up to 25 MB each.',
   'marketplace.order.timeline': 'Activity',
   'marketplace.order.allOrders': 'My orders',
   'marketplace.order.buying': 'Buying',
