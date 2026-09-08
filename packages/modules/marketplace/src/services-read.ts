@@ -31,6 +31,13 @@ export interface GigPackage {
   position: number;
 }
 
+export interface GigPortfolioPhoto {
+  storageKey: string;
+  thumbKey: string;
+  width: number | null;
+  height: number | null;
+}
+
 export interface GigDetail {
   id: string;
   title: string;
@@ -42,6 +49,8 @@ export interface GigDetail {
   sellerHandle: string | null;
   sellerAvatarSeed: string | null;
   packages: GigPackage[];
+  /** Portfolio sample images, in order. */
+  photos: GigPortfolioPhoto[];
   /** Public rating summary across the seller's completed, reviewed orders on this gig. */
   ratingCount: number;
   ratingAvg: number | null;
@@ -169,6 +178,16 @@ export async function gigById(tenantId: string, id: string): Promise<GigDetail |
       revisions: number;
       position: number;
     }>;
+    const photos = [
+      ...(await tx.execute(sql`
+        select storage_key, thumb_key, width, height
+        from mkt_gig_photos where gig_id = ${id}::uuid order by position asc`)),
+    ] as Array<{
+      storage_key: string;
+      thumb_key: string;
+      width: number | null;
+      height: number | null;
+    }>;
     return {
       id: row.id,
       title: row.title,
@@ -179,6 +198,12 @@ export async function gigById(tenantId: string, id: string): Promise<GigDetail |
       sellerId: row.seller_id,
       sellerHandle: row.seller_handle,
       sellerAvatarSeed: row.seller_avatar_seed,
+      photos: photos.map((p) => ({
+        storageKey: p.storage_key,
+        thumbKey: p.thumb_key,
+        width: p.width,
+        height: p.height,
+      })),
       packages: pkgs.map((p) => ({
         id: p.id,
         tier: p.tier,

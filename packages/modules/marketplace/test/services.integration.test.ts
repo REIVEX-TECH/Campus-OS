@@ -12,8 +12,12 @@ import { manifest as identityManifest } from '@campusos/module-identity/manifest
 import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable, settingsSchema } from '../src/manifest';
-import { marketplaceGigPackages, marketplaceGigs } from '../src/schema/services';
-import { createGig, deleteGig, setGigStatus } from '../src/services-write';
+import {
+  marketplaceGigPackages,
+  marketplaceGigPhotos,
+  marketplaceGigs,
+} from '../src/schema/services';
+import { addGigPhoto, createGig, deleteGig, setGigStatus } from '../src/services-write';
 import { gigById, listGigs, myGigs } from '../src/services-read';
 
 /**
@@ -48,6 +52,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await runAsMigrationRole(
+    'truncate table "mkt_gig_photos" restart identity cascade',
     'truncate table "mkt_gig_packages" restart identity cascade',
     'truncate table "mkt_gigs" restart identity cascade',
     'truncate table "users" restart identity cascade',
@@ -244,5 +249,71 @@ describe('services create + lifecycle', () => {
     expect(await gigById('aaa', id)).toBeNull();
     expect((await listGigs('aaa')).items.some((g) => g.id === id)).toBe(false);
     expect((await myGigs(seller.userId, 'aaa')).some((g) => g.id === id)).toBe(false);
+  });
+});
+
+describe('gig portfolio photos', () => {
+  const photo = {
+    storageKey: 'gigs/ab/x.webp',
+    thumbKey: 'gigs/ab/x_thumb.webp',
+    contentType: 'image/webp',
+    width: 800,
+    height: 600,
+    byteSize: 12000,
+  };
+
+  it('lets the seller attach a portfolio photo and shows it on the gig page', async () => {
+    if (!split) return;
+    const seller = await member('gig-ph-seller');
+    const created = await createGig(seller, 'aaa', gigInput(), settings);
+    if (!created.ok) throw new Error('create failed');
+    const id = created.value.id;
+    expect((await addGigPhoto(seller, 'aaa', id, photo, 6)).ok).toBe(true);
+    const detail = await gigById('aaa', id);
+    expect(detail?.photos.map((p) => p.storageKey)).toEqual(['gigs/ab/x.webp']);
+  });
+
+  it('refuses a photo on someone else’s gig (RESTRICTIVE policy)', async () => {
+    if (!split) return;
+    const seller = await member('gig-ph-owner');
+    const other = await member('gig-ph-other');
+    const created = await createGig(seller, 'aaa', gigInput(), settings);
+    if (!created.ok) throw new Error('create failed');
+    const id = created.value.id;
+    // The write helper refuses (gig is not the caller's) ...
+    expect(await addGigPhoto(other, 'aaa', id, photo, 6)).toMatchObject({
+      ok: false,
+      error: 'not_found',
+    });
+    // ... and so does a raw insert, by the RESTRICTIVE policy.
+    await expect(
+      withActorInTenant(other.userId, 'aaa', (tx) =>
+        tx.insert(marketplaceGigPhotos).values({
+          tenantId: 'aaa',
+          gigId: id,
+          storageKey: 'gigs/ab/y.webp',
+          thumbKey: 'gigs/ab/y_thumb.webp',
+          contentType: 'image/webp',
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('deleting a gig removes its photo rows and returns their keys', async () => {
+    if (!split) return;
+    const seller = await member('gig-ph-del');
+    const created = await createGig(seller, 'aaa', gigInput(), settings);
+    if (!created.ok) throw new Error('create failed');
+    const id = created.value.id;
+    expect((await addGigPhoto(seller, 'aaa', id, photo, 6)).ok).toBe(true);
+    const res = await deleteGig(seller, 'aaa', id);
+    expect(res.ok && res.value.changed).toBe(true);
+    if (res.ok) {
+      expect(res.value.photoKeys.sort()).toEqual(['gigs/ab/x.webp', 'gigs/ab/x_thumb.webp'].sort());
+    }
+    const leftover = await withActorInTenant(seller.userId, 'aaa', (tx) =>
+      tx.execute(sql`select count(*)::int as n from mkt_gig_photos where gig_id = ${id}::uuid`),
+    );
+    expect(([...leftover][0] as { n: number }).n).toBe(0);
   });
 });
