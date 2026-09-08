@@ -1,9 +1,10 @@
-# feat(notifications): bell counts all kinds, inbox merges every source
+# feat(notifications): bell counts all kinds, inbox merges, and the emitters
 
 Block A item 2, part 2. The bell now counts every unread notification (not just
 communities) and shows for any signed-in member; the inbox page merges the
-communities view with the generic (other-module) notifications; and mark-all-read
-goes through a module-agnostic route.
+communities view with the generic (other-module) notifications; mark-all-read goes
+through a module-agnostic route; and the deferred emitters (services orders,
+messages, Lost & Found claims) now fire through the seam.
 
 ## What
 
@@ -34,7 +35,23 @@ Signed in, the bell shows a count that includes non-communities notifications an
 links to `/notifications`; the inbox lists communities and generic notifications
 together, newest first; "mark all as read" clears the bell.
 
+## Emitters wired
+
+- **Services orders**: placeOrder tells the seller; every transition tells the other
+  party (`services.order_update`, link `orders/<id>`), inside the same transaction.
+- **Messages**: a new/re-opened request tells the recipient; accepting a request
+  tells the requester (`messages.request` / `messages.request_accepted`).
+- **Lost & Found**: opening a claim tells the item's reporter; a claim message tells
+  the other participant; confirming tells the approved claimant and the (now denied)
+  others; rejecting tells the claimant. Recipients are all readable by the actor as a
+  participant or from the public item, so no new definer is needed.
+
+Links are stored **base-relative** (e.g. `orders/abc`); the inbox prepends the tenant
+base so they work on the platform host and custom domains.
+
 ## Follow-ups
 
-The per-module emitters (L&F, marketplace, services, messages) are the next PR; until
-then the generic section is empty for existing tenants.
+**Marketplace goods emitters (saved-listing sold / price-changed, report resolved) are
+deferred**: their recipients (savers, reporters) are other users the acting member
+cannot read under RLS, so each needs its own owner-run recipient-lookup definer (the
+`communities_notify` pattern) with a §6 pass. Logged in DECISIONS.md.

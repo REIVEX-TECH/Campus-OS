@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
+import { notifyInTx } from '@campusos/module-notifications/notify';
 import { isMember, isVerifiedMember } from './access';
 import type { MessagesSettings } from './manifest';
 import { editInputSchema, sendInputSchema, type EditInput, type SendInput } from './input';
@@ -247,6 +248,12 @@ export async function startConversation(
          where id = ${existing.id}::uuid`);
       await ensureOwnState(tx, tenantId, existing.id, actor.userId);
       await insertMessage(tx, tenantId, existing.id, actor.userId, trimmed, ephemerality, false);
+      await notifyInTx(tx, {
+        userId: otherUserId,
+        kind: 'messages.request',
+        link: 'messages',
+        actorId: actor.userId,
+      });
       return ok({ id: existing.id, created: false });
     }
 
@@ -264,6 +271,12 @@ export async function startConversation(
     if (!inserted[0]) return err('not_allowed'); // lost a race to a concurrent open
     await ensureOwnState(tx, tenantId, inserted[0].id, actor.userId);
     await insertMessage(tx, tenantId, inserted[0].id, actor.userId, trimmed, ephemerality, false);
+    await notifyInTx(tx, {
+      userId: otherUserId,
+      kind: 'messages.request',
+      link: 'messages',
+      actorId: actor.userId,
+    });
     return ok({ id: inserted[0].id, created: true });
   });
 }
@@ -543,9 +556,19 @@ export async function acceptRequest(
         where id = ${conversationId}::uuid and status = 'pending'
           and requested_by <> ${actor.userId}::uuid
           and exists (select 1 from msg_messages m where m.conversation_id = ${conversationId}::uuid)
-        returning id`)),
-    ];
-    if (rows.length > 0) return ok({ ok: true });
+        returning requested_by`)),
+    ] as { requested_by: string | null }[];
+    if (rows.length > 0) {
+      if (rows[0]?.requested_by) {
+        await notifyInTx(tx, {
+          userId: rows[0].requested_by,
+          kind: 'messages.request_accepted',
+          link: 'messages',
+          actorId: actor.userId,
+        });
+      }
+      return ok({ ok: true });
+    }
     return err(await requestRefusal(tx, conversationId));
   });
 }
