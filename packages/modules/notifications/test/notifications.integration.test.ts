@@ -105,13 +105,17 @@ describe('notifications seam', () => {
     expect(await unreadCount(u, 'aaa')).toBe(0);
   });
 
-  it('refuses a raw application insert (only the definer writes)', async () => {
+  it('refuses a raw application insert for another user (only the definer notifies across)', async () => {
     if (!split) return;
     const u = await member('ntf-raw');
+    const victim = await member('ntf-raw-victim');
+    // The own-row WITH CHECK lets a caller only ever write user_id = themselves, so a
+    // forged notification aimed at someone else is refused; the definer, running as
+    // the owner, is the only path that can notify a different recipient.
     await expect(
       withActorInTenant(u.userId, 'aaa', (tx) =>
         tx.execute(sql`insert into notifications (tenant_id, user_id, kind, link)
-                       values ('aaa', ${u.userId}::uuid, 'forged', '/x')`),
+                       values ('aaa', ${victim.userId}::uuid, 'forged', '/x')`),
       ),
     ).rejects.toThrow();
   });
