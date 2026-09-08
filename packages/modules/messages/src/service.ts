@@ -408,6 +408,10 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
                (select case when m.deleted_at is not null then null else m.body end
                   from msg_messages m where m.conversation_id = mine.id
                     and (m.expires_at is null or m.expires_at > now())
+                    and m.created_at > coalesce(
+                      (select cleared_at from msg_participant_state s2
+                       where s2.conversation_id = mine.id and s2.participant_id = ${userId}::uuid),
+                      to_timestamp(0))
                   order by m.created_at desc limit 1) as preview,
                (select count(*)::int from msg_messages m
                   left join msg_participant_state s
@@ -416,6 +420,7 @@ export async function listInbox(userId: string, tenantId: string): Promise<Conve
                     and m.sender_id <> ${userId}::uuid
                     and m.deleted_at is null
                     and (m.expires_at is null or m.expires_at > now())
+                    and (s.cleared_at is null or m.created_at > s.cleared_at)
                     and (s.last_read_at is null or m.created_at > s.last_read_at)) as unread
         from mine
         left join public_profiles p on p.user_id = mine.other
@@ -595,6 +600,32 @@ export async function declineRequest(
   });
 }
 
+/**
+ * Delete-for-me: clear the conversation for the actor only. Stamps their
+ * participant state's cleared_at to now, so the thread, the inbox preview, and the
+ * unread count show nothing on or before it; the other participant is unaffected and
+ * a later message reopens the thread from there. Own state only (RLS).
+ */
+export async function clearConversation(
+  actor: { userId: string },
+  tenantId: string,
+  conversationId: string,
+): Promise<Result<{ ok: true }, 'not_found'>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    // RLS returns the conversation only to a participant.
+    const [conv] = [
+      ...(await tx.execute(sql`
+        select id from msg_conversations where id = ${conversationId}::uuid limit 1`)),
+    ];
+    if (!conv) return err('not_found');
+    await tx.execute(sql`
+      insert into msg_participant_state (tenant_id, conversation_id, participant_id, cleared_at)
+      values (${tenantId}, ${conversationId}::uuid, ${actor.userId}::uuid, now())
+      on conflict (conversation_id, participant_id) do update set cleared_at = now()`);
+    return ok({ ok: true });
+  });
+}
+
 /** One conversation's messages, oldest first, with the other side's read marker. */
 export async function thread(
   actor: { userId: string },
@@ -655,6 +686,11 @@ export async function thread(
         from msg_messages
         where conversation_id = ${conversationId}::uuid
           and (expires_at is null or expires_at > now())
+          and created_at > coalesce(
+            (select cleared_at from msg_participant_state
+             where conversation_id = ${conversationId}::uuid
+               and participant_id = ${actor.userId}::uuid),
+            to_timestamp(0))
         order by created_at asc, id asc
         limit ${limit}`)),
     ] as Array<{
