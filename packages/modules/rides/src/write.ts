@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withActorInTenant } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
+import { notifyInTx } from '@campusos/module-notifications/notify';
 import { isVerifiedMember } from './access';
 import { ridePosts } from './schema/rides';
 import { containsContactInfo, rideInputSchema, type RideInput } from './input';
@@ -119,8 +120,9 @@ export async function editRide(
 
 /**
  * Cancel one's own ride. Only an `active`/`full` ride the caller authored is
- * cancelled. Declining any pending seat requests and notifying accepted riders
- * arrives with the seat-request PR; here the ride simply leaves browse.
+ * cancelled; every pending seat request is declined and every rider (pending or
+ * accepted) is told the ride is off. The seat requests are the driver's own ride's,
+ * so the participant policy admits the update.
  */
 export async function cancelRide(
   actor: { userId: string },
@@ -135,6 +137,24 @@ export async function cancelRide(
           and author_id = ${actor.userId}::uuid and status IN ('active', 'full')
         returning id`)),
     ];
-    return ok({ changed: rows.length > 0 });
+    if (rows.length === 0) return ok({ changed: false });
+    // Tell everyone with a live request the ride is off, then close those requests.
+    const riders = [
+      ...(await tx.execute(sql`
+        select passenger_id from ride_seat_requests
+        where ride_post_id = ${rideId}::uuid and status in ('pending', 'accepted')`)),
+    ] as { passenger_id: string }[];
+    for (const r of riders) {
+      await notifyInTx(tx, {
+        userId: r.passenger_id,
+        kind: 'rides.cancelled',
+        link: `rides/${rideId}`,
+        actorId: actor.userId,
+      });
+    }
+    await tx.execute(sql`
+      update ride_seat_requests set status = 'cancelled', decided_at = now()
+      where ride_post_id = ${rideId}::uuid and status in ('pending', 'accepted')`);
+    return ok({ changed: true });
   });
 }

@@ -483,3 +483,11 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   the author in the app SQL. Definers arrive with seat requests (cross-user accept)
   and moderation. The block filter runs in the viewer's actor context so
   `auth_blocked_between` sees the viewer.
+- **PR 2 seat requests: still no definer.** Accept/decline turned out NOT to need a
+  definer — the driver acts on their OWN ride under the participant policy (the L&F
+  claims-confirm pattern), and the seat decrement is a single conditional UPDATE on
+  the driver's own row (`seats_available > 0`), which serialises concurrent accepts
+  and cannot oversell. `ride_seat_requests` is NO FORCE so the later
+  ratings/moderation definers can read across the two parties. The messages
+  system-conversation is deferred to a follow-up; PR 2 ships the design's
+  notify-only degradation path (both parties are told through A2).

@@ -74,3 +74,30 @@ export const ridePosts = pgTable(
 );
 
 export type RidePostRow = typeof ridePosts.$inferSelect;
+
+export const rideSeatRequests = pgTable(
+  'ride_seat_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    /** The offer this seat is on. FK to ride_posts(id) cascade in SQL. */
+    ridePostId: uuid('ride_post_id').notNull(),
+    /** The person asking for a seat. FK to users(id) cascade in SQL. */
+    passengerId: uuid('passenger_id').notNull(),
+    seats: integer('seats').notNull().default(1),
+    /** 'pending' | 'accepted' | 'declined' | 'cancelled' */
+    status: text('status').notNull().default('pending'),
+    /** The messages conversation the accept flow opens (a later PR). */
+    conversationId: uuid('conversation_id'),
+    createdAt,
+    decidedAt: tz('decided_at'),
+  },
+  (t) => [
+    index('ride_seat_requests_ride_idx').on(t.ridePostId, t.status, t.createdAt),
+    index('ride_seat_requests_passenger_idx').on(t.tenantId, t.passengerId, t.createdAt),
+  ],
+);
+
+export type RideSeatRequestRow = typeof rideSeatRequests.$inferSelect;
