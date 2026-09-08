@@ -103,6 +103,11 @@ export default async function OrderPage({ params }: Params) {
               cancelRequest: t('marketplace.order.cancelRequest'),
               cancel: t('marketplace.order.cancel'),
               cancelConfirm: t('marketplace.order.cancelConfirm'),
+              start: t('marketplace.order.start'),
+              deliver: t('marketplace.order.deliver'),
+              acceptDelivery: t('marketplace.order.acceptDelivery'),
+              acceptConfirm: t('marketplace.order.acceptConfirm'),
+              requestRevision: t('marketplace.order.requestRevision'),
               working: t('marketplace.gig.working'),
               failed: t('marketplace.form.failed'),
             }}
