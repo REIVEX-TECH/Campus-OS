@@ -7,6 +7,7 @@ import { manifest as marketplaceManifest } from '@campusos/module-marketplace/ma
 import { manifest as messagesManifest } from '@campusos/module-messages/manifest';
 import { manifest as moneyManifest } from '@campusos/module-money/manifest';
 import { manifest as notificationsManifest } from '@campusos/module-notifications/manifest';
+import { manifest as ridesManifest } from '@campusos/module-rides/manifest';
 import { manifest as timetableManifest } from '@campusos/module-timetable/manifest';
 
 // Base (@campusos/db) migrations run first, then each module's migrations in
@@ -21,6 +22,9 @@ const modules = [
   messagesManifest,
   marketplaceManifest,
   moneyManifest,
+  // Rides uses auth_blocked_between (communities) and public_profiles (identity),
+  // both created earlier, so it runs last.
+  ridesManifest,
 ];
 
 // Migrations are DDL, so they run as the schema owner rather than the runtime
