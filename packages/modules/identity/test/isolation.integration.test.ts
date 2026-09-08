@@ -632,6 +632,13 @@ describe('row security invariants', () => {
     // grants table's writes are revoked from the app role.
     platform_tenant_grants: false,
     platform_grant_uses: false,
+    // The platform-admin stamp (0033), the platform_grant_uses shape: written by
+    // auth_begin_platform_admin and read by auth_platform_admin_for_txn, both
+    // owner-run, so FORCE must stay off or those definers would see no stamp and
+    // the role-template write gate would fail closed. The app has no policy on it
+    // and its writes are revoked from the app role, so the app reaches it only
+    // through the definers.
+    platform_admin_uses: false,
   };
 
   it('keeps RLS on every table, and drops FORCE only where a definer function reads', async () => {

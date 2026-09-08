@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { asc, inArray, sql } from 'drizzle-orm';
 import { withActor, type TenantTransaction } from '@campusos/db';
 import { getDb } from '@campusos/db/client';
 import { universities } from '@campusos/db/schema';
@@ -113,22 +113,15 @@ export async function createRoleTemplate(
   if (!(await isPlatformAdmin(actor.userId))) return { ok: false, reason: 'not_allowed' };
   const permissions = unique(input.permissions.filter(isPermission)).sort();
   return withActor(actor.userId, async (tx) => {
-    const [inserted] = await tx
-      .insert(roleTemplates)
-      .values({ key, name })
-      .onConflictDoNothing({ target: roleTemplates.key })
-      .returning();
-    if (!inserted) return { ok: false as const, reason: 'exists' as const };
-    for (const permission of permissions) {
-      await tx
-        .insert(roleTemplatePermissions)
-        .values({ templateKey: key, permission })
-        .onConflictDoNothing();
-    }
-    await tx.execute(sql`
-      insert into audit_log (actor_user_id, tenant_id, action, target_type, target_id, meta)
-      values (${actor.userId}::uuid, null, 'role_template.created', 'role_template', ${key},
-              jsonb_build_object('permissions', ${permissions.join(',')}::text))`);
+    // The write is a definer gated on an unforgeable platform-admin stamp (M3): the
+    // stamp is taken here, checked inside the definer; the app cannot write the
+    // definition tables directly.
+    await tx.execute(sql`select auth_begin_platform_admin()`);
+    const [row] = [
+      ...(await tx.execute(sql`
+        select auth_write_role_template(${key}, ${name}, ${permissions}::text[]) as created`)),
+    ] as { created: boolean }[];
+    if (!row?.created) return { ok: false as const, reason: 'exists' as const };
     await syncEveryTenant(tx);
     return {
       ok: true as const,
@@ -146,40 +139,17 @@ export async function setRoleTemplatePermissions(
   if (!(await isPlatformAdmin(actor.userId))) return { ok: false, reason: 'not_allowed' };
   const wanted = unique(permissions.filter(isPermission)).sort();
   return withActor(actor.userId, async (tx) => {
-    const [template] = await tx.select().from(roleTemplates).where(eq(roleTemplates.key, key));
-    if (!template) return { ok: false as const, reason: 'no_such_template' as const };
-    const current = (
-      await tx
-        .select({ permission: roleTemplatePermissions.permission })
-        .from(roleTemplatePermissions)
-        .where(eq(roleTemplatePermissions.templateKey, key))
-    ).map((r) => r.permission);
-    const toAdd = wanted.filter((p) => !current.includes(p));
-    const toRemove = current.filter((p) => !(wanted as string[]).includes(p));
-    if (toAdd.length === 0 && toRemove.length === 0) return { ok: true as const, changed: false };
-    for (const permission of toAdd) {
-      await tx
-        .insert(roleTemplatePermissions)
-        .values({ templateKey: key, permission })
-        .onConflictDoNothing();
+    await tx.execute(sql`select auth_begin_platform_admin()`);
+    const [row] = [
+      ...(await tx.execute(sql`
+        select auth_set_role_template_permissions(${key}, ${wanted}::text[]) as result`)),
+    ] as { result: string }[];
+    if (row?.result === 'no_such_template') {
+      return { ok: false as const, reason: 'no_such_template' as const };
     }
-    if (toRemove.length > 0) {
-      await tx
-        .delete(roleTemplatePermissions)
-        .where(
-          and(
-            eq(roleTemplatePermissions.templateKey, key),
-            inArray(roleTemplatePermissions.permission, toRemove),
-          ),
-        );
-    }
-    await tx.update(roleTemplates).set({ updatedAt: new Date() }).where(eq(roleTemplates.key, key));
-    await tx.execute(sql`
-      insert into audit_log (actor_user_id, tenant_id, action, target_type, target_id, meta)
-      values (${actor.userId}::uuid, null, 'role_template.changed', 'role_template', ${key},
-              jsonb_build_object('permissions', ${wanted.join(',')}::text))`);
-    await syncEveryTenant(tx);
-    return { ok: true as const, changed: true };
+    const changed = row?.result === 'changed';
+    if (changed) await syncEveryTenant(tx);
+    return { ok: true as const, changed };
   });
 }
 
@@ -194,16 +164,18 @@ export async function deleteRoleTemplate(
 ): Promise<{ ok: true; deleted: boolean } | { ok: false; reason: TemplateRefusal }> {
   if (!(await isPlatformAdmin(actor.userId))) return { ok: false, reason: 'not_allowed' };
   return withActor(actor.userId, async (tx) => {
-    const [template] = await tx.select().from(roleTemplates).where(eq(roleTemplates.key, key));
-    if (!template) return { ok: false as const, reason: 'no_such_template' as const };
-    if (template.isSystem) return { ok: false as const, reason: 'system_template' as const };
-    await tx.delete(roleTemplates).where(eq(roleTemplates.key, key));
-    // The tenant copies are left standing: deleting a definition retires it
-    // from the catalogue, and taking a role off everyone holding it is a
-    // separate act somebody should have to mean.
-    await tx.execute(sql`
-      insert into audit_log (actor_user_id, tenant_id, action, target_type, target_id, meta)
-      values (${actor.userId}::uuid, null, 'role_template.deleted', 'role_template', ${key}, '{}'::jsonb)`);
+    await tx.execute(sql`select auth_begin_platform_admin()`);
+    // The tenant copies are left standing: deleting a definition retires it from
+    // the catalogue, and taking a role off everyone holding it is a separate act.
+    const [row] = [
+      ...(await tx.execute(sql`select auth_delete_role_template(${key}) as result`)),
+    ] as { result: string }[];
+    if (row?.result === 'no_such_template') {
+      return { ok: false as const, reason: 'no_such_template' as const };
+    }
+    if (row?.result === 'system_template') {
+      return { ok: false as const, reason: 'system_template' as const };
+    }
     return { ok: true as const, deleted: true };
   });
 }

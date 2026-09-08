@@ -232,6 +232,13 @@
       "when": 1756800032000,
       "tag": "0032_platform_only_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1756800033000,
+      "tag": "0033_role_template_writes",
+      "breakpoints": true
     }
   ]
 }

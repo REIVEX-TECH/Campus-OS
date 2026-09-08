@@ -407,3 +407,39 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   follow-up). `notifications_emit` is 'app' in DEFINER_INTENT: a notification is data,
   not a privilege; tenant from the GUC (isolation), recipient explicit, app still has
   no direct INSERT.
+- **A3 services delivery-files + reviews UI** — delivery files reuse
+  `@campusos/media/file` (magic-byte allowlist, 25MB, `Content-Disposition: attachment`
+  on download) on the already-built `mkt_order_files` backend; the seller-insert is a
+  RESTRICTIVE policy scoped to `in_progress`/`delivered`, FORCE on. Reviews "both
+  directions" is read as **buyer→seller only** for now (the existing backend), surfaced
+  on the gig and the seller's public profile (profile gated on
+  `marketplaceServicesEnabled`). **Mutual seller→buyer review is deferred** — it needs
+  a schema column for direction; logged rather than half-built.
+- **A4 messages delete-for-me** — "delete for me" is a **per-participant clear**, not a
+  destructive delete (§8: never hard-delete). A `cleared_at` on `participant_state` is
+  upserted to `now()`; the thread, inbox preview and unread count all filter
+  `created_at > coalesce(cleared_at, epoch)`. The other participant's view is untouched,
+  and the row is undeleted the moment either party sends again — reversible by design.
+- **A5 / security-backlog M3 role-template writes** — `role_templates` /
+  `role_template_permissions` were writable under PERMISSIVE policies keyed on
+  `EXISTS(platform_roles WHERE user_id = app.user_id)` — a PRIVILEGE decision on a GUC
+  the app sets (CLAUDE.md §8). Closed the 0016/0018 way: a **platform-host stamp**
+  (`platform_admin_uses`, txid `xid8`, app cannot read/write in a split DB).
+  `auth_begin_platform_admin()` verifies the caller is a platform admin AND not under a
+  tenant grant, then stamps `pg_current_xact_id()`; the three write definers
+  (`auth_write_role_template` / `auth_set_role_template_permissions` /
+  `auth_delete_role_template`) gate on `auth_platform_admin_for_txn() IS NOT NULL` — a
+  row the caller cannot see, forge, or carry into another transaction. All GUC-keyed
+  write policies (0013) and the under-grant subtractions (0018) are dropped, and the
+  0013 table-level INSERT/UPDATE/DELETE grant is **revoked from the app role by name**
+  in a split DB, so a raw app write matches no policy AND holds no grant.
+  **Why a stamp and not the tenant grant use-row:** editing the _global_ role catalogue
+  is a platform-host act, not a tenant one — 0018 already SUBTRACTS role-template writes
+  under a grant. So this is the "platform host with a finance-style stamp" arm of the
+  brief, the one the platform-roles surface uses, not the "under a grant" arm. The base
+  "is this caller a platform admin" check still reads `app.user_id` → `platform_roles`:
+  that is the session-identity trust the whole system rests on (identical to
+  `auth_grant_platform_admin` 0016 and `auth_open_tenant_grant` 0018), NOT the forbidden
+  containment-on-a-GUC — the containment that §8 governs (no grant visitor may edit the
+  catalogue) is keyed on the unforgeable `auth_under_tenant_grant()` use-row. All five
+  definers are 'app' in DEFINER_INTENT (the resolver-granting pattern of 0018).
