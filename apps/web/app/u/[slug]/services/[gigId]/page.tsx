@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { mediaUrl } from '@campusos/media';
 import { gigById } from '@campusos/module-marketplace/services-read';
+import { reviewsForGig } from '@campusos/module-marketplace/orders-read';
 import { GigSellerControls } from '@/app/_components/marketplace/gig-seller-controls';
+import { ReviewList } from '@/app/_components/marketplace/review-list';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
@@ -42,6 +44,7 @@ export default async function GigDetailPage({ params }: Params) {
   if (!gig) notFound();
   const actor = await currentActor();
   const isSeller = actor?.userId === gig.sellerId;
+  const reviews = await reviewsForGig(slug, gigId);
 
   const tierLabel: Record<string, string> = {
     basic: t('marketplace.gig.tier.basic'),
@@ -146,6 +149,18 @@ export default async function GigDetailPage({ params }: Params) {
             ))}
           </ul>
         </section>
+
+        <ReviewList
+          reviews={reviews.reviews}
+          count={reviews.count}
+          average={reviews.average}
+          labels={{
+            heading: t('marketplace.review.listHeading'),
+            summary: t('marketplace.review.summary'),
+            empty: t('marketplace.review.empty'),
+            anon: t('marketplace.gig.aSeller'),
+          }}
+        />
 
         <Link href={`${base}/services`} className="px-1 text-sm font-medium text-primary">
           {t('marketplace.back')}
