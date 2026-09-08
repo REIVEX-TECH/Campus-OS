@@ -15,6 +15,13 @@
       "when": 1756800401000,
       "tag": "0001_ride_seat_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756800402000,
+      "tag": "0002_ride_ratings",
+      "breakpoints": true
     }
   ]
 }

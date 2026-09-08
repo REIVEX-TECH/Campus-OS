@@ -101,3 +101,27 @@ export const rideSeatRequests = pgTable(
 );
 
 export type RideSeatRequestRow = typeof rideSeatRequests.$inferSelect;
+
+export const rideRatings = pgTable(
+  'ride_ratings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    ridePostId: uuid('ride_post_id').notNull(),
+    raterId: uuid('rater_id').notNull(),
+    rateeId: uuid('ratee_id').notNull(),
+    /** 'of_driver' (a passenger rated the driver) | 'of_passenger' */
+    direction: text('direction').notNull(),
+    stars: integer('stars').notNull(),
+    comment: text('comment'),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('ride_ratings_pairing_uq').on(t.ridePostId, t.raterId, t.rateeId),
+    index('ride_ratings_ratee_idx').on(t.tenantId, t.rateeId, t.createdAt),
+  ],
+);
+
+export type RideRatingRow = typeof rideRatings.$inferSelect;

@@ -132,6 +132,11 @@ beforeAll(async () => {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'notifications', 'drizzle'),
     '__drizzle_migrations_notifications',
   );
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'rides', 'drizzle'),
+    '__drizzle_migrations_rides',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
@@ -2897,6 +2902,10 @@ describe('definer grant hygiene', () => {
     // or resolves reports across users (the M1/M2 moderator-definer pattern).
     auth_lf_report_queue: 'app',
     auth_lf_resolve_reports: 'app',
+    // Rides ratings: app-callable, re-verifies the driver/passenger pairing against
+    // the completed ride and its accepted seat requests (read as owner) so a rating
+    // cannot be forged; the rater is the caller. The app has no INSERT on ride_ratings.
+    auth_rides_submit_rating: 'app',
     // Direct-messages moderation: app-callable, each self-gates on messages.moderate
     // (via auth_effective_permissions), then reads the report queue (with the
     // message snapshot) or resolves reports across participants.
