@@ -2,10 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { conversationBetween } from '@campusos/module-messages/service';
-import { orderById, orderFiles } from '@campusos/module-marketplace/orders-read';
+import { orderById, orderFiles, orderReview } from '@campusos/module-marketplace/orders-read';
 import { MessageButton } from '@/app/_components/messages/message-button';
 import { DeliveryUpload } from '@/app/_components/marketplace/delivery-upload';
 import { OrderControls } from '@/app/_components/marketplace/order-controls';
+import { ReviewForm } from '@/app/_components/marketplace/review-form';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
@@ -62,11 +63,15 @@ export default async function OrderPage({ params }: Params) {
   const counterpartId = role === 'buyer' ? order.sellerId : order.buyerId;
 
   const messagesOn = messagesEnabled(tenant);
-  const [existingConvo, files] = await Promise.all([
+  const [existingConvo, files, myReview] = await Promise.all([
     messagesOn ? conversationBetween(actor, slug, counterpartId) : Promise.resolve(null),
     orderFiles(actor, slug, orderId),
+    role === 'buyer' && order.status === 'completed'
+      ? orderReview(actor, slug, orderId)
+      : Promise.resolve(null),
   ]);
   const canDeliverFiles = role === 'seller' && ['in_progress', 'delivered'].includes(order.status);
+  const canReview = role === 'buyer' && order.status === 'completed' && myReview === null;
   const statusText = (s: string) =>
     STATUS_KEYS[s] ? t(STATUS_KEYS[s] as Parameters<typeof t>[0]) : s;
 
@@ -185,6 +190,26 @@ export default async function OrderPage({ params }: Params) {
               />
             ) : null}
           </section>
+        ) : null}
+
+        {canReview ? (
+          <ReviewForm
+            tenant={slug}
+            orderId={order.id}
+            labels={{
+              heading: t('marketplace.review.heading'),
+              rating: t('marketplace.review.rating'),
+              comment: t('marketplace.review.comment'),
+              submit: t('marketplace.review.submit'),
+              submitting: t('marketplace.form.submitting'),
+              failed: t('marketplace.form.failed'),
+            }}
+          />
+        ) : null}
+        {myReview ? (
+          <p className="px-1 text-sm text-muted-foreground">
+            {t('marketplace.review.yours', { stars: '★'.repeat(myReview.rating) })}
+          </p>
         ) : null}
 
         <section className="flex flex-col gap-2">
