@@ -563,6 +563,8 @@ export const en = {
   'messages.read': 'Read',
   'messages.edit': 'Edit',
   'messages.delete': 'Delete for everyone',
+  'messages.clearChat': 'Clear chat',
+  'messages.clearConfirm': 'Clear this chat for you? The other person still sees it.',
   'messages.messageAction': 'Message',
   'messages.failed': 'That did not go through. You can try again.',
   'messages.composer.placeholder': 'Write a message',

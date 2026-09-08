@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   acceptRequest,
+  clearConversation,
   declineRequest,
   markRead,
   otherParticipant,
@@ -61,6 +62,7 @@ const bodySchema = z.discriminatedUnion('action', [
   z.object({ tenant, action: z.literal('accept') }),
   z.object({ tenant, action: z.literal('decline') }),
   z.object({ tenant, action: z.literal('decline_block') }),
+  z.object({ tenant, action: z.literal('clear') }),
 ]);
 
 /** Act in one conversation: send, read, typing, set expiry, or accept/decline. */
@@ -91,6 +93,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (gate.data.action === 'accept') {
     const res = await acceptRequest(gate.actor, slug, id);
+    if (!res.ok) return refusalResponse(res.error);
+    return Response.json({ ok: true });
+  }
+  if (gate.data.action === 'clear') {
+    const res = await clearConversation(gate.actor, slug, id);
     if (!res.ok) return refusalResponse(res.error);
     return Response.json({ ok: true });
   }
