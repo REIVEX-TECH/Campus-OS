@@ -83,5 +83,28 @@ export const marketplaceGigPackages = pgTable(
   ],
 );
 
+export const marketplaceGigPhotos = pgTable(
+  'mkt_gig_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    gigId: uuid('gig_id')
+      .notNull()
+      .references(() => marketplaceGigs.id, { onDelete: 'cascade' }),
+    storageKey: text('storage_key').notNull(),
+    thumbKey: text('thumb_key').notNull(),
+    contentType: text('content_type').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    byteSize: integer('byte_size'),
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('mkt_gig_photos_gig_idx').on(t.gigId, t.position)],
+);
+
 export type MarketplaceGig = typeof marketplaceGigs.$inferSelect;
 export type MarketplaceGigPackage = typeof marketplaceGigPackages.$inferSelect;
+export type MarketplaceGigPhoto = typeof marketplaceGigPhotos.$inferSelect;

@@ -1,10 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { withActorInTenant } from '@campusos/db';
+import { withActorInTenant, type TenantTransaction } from '@campusos/db';
 import { err, ok, type Result } from '@campusos/core';
 import { isVerifiedMember } from './access';
-import { marketplaceGigPackages, marketplaceGigs } from './schema/services';
+import { marketplaceGigPhotos, marketplaceGigPackages, marketplaceGigs } from './schema/services';
 import type { MarketplaceSettings } from './manifest';
 import { hasContactInfo } from './input';
+import type { PhotoInput } from './write';
 import { gigInputSchema, hasDuplicateTiers, type GigInput } from './services-input';
 
 /** Selling a service is verified-only, and capped per person to slow abuse. */
@@ -118,13 +119,69 @@ export async function setGigStatus(
   });
 }
 
+export type GigPhotoRefusal = 'not_found' | 'too_many_photos';
+
+/**
+ * Record a stored portfolio photo against a gig the caller sells. Ownership is
+ * enforced both here (the gig must be the caller's) and by the RESTRICTIVE insert
+ * policy. The count cap comes from the tenant's photos-per-listing setting (gigs
+ * reuse it). Mirrors goods' addListingPhoto onto the gig photos table.
+ */
+export async function addGigPhoto(
+  actor: { userId: string },
+  tenantId: string,
+  gigId: string,
+  photo: PhotoInput,
+  maxPhotos: number,
+): Promise<Result<{ position: number }, GigPhotoRefusal>> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const [gig] = [
+      ...(await tx.execute(sql`
+        select id from mkt_gigs
+        where id = ${gigId}::uuid and tenant_id = ${tenantId}
+          and seller_id = ${actor.userId}::uuid and deleted_at is null
+        limit 1`)),
+    ];
+    if (!gig) return err('not_found');
+    const [counted] = [
+      ...(await tx.execute(sql`
+        select count(*)::int as n from mkt_gig_photos where gig_id = ${gigId}::uuid`)),
+    ] as { n: number }[];
+    const position = counted?.n ?? 0;
+    if (position >= maxPhotos) return err('too_many_photos');
+    await tx.insert(marketplaceGigPhotos).values({
+      tenantId,
+      gigId,
+      storageKey: photo.storageKey,
+      thumbKey: photo.thumbKey,
+      contentType: photo.contentType,
+      width: photo.width,
+      height: photo.height,
+      byteSize: photo.byteSize,
+      position,
+    });
+    return ok({ position });
+  });
+}
+
+/** Delete a gig's photo rows and return their storage keys (full + thumb) so the
+ *  caller can remove the files. Used when a gig is removed/withdrawn. */
+export async function deleteGigPhotoRows(tx: TenantTransaction, gigId: string): Promise<string[]> {
+  const rows = [
+    ...(await tx.execute(sql`
+      delete from mkt_gig_photos where gig_id = ${gigId}::uuid
+      returning storage_key, thumb_key`)),
+  ] as { storage_key: string; thumb_key: string }[];
+  return rows.flatMap((r) => [r.storage_key, r.thumb_key]).filter((k): k is string => Boolean(k));
+}
+
 /** The seller takes their own gig down for good (soft-delete). Existing orders,
  *  which snapshot the gig, are unaffected. */
 export async function deleteGig(
   actor: { userId: string },
   tenantId: string,
   gigId: string,
-): Promise<Result<{ changed: boolean }, GigLifecycleRefusal>> {
+): Promise<Result<{ changed: boolean; photoKeys: string[] }, GigLifecycleRefusal>> {
   return withActorInTenant(actor.userId, tenantId, async (tx) => {
     const rows = [
       ...(await tx.execute(sql`
@@ -133,6 +190,7 @@ export async function deleteGig(
           and seller_id = ${actor.userId}::uuid and deleted_at is null
         returning id`)),
     ];
-    return ok({ changed: rows.length > 0 });
+    if (rows.length === 0) return ok({ changed: false, photoKeys: [] });
+    return ok({ changed: true, photoKeys: await deleteGigPhotoRows(tx, gigId) });
   });
 }

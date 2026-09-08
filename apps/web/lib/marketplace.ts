@@ -3,6 +3,7 @@ import type { TenantConfig } from '@campusos/core/tenant';
 import {
   CONDITIONS,
   DEFAULT_CATEGORIES,
+  DEFAULT_SERVICE_CATEGORIES,
   settingsSchema,
   type MarketplaceSettings,
 } from '@campusos/module-marketplace/manifest';
@@ -15,8 +16,16 @@ import type { MessageKey, Translate } from './i18n';
  */
 export const MARKETPLACE = 'marketplace';
 
+/** Services (gigs) are a separate flag from goods: a tenant may have goods on and
+ *  services off (the LGU state today). No tenant enables services yet. */
+export const MARKETPLACE_SERVICES = 'marketplace-services';
+
 export function marketplaceEnabled(tenant: TenantConfig): boolean {
   return tenant.enabledModules.includes(MARKETPLACE);
+}
+
+export function marketplaceServicesEnabled(tenant: TenantConfig): boolean {
+  return tenant.enabledModules.includes(MARKETPLACE_SERVICES);
 }
 
 /** For a page: 404 when the tenant has not enabled the module. */
@@ -24,11 +33,17 @@ export function requireMarketplace(tenant: TenantConfig): void {
   if (!marketplaceEnabled(tenant)) notFound();
 }
 
+/** For a services page: 404 unless the tenant has enabled the services flag. */
+export function requireMarketplaceServices(tenant: TenantConfig): void {
+  if (!marketplaceServicesEnabled(tenant)) notFound();
+}
+
 export function marketplaceSettings(tenant: TenantConfig): MarketplaceSettings {
   return settingsSchema.parse(tenant.moduleSettings[MARKETPLACE] ?? {});
 }
 
 const DEFAULT_CATEGORY_SET = new Set<string>(DEFAULT_CATEGORIES);
+const DEFAULT_SERVICE_CATEGORY_SET = new Set<string>(DEFAULT_SERVICE_CATEGORIES);
 const CONDITION_SET = new Set<string>(CONDITIONS);
 
 function humanise(key: string): string {
@@ -56,4 +71,16 @@ export function categoryLabels(t: Translate, categories: string[]): Record<strin
 
 export function conditionLabels(t: Translate): Record<string, string> {
   return Object.fromEntries([...CONDITION_SET].map((c) => [c, conditionLabel(t, c)]));
+}
+
+/** A display label for a gig (service) category: the built-in translation, or the
+ *  key humanised. */
+export function serviceCategoryLabel(t: Translate, category: string): string {
+  return DEFAULT_SERVICE_CATEGORY_SET.has(category)
+    ? t(`marketplace.serviceCategory.${category}` as MessageKey)
+    : humanise(category);
+}
+
+export function serviceCategoryLabels(t: Translate, categories: string[]): Record<string, string> {
+  return Object.fromEntries(categories.map((c) => [c, serviceCategoryLabel(t, c)]));
 }
