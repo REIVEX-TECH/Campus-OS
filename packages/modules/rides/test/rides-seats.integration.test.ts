@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { withActorInTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
@@ -118,11 +119,18 @@ describe('ride seat requests', () => {
     expect((await ridePost('aaa', rideId))?.seatsAvailable).toBe(1);
     expect((await mySeatRequests(rider, 'aaa')).map((r) => r.status)).toEqual(['accepted']);
 
-    // Both were notified (request received -> driver, accepted -> rider).
-    const notes = await getDb().execute(sql`select user_id, kind from notifications`);
-    const kinds = [...notes].map((n) => (n as { kind: string }).kind);
-    expect(kinds).toContain('rides.seat_requested');
-    expect(kinds).toContain('rides.seat_accepted');
+    // Both were notified. Notifications are own-row under RLS, so read each inbox as
+    // its recipient (a no-context read returns nothing on a split database).
+    const inbox = (userId: string) =>
+      withActorInTenant(userId, 'aaa', async (tx) =>
+        [
+          ...(await tx.execute(
+            sql`select kind from notifications where user_id = ${userId}::uuid`,
+          )),
+        ].map((n) => (n as { kind: string }).kind),
+      );
+    expect(await inbox(driver.userId)).toContain('rides.seat_requested');
+    expect(await inbox(rider.userId)).toContain('rides.seat_accepted');
   });
 
   it('refuses own ride, an unverified rider, a duplicate, and a blocked pair', async () => {
