@@ -42,6 +42,11 @@ export const en = {
   'platform.admin.edit.heading': 'Edit {name}',
   'platform.admin.edit.intro':
     'Saving writes this configuration to the database, which then wins over the file for this university.',
+  'platform.admin.drift.title': 'Enabled modules differ from the file',
+  'platform.admin.drift.body':
+    'The database row for this university has different enabled modules than its checked-in file config. The database wins, so this is what is live.',
+  'platform.admin.drift.onlyInDb': 'On in the database, not in the file: {list}',
+  'platform.admin.drift.onlyInFile': 'In the file, but off in the database: {list}',
   'platform.admin.field.slug': 'Slug',
   'platform.admin.field.displayName': 'Display name',
   'platform.admin.field.timezone': 'Timezone (IANA)',

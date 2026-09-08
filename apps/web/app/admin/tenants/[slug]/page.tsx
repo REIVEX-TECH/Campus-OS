@@ -4,7 +4,7 @@ import { TenantForm } from '@/app/_components/platform/tenant-form';
 import { requirePlatformAdmin } from '@/lib/auth';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { tenantFormLabels } from '@/lib/tenant-form-labels';
-import { getTenantRegistry, tenantConfigSources } from '@/lib/tenants';
+import { getTenantRegistry, tenantConfigSources, tenantModuleDivergence } from '@/lib/tenants';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,11 @@ export default async function EditTenantPage({ params }: Params) {
   await requirePlatformAdmin();
   const { slug } = await params;
   const t = translator('en');
-  const [registry, sources] = await Promise.all([getTenantRegistry(), tenantConfigSources()]);
+  const [registry, sources, drift] = await Promise.all([
+    getTenantRegistry(),
+    tenantConfigSources(),
+    tenantModuleDivergence(slug),
+  ]);
   const tenant = registry.resolveBySlug(slug);
   if (!tenant || tenant.slug !== slug) notFound();
 
@@ -38,6 +42,23 @@ export default async function EditTenantPage({ params }: Params) {
           {t('platform.admin.edit.intro')}
         </p>
       </header>
+      {drift ? (
+        <section
+          role="alert"
+          className="flex flex-col gap-1 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          <span className="font-semibold">{t('platform.admin.drift.title')}</span>
+          <span className="text-muted-foreground">{t('platform.admin.drift.body')}</span>
+          {drift.onlyInDb.length > 0 ? (
+            <span>{t('platform.admin.drift.onlyInDb', { list: drift.onlyInDb.join(', ') })}</span>
+          ) : null}
+          {drift.onlyInFile.length > 0 ? (
+            <span>
+              {t('platform.admin.drift.onlyInFile', { list: drift.onlyInFile.join(', ') })}
+            </span>
+          ) : null}
+        </section>
+      ) : null}
       <TenantForm
         mode="edit"
         initial={tenant}

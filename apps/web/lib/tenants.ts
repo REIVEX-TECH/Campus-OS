@@ -81,6 +81,29 @@ export const tenantConfigSources = cache(
   async (): Promise<ReadonlyMap<string, TenantConfigSource>> => (await current()).source,
 );
 
+/**
+ * How a tenant's live (database) enabled modules differ from its checked-in file
+ * config, for the platform editor's drift warning. Null when there is no database
+ * row (the file is authoritative, nothing to warn about) or when they match. When a
+ * row exists the database wins, so `onlyInDb` is live-but-not-in-the-file and
+ * `onlyInFile` is in-the-file-but-off-live.
+ */
+export const tenantModuleDivergence = cache(
+  async (slug: string): Promise<{ onlyInDb: string[]; onlyInFile: string[] } | null> => {
+    const { registry, source } = await current();
+    if (source.get(slug) !== 'database') return null;
+    const effective = registry.resolveBySlug(slug);
+    const file = fileTenantConfigs.find((c) => c.slug === slug);
+    if (!effective || !file) return null;
+    const db = new Set(effective.enabledModules);
+    const onFile = new Set(file.enabledModules);
+    const onlyInDb = [...db].filter((m) => !onFile.has(m)).sort();
+    const onlyInFile = [...onFile].filter((m) => !db.has(m)).sort();
+    if (onlyInDb.length === 0 && onlyInFile.length === 0) return null;
+    return { onlyInDb, onlyInFile };
+  },
+);
+
 /** Forget the cached registry, after a write in this process. */
 export function invalidateTenantRegistry(): void {
   loaded = null;
