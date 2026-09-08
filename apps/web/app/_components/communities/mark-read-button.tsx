@@ -24,7 +24,7 @@ export function MarkReadButton({
         onClick={async () => {
           setBusy(true);
           setMessage(null);
-          const response = await fetch('/api/communities/notifications', {
+          const response = await fetch('/api/notifications', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ tenant, action: 'read', ids: 'all' }),
