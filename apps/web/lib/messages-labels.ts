@@ -24,6 +24,8 @@ export function conversationLabels(t: T): ConversationLabels {
     read: t('messages.read'),
     edit: t('messages.edit'),
     del: t('messages.delete'),
+    clearChat: t('messages.clearChat'),
+    clearConfirm: t('messages.clearConfirm'),
     report: t('messages.report.button'),
     reportPrompt: t('messages.report.prompt'),
     reportNote: t('messages.report.notePlaceholder'),
