@@ -15,6 +15,8 @@ export interface GigSummary {
   createdAt: Date;
   /** Cheapest package price, in paisa, or null if a gig somehow has no package. */
   fromPricePaisa: number | null;
+  /** Thumbnail key of the gig's first portfolio photo, or null. Build with mediaUrl(). */
+  coverThumbKey: string | null;
   sellerId: string;
   sellerHandle: string | null;
   sellerAvatarSeed: string | null;
@@ -83,6 +85,7 @@ interface GigRow {
   status: string;
   created_at: string | Date;
   from_price_paisa: string | number | null;
+  cover_thumb_key: string | null;
   seller_id: string;
   seller_handle: string | null;
   seller_avatar_seed: string | null;
@@ -96,11 +99,16 @@ function rowToSummary(r: GigRow): GigSummary {
     status: r.status,
     createdAt: toDate(r.created_at),
     fromPricePaisa: r.from_price_paisa === null ? null : Number(r.from_price_paisa),
+    coverThumbKey: r.cover_thumb_key,
     sellerId: r.seller_id,
     sellerHandle: r.seller_handle,
     sellerAvatarSeed: r.seller_avatar_seed,
   };
 }
+
+/** The subquery every gig list uses for its cover thumbnail (first photo). */
+const coverThumb = sql`(select p.thumb_key from mkt_gig_photos p
+                 where p.gig_id = g.id order by p.position asc limit 1) as cover_thumb_key`;
 
 export async function listGigs(
   tenantId: string,
@@ -113,6 +121,7 @@ export async function listGigs(
         select g.id, g.title, g.category, g.status, g.created_at, g.seller_id,
                (select min(pk.price_paisa) from mkt_gig_packages pk where pk.gig_id = g.id)
                  as from_price_paisa,
+               ${coverThumb},
                p.handle as seller_handle, p.avatar_seed as seller_avatar_seed
         from mkt_gigs g
         left join public_profiles p on p.user_id = g.seller_id
@@ -228,6 +237,7 @@ export async function myGigs(userId: string, tenantId: string): Promise<GigSumma
         select g.id, g.title, g.category, g.status, g.created_at, g.seller_id,
                (select min(pk.price_paisa) from mkt_gig_packages pk where pk.gig_id = g.id)
                  as from_price_paisa,
+               ${coverThumb},
                p.handle as seller_handle, p.avatar_seed as seller_avatar_seed
         from mkt_gigs g
         left join public_profiles p on p.user_id = g.seller_id
