@@ -127,6 +127,11 @@ beforeAll(async () => {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'money', 'drizzle'),
     '__drizzle_migrations_money',
   );
+  await applyMigrations(
+    migrationDatabaseUrl(),
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'notifications', 'drizzle'),
+    '__drizzle_migrations_notifications',
+  );
   const [ownership] = [
     ...(await getDb().execute(sql`
       select pg_get_userbyid(relowner) = current_user as app_owns
@@ -2874,6 +2879,10 @@ describe('definer grant hygiene', () => {
     communities_karma_vote: 'app',
     communities_notify: 'app',
     communities_unmask: 'app',
+    // The generic notification seam: app-callable, inserts one notification for the
+    // recipient in the caller's tenant. A notification is data, not a privilege; the
+    // recipient reads it under the own-row policy and the app still cannot INSERT.
+    notifications_emit: 'app',
     // A caller-scoped, bidirectional block check for cross-module composition
     // (direct-message requests/sends). Self-scoped: the caller is always one side.
     auth_blocked_between: 'app',

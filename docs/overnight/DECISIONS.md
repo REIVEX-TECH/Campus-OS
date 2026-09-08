@@ -387,3 +387,23 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   Node binary with `COREPACK_ENABLE_NETWORK=0` (bypassing corepack's network
   verification). All local typecheck/lint and the money commit hook ran green this
   way; CI (its own clean environment) is the authoritative gate.
+
+## Run 3 — Block A
+
+- **A1 tenant-editor drift** — compare the effective (DB) `enabledModules` to the
+  file config's, from the already-loaded registry (no extra query); warn only when a
+  DB row exists and differs. Source of truth stays "DB wins".
+- **A2 notifications seam** — a new `packages/modules/notifications` takes ownership
+  of the shared `notifications` table via a DDL-only migration (adds `payload`+`link`,
+  relaxes `community_id` NOT NULL, adds the `notifications_emit` definer; existing
+  rows untouched, RLS unchanged). It runs after communities in migrate-all because it
+  ALTERs a table communities creates; that migration-order dependency is deliberate.
+  **Communities keeps its own `communities_notify` + rich inbox render unchanged**
+  (lowest risk, best UX) and simply shares the now-generalised table; other modules
+  emit generic (payload+link) rows through `notify()`. The apps/web inbox merges the
+  communities view and the generic view; the bell counts every unread row
+  (kind-agnostic) and is ungated from communities. The legacy communities FKs on the
+  table are left in place (a full decouple would change cascade cleanup; logged as a
+  follow-up). `notifications_emit` is 'app' in DEFINER_INTENT: a notification is data,
+  not a privilege; tenant from the GUC (isolation), recipient explicit, app still has
+  no direct INSERT.
