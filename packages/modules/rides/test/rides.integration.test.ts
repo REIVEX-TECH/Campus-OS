@@ -155,7 +155,8 @@ describe('rides RLS and posting', () => {
         settings,
       ),
     ).toMatchObject({ ok: false, error: 'past' });
-    expect(await createRidePost(a, 'aaa', offer({ seats: 99 }), settings)).toMatchObject({
+    // 7 passes the input cap (<=8) but exceeds the tenant's maxSeatsPerOffer (6).
+    expect(await createRidePost(a, 'aaa', offer({ seats: 7 }), settings)).toMatchObject({
       ok: false,
       error: 'seats',
     });
@@ -201,19 +202,22 @@ describe('rides RLS and posting', () => {
     // Another member cannot edit or cancel it.
     expect(await editRide(other, 'aaa', id, { originText: 'Hacked' })).toMatchObject({
       ok: true,
-      changed: false,
+      value: { changed: false },
     });
-    expect(await cancelRide(other, 'aaa', id)).toMatchObject({ ok: true, changed: false });
+    expect(await cancelRide(other, 'aaa', id)).toMatchObject({
+      ok: true,
+      value: { changed: false },
+    });
 
     // The author can.
     expect(await editRide(a, 'aaa', id, { originText: 'Renamed Gate' })).toMatchObject({
       ok: true,
-      changed: true,
+      value: { changed: true },
     });
     const detail = await ridePost('aaa', id);
     expect(detail?.originText).toBe('Renamed Gate');
 
-    expect(await cancelRide(a, 'aaa', id)).toMatchObject({ ok: true, changed: true });
+    expect(await cancelRide(a, 'aaa', id)).toMatchObject({ ok: true, value: { changed: true } });
     // A cancelled ride leaves browse but stays in my rides.
     const browse = await browseRides('aaa');
     expect(browse.rides.map((r) => r.id)).not.toContain(id);
