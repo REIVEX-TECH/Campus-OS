@@ -45,6 +45,23 @@ function unique<T>(items: Iterable<T>): T[] {
   return Array.from(new Set(items));
 }
 
+/**
+ * A `text[]` SQL fragment for a definer argument. Drizzle expands a bare JS array
+ * in an `sql` template into a comma-separated parameter LIST (for `IN (...)`), not
+ * a single array, so `${perms}::text[]` casts one value or a whole record and
+ * fails ("malformed array literal" / "cannot cast type record to text[]"). Build
+ * the array literal explicitly, the way platform.ts hands `auth_grant_platform_admin`
+ * its allowlist.
+ */
+function textArray(items: readonly string[]) {
+  return items.length === 0
+    ? sql`array[]::text[]`
+    : sql`array[${sql.join(
+        items.map((v) => sql`${v}`),
+        sql`, `,
+      )}]::text[]`;
+}
+
 /** Every definition, with what each one carries. Readable by anyone. */
 export async function listRoleTemplates(): Promise<RoleTemplate[]> {
   const db = getDb();
@@ -119,7 +136,7 @@ export async function createRoleTemplate(
     await tx.execute(sql`select auth_begin_platform_admin()`);
     const [row] = [
       ...(await tx.execute(sql`
-        select auth_write_role_template(${key}, ${name}, ${permissions}::text[]) as created`)),
+        select auth_write_role_template(${key}, ${name}, ${textArray(permissions)}) as created`)),
     ] as { created: boolean }[];
     if (!row?.created) return { ok: false as const, reason: 'exists' as const };
     await syncEveryTenant(tx);
@@ -142,7 +159,7 @@ export async function setRoleTemplatePermissions(
     await tx.execute(sql`select auth_begin_platform_admin()`);
     const [row] = [
       ...(await tx.execute(sql`
-        select auth_set_role_template_permissions(${key}, ${wanted}::text[]) as result`)),
+        select auth_set_role_template_permissions(${key}, ${textArray(wanted)}) as result`)),
     ] as { result: string }[];
     if (row?.result === 'no_such_template') {
       return { ok: false as const, reason: 'no_such_template' as const };
