@@ -8,17 +8,23 @@ export interface OrderControlLabels {
   cancelRequest: string;
   cancel: string;
   cancelConfirm: string;
+  start: string;
+  deliver: string;
+  acceptDelivery: string;
+  acceptConfirm: string;
+  requestRevision: string;
   working: string;
   failed: string;
 }
 
-type To = 'awaiting_payment' | 'in_progress' | 'cancelled';
+type To = 'awaiting_payment' | 'in_progress' | 'delivered' | 'completed' | 'cancelled';
 
 /**
- * The order's pre-delivery controls: a seller accepts a request (to
- * awaiting_payment for an online order, or straight to in_progress for cash), and
- * either party cancels. Deliver / accept-delivery / revision are added with the
- * delivery UI. `paid` is never offered here: that is the money line.
+ * The order's lifecycle controls, up to the money line. A seller accepts a request
+ * (to awaiting_payment for online, or straight to in_progress for cash), starts a
+ * paid order, and delivers; a buyer accepts a delivery, requests a revision (back
+ * to in_progress, if the package has one left), or cancels. `paid` is never offered
+ * here: reaching paid is payment confirmation (the finance flow), not a button.
  */
 export function OrderControls({
   tenant,
@@ -61,11 +67,13 @@ export function OrderControls({
   const primary = `${pill} bg-primary text-primary-foreground`;
   const muted = `${pill} bg-muted text-muted-foreground`;
   const danger = `${pill} text-destructive hover:bg-destructive/10`;
+  const isSeller = role === 'seller';
+  const isBuyer = role === 'buyer';
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        {status === 'requested' && role === 'seller' ? (
+        {status === 'requested' && isSeller ? (
           <button
             type="button"
             disabled={busy}
@@ -75,7 +83,7 @@ export function OrderControls({
             {labels.accept}
           </button>
         ) : null}
-        {status === 'requested' && role === 'buyer' ? (
+        {status === 'requested' && isBuyer ? (
           <button
             type="button"
             disabled={busy}
@@ -85,17 +93,48 @@ export function OrderControls({
             {labels.cancelRequest}
           </button>
         ) : null}
-        {status === 'requested' && role === 'seller' ? (
+        {/* A paid order is started by the seller. Reachable once payment is confirmed. */}
+        {status === 'paid' && isSeller ? (
           <button
             type="button"
             disabled={busy}
-            onClick={() => act('cancelled', labels.cancelConfirm)}
-            className={danger}
+            onClick={() => act('in_progress')}
+            className={primary}
           >
-            {labels.cancel}
+            {labels.start}
           </button>
         ) : null}
-        {status === 'awaiting_payment' ? (
+        {status === 'in_progress' && isSeller ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => act('delivered')}
+            className={primary}
+          >
+            {labels.deliver}
+          </button>
+        ) : null}
+        {status === 'delivered' && isBuyer ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => act('completed', labels.acceptConfirm)}
+              className={primary}
+            >
+              {labels.acceptDelivery}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => act('in_progress')}
+              className={muted}
+            >
+              {labels.requestRevision}
+            </button>
+          </>
+        ) : null}
+        {(status === 'requested' && isSeller) || status === 'awaiting_payment' ? (
           <button
             type="button"
             disabled={busy}

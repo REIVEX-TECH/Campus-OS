@@ -226,6 +226,28 @@ describe('order state machine', () => {
     const r = await transitionOrder(buyer, 'aaa', id, 'in_progress');
     expect(r.ok && r.value.outcome).toBe('illegal');
   });
+
+  it('drives a seeded-paid order through start, deliver, and accept', async () => {
+    if (!split) return;
+    // The services UI reaches deliver/accept for a paid (online) order, but paying
+    // is the finance flow (Block 4) and cannot be clicked yet. Seed the paid state
+    // as that flow will set it, then prove the post-payment transitions the UI
+    // drives all work.
+    const seller = await member('ord-paid-seller');
+    const buyer = await member('ord-paid-buyer');
+    const { gigId, packageId } = await gigWithPackage(seller);
+    const id = await newOrder(buyer, gigId, packageId, 'online');
+    expect((await transitionOrder(seller, 'aaa', id, 'awaiting_payment')).ok).toBe(true);
+    // Seed payment (as the finance definer will), directly, then run the UI's edges.
+    await runAsMigrationRole(
+      `update mkt_orders set status = 'paid', paid_at = now() where id = '${id}'`,
+    );
+    expect((await transitionOrder(seller, 'aaa', id, 'in_progress')).ok).toBe(true);
+    expect((await transitionOrder(seller, 'aaa', id, 'delivered')).ok).toBe(true);
+    const accept = await transitionOrder(buyer, 'aaa', id, 'completed');
+    expect(accept.ok && accept.value.outcome).toBe('ok');
+    expect((await orderById(buyer, 'aaa', id))?.status).toBe('completed');
+  });
 });
 
 describe('append-only and RLS guarantees', () => {
