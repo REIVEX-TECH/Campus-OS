@@ -13,7 +13,7 @@ import { SkipLink } from './skip-link';
 import { buildMessagesLabels } from '@/lib/messages-labels';
 import { messagesSettings } from '@/lib/messages';
 import { getTenantRegistry } from '@/lib/tenants';
-import { unreadCount } from '@campusos/module-communities/notifications';
+import { unreadCount } from '@campusos/module-notifications/inbox';
 import {
   unreadCount as messagesUnread,
   requestCount as messagesRequests,
@@ -84,9 +84,10 @@ export async function AppShell({
   }));
   // The communities a signed in person has joined, as a second section.
   const groups: SidebarGroup[] = [];
-  // The bell: one count per page for a signed in person, only where the module is on.
-  const unread =
-    actor && enabledModules.includes('communities') ? await unreadCount(actor, tenantSlug) : null;
+  // The bell: one unread count for a signed in person, across every module that
+  // notifies (communities, L&F, marketplace, services, messages). Kind-agnostic, so
+  // it is shown whenever someone is signed in, not gated on any one module.
+  const unread = actor ? await unreadCount(actor, tenantSlug) : null;
   if (actor && enabledModules.includes(COMMUNITIES)) {
     const mine = await myCommunities(actor, tenantSlug);
     groups.push({
