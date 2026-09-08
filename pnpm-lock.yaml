@@ -41,6 +41,9 @@ importers:
       '@campusos/module-notifications':
         specifier: workspace:*
         version: link:packages/modules/notifications
+      '@campusos/module-rides':
+        specifier: workspace:*
+        version: link:packages/modules/rides
       '@campusos/module-timetable':
         specifier: workspace:*
         version: link:packages/modules/timetable
