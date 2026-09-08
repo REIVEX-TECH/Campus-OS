@@ -46,7 +46,7 @@ export function kindName(locale: string, kind: string): string {
  */
 export function countText(
   locale: string,
-  noun: 'classes' | 'courses' | 'days',
+  noun: 'classes' | 'courses' | 'days' | 'revisions',
   count: number,
 ): string {
   const form = new Intl.PluralRules(locale).select(count);
