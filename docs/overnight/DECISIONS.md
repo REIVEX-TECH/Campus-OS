@@ -416,3 +416,34 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   not the off-box copy (that is the remote's own alarm), and reports the newest dump's
   age. The restore drill stays a human step by design (needs real PG client tools and
   the operator's private GPG key, neither in CI).
+
+## Run 3 — Block B (rides)
+
+- **Design first, then build in five PRs** (`docs/design-rides.md`): the module is
+  large, so it lands backend-first (schema/RLS/read/write, integration-tested) then
+  UI, then seat requests, ratings, safety, lifecycle — the same shape marketplace
+  used. Flag `rides`, disabled everywhere.
+- **No gender is stored, ever.** "Women only" is a boolean LABEL the author sets on a
+  ride and a browse filter — self-declared, unverified, enforced socially, exactly as
+  a physical notice board would. The alternative (storing or verifying a user's
+  gender) is a data-minimisation and safety line the product does not cross. The UI
+  states plainly that it is driver-set and not platform-verified.
+- **No in-app money, and contact details are scrubbed from free text.** There is no
+  fare/fee; `notes` is rejected on save if it contains an email, a messaging-app
+  handle, or a phone number, so a ride board cannot become a fee-negotiation or
+  off-platform-contact channel. Coordination happens in the in-app conversation the
+  (later) accept flow opens.
+- **Rides → messages is the one accepted cross-feature dependency.** Accepting a seat
+  (a later PR) opens a messages conversation with a system line; rides will depend on
+  `@campusos/module-messages` the way the A2 emitters depend on the notifications
+  module, and degrade gracefully (notify only) when messages is disabled. A core
+  "conversation" interface is the cleaner long-term shape, logged as a follow-up.
+- **Departure time**: a one-off ride stores a concrete UTC `depart_at`; a recurring
+  offer stores wall-clock time + ISO weekdays and each spawned occurrence's instant
+  is computed through the tenant timezone (CLAUDE.md §5), correct across DST. A
+  unique `(recurrence_parent_id, depart_at)` makes the spawn idempotent.
+- **PR 1 posts pattern, no definer.** `ride_posts` is tenant-wide readable, written
+  only as oneself (RESTRICTIVE insert-as-self + FORCE); edits/cancels are scoped to
+  the author in the app SQL. Definers arrive with seat requests (cross-user accept)
+  and moderation. The block filter runs in the viewer's actor context so
+  `auth_blocked_between` sees the viewer.
