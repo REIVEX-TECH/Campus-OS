@@ -163,9 +163,9 @@ describe('ride ratings', () => {
       },
       settings,
     );
-    if (!made.ok) throw new Error('setup');
+    if (!made.ok) throw new Error('setup made: ' + JSON.stringify(made));
     const req = await requestSeat(rider, 'aaa', made.value.id);
-    if (!req.ok) throw new Error('setup');
+    if (!req.ok) throw new Error('setup req: ' + JSON.stringify(req));
     await acceptRequest(driver, 'aaa', req.value.id);
     expect(
       await submitRating(rider, 'aaa', {
