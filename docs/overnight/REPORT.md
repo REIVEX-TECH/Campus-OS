@@ -1,6 +1,6 @@
 # Overnight run 3 — morning report
 
-Block A (the leftovers) is finished and merged. Block B (rides) has its first three
+Block A (the leftovers) is finished and merged. Block B (rides) has its first four
 PRs — the whole backend of the module — designed, built, tested, and merged. Every
 PR went through the normal loop: branch → PR → CI green → merge. No gate was
 weakened and nothing was merged red; `update-branch` was used where branch
@@ -52,28 +52,31 @@ Design: `docs/design-rides.md` (5-PR plan).
 | #218 | Backend: `ride_posts` (offers w/ seat ledger, requests) + tenant/FORCE RLS + insert-as-self + browse (filters, keyset, blocked-author hidden both ways) + create/edit/cancel (verified, seat cap, future departure, contact-info scrub). `0000` | yes (RLS) |
 | #219 | `ride_seat_requests` + request/accept/decline/cancel (driver acts on own ride, atomic no-oversell seat decrement) + notifications. `0001`                                                                                                       | yes (RLS) |
 | #220 | `ride_ratings` + `auth_rides_submit_rating` definer (rating integrity: pairing re-verified against the completed ride + accepted seat requests as owner; app has no INSERT). `0002`                                                             | **yes**   |
+| #222 | Safety: `ride_reports` + moderation queue (`rides.moderate`, two owner-run definers) + report-threshold auto-hide (a third definer counts genuine reports as owner) + moderator remove/dismiss. `0003`                                          | **yes**   |
 
-15 rides integration tests, all green in CI. The ratings definer passes the
+19 rides integration tests, all green in CI. All four rides definers pass the
 communities DEFINER_INTENT audit.
 
 ## 2. Not done — remaining work (priority order; each is fully specified)
 
-1. **Rides PR 4 — safety**: `ride_reports` + moderation queue (`rides.moderate` →
-   tenant_admin, mirroring L&F `0002`) + report-threshold hide + signed share-link
-   (`ride_share_tokens` + a public read-only trip page).
-2. **Rides PR 5 — lifecycle**: `pnpm rides:sweep` (auto-complete 2h after departure,
+1. **Rides PR 5 — lifecycle**: `pnpm rides:sweep` (auto-complete 2h after departure,
    expire un-ridden, spawn next recurrence through the tenant timezone) + runbook + cron.
-3. **Rides UI** — every page (browse grouped by day, post form, ride detail + seat
+   **Note (found this run):** the sweep must be an owner-run **definer** — deciding
+   "completed vs expired" reads `ride_seat_requests` (accepted-seat) across users,
+   which the app role cannot see without an actor context (participant RLS). Same
+   shape as the report-threshold definer in PR 4. `docs/design-rides.md` is updated.
+2. **Rides UI** — every page (browse grouped by day, post form, ride detail + seat
    requests, my rides/requests, moderation queue, ratings on profile, "where is this"
-   map links). None built yet.
-4. **Rides → messages** system-conversation on seat-accept (deferred; notify-only
+   map links) plus the deferred **share-link** (`ride_share_tokens` + a public
+   read-only trip page). None built yet.
+3. **Rides → messages** system-conversation on seat-accept (deferred; notify-only
    shipped, the design's graceful-degradation path).
-5. **Block C — campus map** (NOT started; design doc `docs/design-campus-map.md` not
+4. **Block C — campus map** (NOT started; design doc `docs/design-campus-map.md` not
    yet written): Leaflet + OSM tiles, building lat/lng, tenant-admin pin editor
    (`campusmap.manage`), public map page, free-rooms-now, "where is this" links.
-6. **Block D — shared-listings extraction** (NOT started): behavior-preserving only,
+5. **Block D — shared-listings extraction** (NOT started): behavior-preserving only,
    gated on L&F + marketplace e2e passing unchanged.
-7. **Block E — money movements — BUILD, DO NOT MERGE** (NOT started):
+6. **Block E — money movements — BUILD, DO NOT MERGE** (NOT started):
    `docs/design-money-movements.md` Block 4. Q1 decided: a dedicated platform
    **finance** grant (same mechanics as the tenant grant), not the tenant grant. Open
    PRs, get green, leave unmerged with a "needs human SQL review" label. (No Block E
@@ -112,12 +115,18 @@ from pg_proc p where proname in
 
 -- rides tables + FORCE:
 select relname, relrowsecurity, relforcerowsecurity from pg_class
-where relname in ('ride_posts','ride_seat_requests','ride_ratings') order by relname;
---   ride_posts (t,t) | ride_ratings (t,f) | ride_seat_requests (t,f)
+where relname in ('ride_posts','ride_seat_requests','ride_ratings','ride_reports') order by relname;
+--   ride_posts (t,t) | ride_ratings (t,f) | ride_reports (t,f) | ride_seat_requests (t,f)
 
--- rides ratings: definer app-executable, app cannot INSERT the table directly:
-select has_function_privilege('campusos_app','auth_rides_submit_rating(uuid,uuid,integer,text,text)','execute'); -- t
+-- rides definers app-executable; app cannot INSERT ride_ratings directly:
+select proname, has_function_privilege('campusos_app', p.oid, 'execute') as app_exec
+from pg_proc p where proname in
+ ('auth_rides_submit_rating','auth_rides_report_queue','auth_rides_resolve_reports',
+  'auth_rides_hide_if_overreported');                                                           -- all t
 select has_table_privilege('campusos_app','ride_ratings','insert');                            -- f (split)
+
+-- rides.moderate is on the tenant_admin template:
+select 1 from role_template_permissions where template_key='tenant_admin' and permission='rides.moderate';
 ```
 
 ## 7. Browser checklists (once the rides UI lands; the backend is integration-tested now)
