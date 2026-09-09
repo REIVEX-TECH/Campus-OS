@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { withTenant } from '@campusos/db';
 import { getDb, getSqlClient } from '@campusos/db/client';
 import {
   applyMigrations,
@@ -89,8 +90,13 @@ async function completedRideWith(driver: { userId: string }, rider: { userId: st
   const req = await requestSeat(rider, 'aaa', made.value.id);
   if (!req.ok) throw new Error('request setup');
   await acceptRequest(driver, 'aaa', req.value.id);
-  await runAsMigrationRole(
-    `update ride_posts set status = 'completed', completed_at = now() where id = '${made.value.id}'`,
+  // Complete the ride the way the (PR 5) sweep will: an in-tenant update. Not via
+  // the migration role — ride_posts is FORCE RLS and the owner is NOBYPASSRLS, so a
+  // no-tenant-context update matches zero rows.
+  await withTenant('aaa', (tx) =>
+    tx.execute(
+      sql`update ride_posts set status = 'completed', completed_at = now() where id = ${made.value.id}::uuid`,
+    ),
   );
   return made.value.id;
 }
