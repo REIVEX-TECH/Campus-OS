@@ -199,8 +199,16 @@ One idempotent sweep, `pnpm rides:sweep --tenant <slug>` (runbook +
   descriptor through the tenant timezone, `seats_available` reset, linked by
   `recurrence_parent_id`. Idempotent: a `(recurrence_parent_id, depart_at)` unique
   key means a re-run never double-spawns.
-- Runs with no actor in the tenant context; the permissive tenant policy admits the
-  status updates, exactly like the communities archive sweep and L&F expiry.
+- **The sweep is an owner-run definer, NOT a bare tenant-context update** (correction
+  found building PRs 3-4): deciding "completed vs expired" reads `ride_seat_requests`
+  (does the ride have an accepted seat?) ACROSS users, which the application role
+  cannot see without an actor context — the participant RLS on seat requests hides
+  them, so a no-actor sweep would find zero accepted seats and expire every ride.
+  Do the complete/expire (and the recurrence spawn) in a `SECURITY DEFINER`
+  (`auth_rides_sweep(tenant, hours)`) that reads seat requests and writes ride status
+  as the owner, declared in the DEFINER_INTENT audit — the same reason the
+  report-threshold hide (PR 4) is a definer. The status updates themselves are not a
+  privilege decision; the definer is needed only to READ across the participant RLS.
 
 ## Build order (one PR each, CI green, merged)
 
