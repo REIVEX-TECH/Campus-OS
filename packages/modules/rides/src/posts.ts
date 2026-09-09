@@ -119,6 +119,10 @@ export async function browseRides(
       sql`r.tenant_id = ${tenantId}`,
       sql`r.status IN ('active', 'full')`,
       sql`r.depart_at >= now()`,
+      // A ride auto-hidden by reports (0003) keeps its active status; keep it and
+      // any moderator-removed ride out of browse.
+      sql`r.hidden_at IS NULL`,
+      sql`r.removed_at IS NULL`,
     ];
     if (filters.kind) conds.push(sql`r.kind = ${filters.kind}`);
     if (filters.womenOnly) conds.push(sql`r.women_only = true`);

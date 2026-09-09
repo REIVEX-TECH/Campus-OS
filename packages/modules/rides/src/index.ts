@@ -4,5 +4,6 @@ export * from './posts';
 export * from './write';
 export * from './seats';
 export * from './ratings';
+export * from './safety';
 export { rideInputSchema, containsContactInfo, type RideInput } from './input';
 export type { RidePostRow } from './schema/rides';
