@@ -50,17 +50,11 @@ export async function reportTarget(
               ${note?.trim() ? note.trim() : null})
       on conflict (target_type, target_id, reporter_id) do nothing`);
     if (targetType === 'ride_post') {
-      const [counted] = [
-        ...(await tx.execute(sql`
-          select count(*)::int as n from ride_reports
-          where target_type = 'ride_post' and target_id = ${targetId}::uuid and status = 'open'`)),
-      ] as { n: number }[];
-      if ((counted?.n ?? 0) >= reportThreshold) {
-        await tx.execute(sql`
-          update ride_posts set hidden_at = now(), updated_at = now()
-          where id = ${targetId}::uuid and tenant_id = ${tenantId}
-            and hidden_at is null and removed_at is null`);
-      }
+      // The threshold count spans reporters, but ride_reports is own-row RLS, so the
+      // reporter's own context sees only their report. The definer counts as owner
+      // and hides the ride when the genuine open-report count reaches the threshold.
+      await tx.execute(sql`
+        select auth_rides_hide_if_overreported(${tenantId}, ${targetId}::uuid, ${reportThreshold})`);
     }
     return ok({});
   });

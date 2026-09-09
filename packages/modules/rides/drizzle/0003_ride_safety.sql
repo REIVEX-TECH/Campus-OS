@@ -156,3 +156,40 @@ BEGIN
 	END IF;
 END
 $$;
+--> statement-breakpoint
+
+-- Hide a ride once its OPEN reports reach the threshold. The count must be read as
+-- the owner: ride_reports is own-row RLS, so a reporter counting in their own
+-- context sees only their own report (always 1) and the threshold is never met.
+-- This is not a privilege decision -- it hides only a ride with N genuine reports
+-- (each an own-row insert by a distinct user, one per reporter), read from real
+-- rows -- so it is app-callable; a moderator un-hides via dismiss.
+CREATE OR REPLACE FUNCTION auth_rides_hide_if_overreported(
+	p_tenant_id text, p_ride_id uuid, p_threshold integer
+)
+	RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+	v_open integer;
+BEGIN
+	SELECT count(*) INTO v_open FROM ride_reports
+	WHERE tenant_id = p_tenant_id AND target_type = 'ride_post'
+	  AND target_id = p_ride_id AND status = 'open';
+	IF v_open < greatest(p_threshold, 1) THEN
+		RETURN false;
+	END IF;
+	UPDATE ride_posts SET hidden_at = now(), updated_at = now()
+	WHERE id = p_ride_id AND tenant_id = p_tenant_id
+	  AND hidden_at IS NULL AND removed_at IS NULL;
+	RETURN true;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION auth_rides_hide_if_overreported(text, uuid, integer) FROM PUBLIC;
+--> statement-breakpoint
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'campusos_app') THEN
+		EXECUTE 'GRANT EXECUTE ON FUNCTION auth_rides_hide_if_overreported(text, uuid, integer) TO campusos_app';
+	END IF;
+END
+$$;

@@ -2911,6 +2911,10 @@ describe('definer grant hygiene', () => {
     // across users (the L&F moderator-definer pattern).
     auth_rides_report_queue: 'app',
     auth_rides_resolve_reports: 'app',
+    // Hides a ride at the report threshold: counts genuine reports as owner (own-row
+    // RLS hides them from the reporter) and hides only an already-N-times-reported
+    // ride, so it is app-callable and not a privilege decision.
+    auth_rides_hide_if_overreported: 'app',
     // Direct-messages moderation: app-callable, each self-gates on messages.moderate
     // (via auth_effective_permissions), then reads the report queue (with the
     // message snapshot) or resolves reports across participants.
