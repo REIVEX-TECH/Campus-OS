@@ -2906,6 +2906,15 @@ describe('definer grant hygiene', () => {
     // the completed ride and its accepted seat requests (read as owner) so a rating
     // cannot be forged; the rater is the caller. The app has no INSERT on ride_ratings.
     auth_rides_submit_rating: 'app',
+    // Rides moderation: app-callable, each self-gates on rides.moderate (via
+    // auth_effective_permissions) then reads the report queue / resolves reports
+    // across users (the L&F moderator-definer pattern).
+    auth_rides_report_queue: 'app',
+    auth_rides_resolve_reports: 'app',
+    // Hides a ride at the report threshold: counts genuine reports as owner (own-row
+    // RLS hides them from the reporter) and hides only an already-N-times-reported
+    // ride, so it is app-callable and not a privilege decision.
+    auth_rides_hide_if_overreported: 'app',
     // Direct-messages moderation: app-callable, each self-gates on messages.moderate
     // (via auth_effective_permissions), then reads the report queue (with the
     // message snapshot) or resolves reports across participants.
