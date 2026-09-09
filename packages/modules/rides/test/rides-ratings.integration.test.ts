@@ -155,17 +155,17 @@ describe('ride ratings', () => {
       'aaa',
       {
         kind: 'offer',
-        originText: 'G',
-        destText: 'C',
+        originText: 'Gate',
+        destText: 'Campus',
         departAt: soon(),
         seats: 1,
         womenOnly: false,
       },
       settings,
     );
-    if (!made.ok) throw new Error('setup made: ' + JSON.stringify(made));
+    if (!made.ok) throw new Error('setup');
     const req = await requestSeat(rider, 'aaa', made.value.id);
-    if (!req.ok) throw new Error('setup req: ' + JSON.stringify(req));
+    if (!req.ok) throw new Error('setup');
     await acceptRequest(driver, 'aaa', req.value.id);
     expect(
       await submitRating(rider, 'aaa', {
