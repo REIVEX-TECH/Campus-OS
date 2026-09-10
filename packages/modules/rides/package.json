@@ -13,6 +13,7 @@
     "./seats": "./src/seats.ts",
     "./ratings": "./src/ratings.ts",
     "./safety": "./src/safety.ts",
+    "./share": "./src/share.ts",
     "./input": "./src/input.ts",
     "./lifecycle": "./src/lifecycle.ts"
   },
