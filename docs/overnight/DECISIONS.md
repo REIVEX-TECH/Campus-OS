@@ -562,3 +562,34 @@ depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
 - **C1 scope = scaffold + data model + read path only.** No UI, no write path, `map`
   stays a soon nav stub, flag OFF for every tenant. UI (Leaflet image-mode browse,
   accessible list) is C2; the `map.manage`-gated admin editor is C3.
+- **C2/C3 (campus-map UI) DEFERRED to a logged follow-up, C1 is the run's deliverable.**
+  Two reasons: (1) the UI is browser-unverifiable while the flag is off, and (2) making
+  `map` a live gated module now would churn the e2e suite — `map` is the LAST remaining
+  "soon" stub that `shell`/`modules`/`seo` specs assert against (they were just
+  repointed there from rides), and turning it live leaves no soon module to assert.
+  The review-critical core (schema, tenant RLS, `map.manage`) is landed and
+  integration-tested; the UI is lower-risk mechanical work best done when the flag can
+  be exercised in a browser.
+
+## Run 4 — Block D (shared-listings extraction)
+
+- **Only the keyset-cursor codec is extracted; the moderation-surface dedup is
+  deferred, logged.** The Block D survey found the browse cursor codec
+  (`PAGE_SIZE`/`encodeCursor`/`decodeCursor`/`toDate`) byte-identical across four
+  modules, and it is the ONE duplication provable behavior-preserving by EXISTING e2e
+  (`marketplace.spec.ts` browse) + the marketplace/L&F integration suites. The
+  near-verbatim `reportTarget`/`moderationQueue`/`dismiss`/`remove` copies and the
+  report-button/mod-queue React copies are NOT taken: they are not covered by existing
+  Playwright (only communities' report/remove flow is), so they cannot be proven "by
+  existing e2e" as the brief requires; and the cards diverge too much for one component.
+  That extraction needs its own test-first PR — recorded, not done.
+- **The codec lives in `@campusos/db`, not `@campusos/core`.** It uses Node `Buffer`,
+  and `core` is a pure-domain package whose tsconfig has no Node types (adding them to
+  core to host a base64 helper is the wrong dependency). `@campusos/db` already carries
+  Node types and the `withTenant` read helpers every browse query imports, so pagination
+  sits next to them — one import source, no new dep.
+- **Behavior-preserving, verbatim.** Marketplace's copy was already `(sortVal, id)`, a
+  drop-in. L&F's copy keyed the cursor on a `Date`; the call sites now ISO the date
+  (`last.createdAt.toISOString()`) and read `cursor.sortVal` — identical base64url bytes,
+  so existing cursors still decode. Adopted in marketplace goods (`listListings`) and
+  L&F (`listItems`) only; rides/gigs (flag-disabled, no e2e) are left untouched.

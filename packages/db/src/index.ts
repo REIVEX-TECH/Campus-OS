@@ -2,6 +2,7 @@
 // here — it lives at '@campusos/db/client' and is banned from app code.
 export * from './schema/index';
 export * from './repositories/index';
+export * from './pagination';
 export {
   withActor,
   withActorInTenant,
