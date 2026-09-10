@@ -116,7 +116,11 @@ BEGIN
 			r.origin_lat, r.origin_lng, r.dest_lat, r.dest_lng, v_next,
 			r.seats_total, r.seats_total, r.notes, r.women_only, r.recurrence, v_root
 		)
-		ON CONFLICT (recurrence_parent_id, depart_at) DO NOTHING;
+		-- The occurrence unique index is PARTIAL (WHERE recurrence_parent_id IS NOT
+		-- NULL, see 0000), so the arbiter must repeat that predicate to match it. The
+		-- spawn always sets recurrence_parent_id, so the row satisfies it.
+		ON CONFLICT (recurrence_parent_id, depart_at) WHERE recurrence_parent_id IS NOT NULL
+		DO NOTHING;
 		IF FOUND THEN
 			v_spawned := v_spawned + 1;
 		END IF;
