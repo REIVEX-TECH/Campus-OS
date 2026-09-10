@@ -1,19 +1,21 @@
-# Overnight run 3 — morning report
+# Overnight run 4 — morning report
 
-Block A (the leftovers) is finished and merged. Block B (rides) has its first four
-PRs — the whole backend of the module — designed, built, tested, and merged. Every
-PR went through the normal loop: branch → PR → CI green → merge. No gate was
-weakened and nothing was merged red; `update-branch` was used where branch
-protection required it. Non-obvious calls are in `DECISIONS.md` (Run 3 sections).
+Rides is now a complete module — the whole backend from Run 3 plus its entire web UI
+(browse, post/request, seats, ratings, reports, a moderation queue, notifications, and
+a signed share link). Campus map (Block C) has its foundation. Block D did the one
+behavior-preserving shared-listings extraction that existing e2e can prove. Block E
+(money movements) is built and **left unmerged for a human SQL review**, as instructed.
+
+Every merged PR went through the normal loop: branch → PR → CI green → merge, one
+level deep, off `main` (the Run-4 rule: never stack on an unmerged branch; the CI
+waits were spent on design notes, tests, and docs). No gate was weakened; nothing was
+merged red. Non-obvious calls are in `DECISIONS.md` (Run 4 sections).
 
 Production was **not** touched: no migrations run, no deploy, no tenant flag flipped
-in the DB. Nothing was newly enabled for LGU.
+in the DB. **Nothing was newly enabled for LGU.** `rides` and `campus-map` are both
+live-capable modules that stay OFF in committed config.
 
-**Read first:** the rides module is real but has **no web UI yet** — PRs 1-3 are the
-backend (schema, RLS, read/write, seat requests, ratings), verified by integration
-tests. Do **not** enable `rides` for LGU until the UI PRs land. Blocks C (campus
-map), D (shared-listings extraction) and E (money movements) were not reached; each
-has a design doc and is queued below.
+Run 3's report is in git history; this supersedes it.
 
 ---
 
@@ -22,129 +24,135 @@ has a design doc and is queued below.
 §6 = a concrete-SQL adversarial review applied (any PR adding/altering RLS, a
 SECURITY DEFINER, or a privilege grant).
 
-### Block A — leftovers (COMPLETE)
+### Rides — the module is complete (flag `rides`, DISABLED everywhere)
 
-| PR   | What                                                                                                                                                                                                                                                                                                           | §6        |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| #213 | Services delivery files (attach on deliver, attachment-only download)                                                                                                                                                                                                                                          | yes (RLS) |
-| #214 | Services reviews UI (buyer→seller, on gig + profile)                                                                                                                                                                                                                                                           | no        |
-| #215 | Messages delete-for-me (per-participant `cleared_at`, reversible)                                                                                                                                                                                                                                              | no        |
-| #216 | **Security M3**: role-definition writes behind a platform-admin stamp — `platform_admin_uses` + `auth_begin_platform_admin` + `auth_write_role_template`/`auth_set_role_template_permissions`/`auth_delete_role_template`; GUC-keyed write policies dropped, app table-writes revoked by name. identity `0033` | **yes**   |
-| #217 | `scripts/backup-check.sh` — fails if newest dump missing or older than `MAX_AGE_HOURS` (default 26)                                                                                                                                                                                                            | no        |
+| PR   | What                                                                                                                                                                          | §6      |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| #224 | Lifecycle sweep (`auth_rides_sweep` owner definer) + `rides_next_occurrence` + script + runbook                                                                               | **yes** |
+| #225 | Web UI-1: browse-by-day + filters, post/request forms, ride page, seat request + accept/decline, my rides; `rides` becomes a live flag-gated module                           | no      |
+| #226 | Web UI-2: report control, rate forms on completed rides, `/rides/mod` queue, profile reputation, seat/cancel notification lines; `rides.moderate` added to the core catalogue | no      |
+| #227 | Web UI-3: signed share link — `ride_share_tokens` (0005) + public `/r/[token]` page + create/copy/revoke                                                                      | **yes** |
 
-(A1 tenant-editor drift banner and A2 notifications seam were merged earlier in the
-run. Deferred + logged: marketplace-goods notification emitters; mutual
-seller→buyer reviews.)
+Rides is feature-complete and CI-green. Enabling it for LGU is a one-line config
+change (see §2), deliberately not made.
 
-**M3 note:** during the §6 pass I hardened the migration beyond the first draft
-(revoke the app's table-level writes by name, use the `FOUND` idiom over
-`GET DIAGNOSTICS` into a boolean, pin the new table's FORCE state in the invariants
-test) and fixed a real defect the CI integration suite caught — the permissions
-array must be built as a `text[]` literal (`array[...]::text[]`), because Drizzle
-expands a bare JS array into a parameter list. Verified against a real Postgres.
+### Block C — campus map (module `packages/modules/campus-map`, flag `map`/`campus-map`, DISABLED)
 
-### Block B — rides (module `packages/modules/rides`, flag `rides`, DISABLED everywhere)
+| PR   | What                                                                                                                                                                                        | §6      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| #228 | Module scaffold + data model (`campus_maps`, `building_placements`, `map_pois`) + tenant RLS + read path; `map.manage` granted to the tenant_admin template and added to the core catalogue | **yes** |
 
-Design: `docs/design-rides.md` (5-PR plan).
+Design: `docs/design-campus-map.md`. **C1 (foundation) is the run's deliverable; the
+browse UI (C2) and admin editor (C3) are deferred** — the UI is browser-unverifiable
+while the flag is off, and turning `map` into a live module now would churn the e2e
+suite (`map` is the last "soon" stub the shell/modules/seo specs assert against, just
+repointed there from rides). The review-critical core (schema, tenant RLS, permission)
+is landed and integration-tested.
 
-| PR   | What                                                                                                                                                                                                                                            | §6        |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| #218 | Backend: `ride_posts` (offers w/ seat ledger, requests) + tenant/FORCE RLS + insert-as-self + browse (filters, keyset, blocked-author hidden both ways) + create/edit/cancel (verified, seat cap, future departure, contact-info scrub). `0000` | yes (RLS) |
-| #219 | `ride_seat_requests` + request/accept/decline/cancel (driver acts on own ride, atomic no-oversell seat decrement) + notifications. `0001`                                                                                                       | yes (RLS) |
-| #220 | `ride_ratings` + `auth_rides_submit_rating` definer (rating integrity: pairing re-verified against the completed ride + accepted seat requests as owner; app has no INSERT). `0002`                                                             | **yes**   |
-| #222 | Safety: `ride_reports` + moderation queue (`rides.moderate`, two owner-run definers) + report-threshold auto-hide (a third definer counts genuine reports as owner) + moderator remove/dismiss. `0003`                                          | **yes**   |
+### Block D — shared-listings extraction (behavior-preserving)
 
-19 rides integration tests, all green in CI. All four rides definers pass the
-communities DEFINER_INTENT audit.
+| PR   | What                                                                                                                                                             | §6  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| #229 | Extract the byte-identical keyset-cursor codec (`PAGE_SIZE`/`encodeCursor`/`decodeCursor`/`toDate`) into `@campusos/db`; adopt in marketplace goods + L&F browse | no  |
 
-## 2. Not done — remaining work (priority order; each is fully specified)
+Proven behavior-preserving by the existing marketplace browse e2e + both integration
+suites. The moderation-surface and browse-card dedup is **not** taken — it is not
+covered by existing e2e (only communities' report/remove flow is), so it can't be
+proven "by existing e2e" as the brief requires; logged for a test-first PR.
 
-1. **Rides PR 5 — lifecycle**: `pnpm rides:sweep` (auto-complete 2h after departure,
-   expire un-ridden, spawn next recurrence through the tenant timezone) + runbook + cron.
-   **Note (found this run):** the sweep must be an owner-run **definer** — deciding
-   "completed vs expired" reads `ride_seat_requests` (accepted-seat) across users,
-   which the app role cannot see without an actor context (participant RLS). Same
-   shape as the report-threshold definer in PR 4. `docs/design-rides.md` is updated.
-2. **Rides UI** — every page (browse grouped by day, post form, ride detail + seat
-   requests, my rides/requests, moderation queue, ratings on profile, "where is this"
-   map links) plus the deferred **share-link** (`ride_share_tokens` + a public
-   read-only trip page). None built yet.
-3. **Rides → messages** system-conversation on seat-accept (deferred; notify-only
-   shipped, the design's graceful-degradation path).
-4. **Block C — campus map** (NOT started; design doc `docs/design-campus-map.md` not
-   yet written): Leaflet + OSM tiles, building lat/lng, tenant-admin pin editor
-   (`campusmap.manage`), public map page, free-rooms-now, "where is this" links.
-5. **Block D — shared-listings extraction** (NOT started): behavior-preserving only,
-   gated on L&F + marketplace e2e passing unchanged.
-6. **Block E — money movements — BUILD, DO NOT MERGE** (NOT started):
-   `docs/design-money-movements.md` Block 4. Q1 decided: a dedicated platform
-   **finance** grant (same mechanics as the tenant grant), not the tenant grant. Open
-   PRs, get green, leave unmerged with a "needs human SQL review" label. (No Block E
-   PRs exist yet, so there is no unmerged-PR list this run.)
+### Block E — money movements (built, **UNMERGED**, `needs human SQL review`)
 
-## 3. Enable for LGU
+| PR   | What                                                                                   | §6      |
+| ---- | -------------------------------------------------------------------------------------- | ------- |
+| #230 | Finance anchor + payments/payouts/disputes + the money-moving definers + PayoutSecrets | **yes** |
 
-- **`rides`: not yet.** Backend only; no UI. Enable (file `enabledModules` +='rides',
-  then the DB row via the tenant editor) after the rides UI PRs land.
-- **`campus-map`: not built.**
+See §3 for the SQL file paths and the reviewer's checklist. The seven design questions
+are decided (`DECISIONS.md`, Block E); Q1 is the platform finance stamp per the
+standing "finance grant, not tenant grant".
 
-## 4. Crons to add
+---
 
-```cron
-# backup freshness (A6), a few hours after the nightly dump:
-0 8 * * * cd /srv/campusos && BACKUP_DIR=/srv/campusos-backups ./scripts/backup-check.sh >> /var/log/campusos/backup-check.log 2>&1
-# rides sweep — PENDING (rides PR 5): pnpm rides:sweep --tenant <slug>
-```
+## 2. Enabling `rides` and `campus-map` (exact strings — NOT applied)
 
-## 5. Env vars
+Both stay OFF. To enable, edit `tenants/lgu/tenant.config.ts` `enabledModules`.
 
-No new env vars this run.
+- Today (unchanged in the repo):
+  ```ts
+  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace'],
+  ```
+- To enable rides (after a human is ready; rides has a full UI):
+  ```ts
+  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace', 'rides'],
+  ```
+- To also enable campus map — only once C2/C3 (its UI) ship; C1 alone has no page:
+  ```ts
+  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace', 'rides', 'campus-map'],
+  ```
 
-## 6. Verification SQL (new tables / definers)
+The module registry key is `rides` and `campus-map` respectively. Rides also needs its
+lifecycle sweep on cron (`pnpm rides:sweep`, `docs/runbooks/rides-sweep.md`) once live.
 
-```sql
--- M3 platform-admin stamp (identity 0033): RLS on, NO FORCE, app cannot touch it.
-select relrowsecurity, relforcerowsecurity from pg_class where relname='platform_admin_uses'; -- (t,f)
-select has_table_privilege('campusos_app','platform_admin_uses','select');                    -- f (split)
+---
 
--- M3 definers exist and are app-executable:
-select proname, has_function_privilege('campusos_app', p.oid, 'execute') as app_exec
-from pg_proc p where proname in
- ('auth_begin_platform_admin','auth_platform_admin_for_txn','auth_write_role_template',
-  'auth_set_role_template_permissions','auth_delete_role_template');                            -- all t
+## 3. Block E — the unmerged PR and its SQL, for review
 
--- rides tables + FORCE:
-select relname, relrowsecurity, relforcerowsecurity from pg_class
-where relname in ('ride_posts','ride_seat_requests','ride_ratings','ride_reports') order by relname;
---   ride_posts (t,t) | ride_ratings (t,f) | ride_reports (t,f) | ride_seat_requests (t,f)
+PR **#230** `feat(money): money movements` — branch `feat/money-movements`, label
+**`needs human SQL review`**, CI green, **not merged**.
 
--- rides definers app-executable; app cannot INSERT ride_ratings directly:
-select proname, has_function_privilege('campusos_app', p.oid, 'execute') as app_exec
-from pg_proc p where proname in
- ('auth_rides_submit_rating','auth_rides_report_queue','auth_rides_resolve_reports',
-  'auth_rides_hide_if_overreported');                                                           -- all t
-select has_table_privilege('campusos_app','ride_ratings','insert');                            -- f (split)
+SQL files to review (adversarially, against the written SQL — CLAUDE.md §6):
 
--- rides.moderate is on the tenant_admin template:
-select 1 from role_template_permissions where template_key='tenant_admin' and permission='rides.moderate';
-```
+- `packages/modules/money/drizzle/0001_finance_anchor.sql` — `platform_finance_uses`,
+  `auth_begin_finance()`, `auth_finance_admin_for_txn()` (the platform finance stamp;
+  the identity-0018 grant-use pattern).
+- `packages/modules/money/drizzle/0002_finance_tables.sql` — `payments`, `payouts`,
+  `disputes`; party-read RLS; all writes revoked from `campusos_app` by name.
+- `packages/modules/money/drizzle/0003_finance_definers.sql` — the twelve definers:
+  `pay_submit_receipt`, `payout_request`, `open_dispute` (self-service);
+  `finance_confirm_payment`, `finance_reject_payment`, `finance_refund`,
+  `finance_resolve_dispute`, `finance_mark_payout_paid`, `finance_reject_payout`
+  (finance, stamp-gated); `money_release_internal` (owner-only, mechanical).
 
-## 7. Browser checklists (once the rides UI lands; the backend is integration-tested now)
+Supporting: `packages/modules/money/src/finance.ts` (TS surface),
+`packages/modules/money/src/secrets.ts` (`PayoutSecrets` AES-256-GCM),
+`.env.example` (`PAYOUT_ENCRYPTION_KEY`), and the `DEFINER_INTENT` additions in
+`packages/modules/communities/test/communities.integration.test.ts`.
 
-- **Student**: /u/lgu/rides — browse offers/requests grouped by day, filter women-only,
-  search a route; a blocked person's rides are absent.
-- **Driver**: post an offer (contact info in notes is refused), see incoming requests,
-  accept (seat count drops; full at zero) / decline; cancel a ride (riders notified).
-- **Passenger**: request a seat, watch status change, cancel an accepted seat (seat
-  returns); after completion, rate the driver 1-5.
-- **Admin** (rides PR 4): open the rides moderation queue, remove a reported ride.
+Reviewer's checklist (from the PR body): the split-dispute sum-to-zero; fee rounding
+`(amount*1000)/10000`; each `md5(...)` txn_id's idempotency under a racing double-call;
+`money_release_internal` being unreachable by the app (revoked by name); and whether
+the platform-global stamp (Q1) is the right boundary. **Do not merge before this.**
 
-## 8. Notes
+Integration proof already in the PR: a raw app write to each finance table is refused;
+confirm→escrow→release nets the fee; refund before/after release; a dispute split
+balances; a payout holds then pays; a non-platform-admin is refused.
 
-- Rides tests are split-DB integration tests (CI is the gate; the local
-  `campusos_test` is split too, so 15/15 ran locally).
-- Local-only flake: the communities `karma … caps how far one account can move
-another` test fails on the polluted local `campusos_test` (it fails on `main` too,
-  unrelated to this run) — green in CI.
-- Toolchain: the nvm/corepack hang workaround (cached `pnpm.cjs` via node with
-  `COREPACK_ENABLE_NETWORK=0`) was used throughout; CI is authoritative.
+Deferred to the reviewed build (NOT in #230): the order↔money status wiring (editing
+the live `mkt_order_transition`/`mkt_order_autocomplete`), the platform finance-admin
+UI, and the production boot-assert of `PAYOUT_ENCRYPTION_KEY`.
+
+---
+
+## 4. Verification
+
+- Every merged PR (#224–#229): CI green across `typecheck · lint · format · build ·
+test`, `integration (Postgres + RLS)`, and `e2e smoke`. A first-run integration
+  failure on #227 (a FORCE-table update via the migration role matched 0 rows — the
+  documented split-DB trap) and on #228 (a no-actor read of tenant-scoped
+  `role_permissions`) were fixed and re-run green; a timetable e2e flake on #228
+  cleared on re-run.
+- Local checks used throughout: `turbo run typecheck lint`, the web vitest suite
+  (`no-dash`, migration-journal-parity, etc.), and the module integration suites
+  against a real Postgres. Migrations that only fully assert under the split DB were
+  applied locally to prove they parse, with the RLS/stamp assertions running in CI.
+
+## 5. Follow-ups
+
+- **Campus map C2/C3:** the Leaflet image-mode browse page + the accessible building/
+  POI list, then the `map.manage`-gated admin editor (place/move pins, campus image via
+  the ObjectStore seam). Do it when the flag can be exercised in a browser.
+- **Block E integration** (the reviewer's, after §6): order↔money wiring, the finance
+  admin UI, the `PAYOUT_ENCRYPTION_KEY` boot-assert.
+- **Shared-listings, part 2:** a test-first extraction of the moderation surface
+  (reportTarget/queue/dismiss/remove) and the browse cards.
+- **Rides:** the recurring-offer creation form (backend + sweep already support it);
+  rate-limit the public `/r/[token]` GET.
