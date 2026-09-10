@@ -593,3 +593,49 @@ depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
   (`last.createdAt.toISOString()`) and read `cursor.sortVal` — identical base64url bytes,
   so existing cursors still decode. Adopted in marketplace goods (`listListings`) and
   L&F (`listItems`) only; rides/gigs (flag-disabled, no e2e) are left untouched.
+
+## Run 4 — Block E (money movements) — UNMERGED, needs human SQL review
+
+The seven design questions, decided (Q1 per the user's "finance grant, not tenant
+grant"). Built as ONE branch off main; UNMERGED with the `needs human SQL review`
+label, because §6 requires an adversarial human pass over the concrete money SQL (the
+two prior Phase-5 escalations both passed a design review and were caught only on the
+implementation).
+
+- **Q1 anchor = platform finance stamp.** `platform_finance_uses` +
+  `auth_begin_finance` + `auth_finance_admin_for_txn`, mirroring the identity-0018
+  tenant-grant use-row exactly (NO FORCE, app-writes revoked by name, the answer is a
+  row stamped with `pg_current_xact_id()` — unforgeable, §8). Every finance definer
+  keys on that stamp, never on a GUC. The admin check inside `auth_begin_finance`
+  reads `platform_roles` by `app.user_id` — allowed, because it only decides WHOSE
+  stamp to write; the stamp is what the money definers trust.
+- **Q2 idempotency = `md5('<verb>:'||id)::uuid` txn_id**, no `uuid-ossp`, no new column.
+  `money_post_txn` (0000) refuses a duplicate txn_id (an EXISTS check, not a UNIQUE),
+  and each definer also guards on the row's exact from-state under `FOR UPDATE`.
+- **Q3 reject = leave awaiting_payment** (no ledger; buyer can resubmit).
+- **Q4 release = mechanical**, `money_release_internal(order_id)` OWNER-ONLY (revoked
+  from the app BY NAME — `REVOKE FROM PUBLIC` alone leaves the db-grants default
+  EXECUTE), reached owner→owner from the order-completion path; no stamp.
+- **Q5 = no post-release refund** (`finance_refund` refuses once a `release:` txn
+  exists; resolution is then a dispute).
+- **Q6 = payout hold**: `payout_request` posts `seller_payable -A / payout_hold +A`, so
+  available balance already excludes held funds and a seller cannot double-request.
+- **Q7 = key-id prefix** on the AES-256-GCM ciphertext (`PayoutSecrets` seam,
+  `PAYOUT_ENCRYPTION_KEY`), one key in use.
+- **Scope taken:** the anchor (0001), the `payments`/`payouts`/`disputes` tables +
+  RLS + by-name write revokes (0002), and the money definers (0003):
+  pay_submit_receipt, payout_request, open_dispute (self-service); finance_confirm_
+  payment, finance_reject_payment, money_release_internal, finance_refund, finance_
+  resolve_dispute (refund/release/split), finance_mark_payout_paid, finance_reject_
+  payout. Every definer §6-annotated in the SQL; all 12 declared in DEFINER_INTENT.
+  Integration tests prove: a raw app write to each table is refused; confirm→escrow→
+  release nets the fee; refund before/after release; a dispute split balances; a
+  payout holds then pays; and a non-platform-admin is refused.
+- **Deferred, logged (the reviewer's integration points):** (1) the order↔money
+  status sync — `finance_confirm_payment` sets the order `paid` and completion calls
+  `money_release_internal` — which means editing the live `mkt_order_transition` /
+  `mkt_order_autocomplete` definers, deliberately NOT done in an unmerged branch;
+  (2) the platform finance-admin UI (queues + decrypt-to-pay); (3) the production
+  boot-assert of `PAYOUT_ENCRYPTION_KEY` (optional today, like `MEDIA_DATA_DIR`).
+  The money definers read `mkt_orders` (owner, NO FORCE) by value for the trusted
+  amount/parties — a DB-level read, no TS import, no FK (respects §4).
