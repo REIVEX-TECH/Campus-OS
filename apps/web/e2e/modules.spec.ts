@@ -13,8 +13,8 @@ test('tenant home is a module hub: live modules link out, soon modules open a st
 
   // A "soon" module opens a Coming soon stub (pure UI, no feature). Only the hub
   // card is a link; the sidebar's soon items are non-link rows.
-  await page.locator('a[href="/u/lgu/soon/rides"]').click();
-  await expect(page.getByRole('heading', { name: 'Rides' })).toBeVisible();
+  await page.locator('a[href="/u/lgu/soon/map"]').click();
+  await expect(page.getByRole('heading', { name: 'Campus map' })).toBeVisible();
   await expect(page.getByRole('main').getByText('Coming soon')).toBeVisible();
 
   // The stub links back to the hub.
