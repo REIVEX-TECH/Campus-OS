@@ -10,6 +10,9 @@
     "./schema": "./src/schema/index.ts",
     "./posts": "./src/posts.ts",
     "./write": "./src/write.ts",
+    "./seats": "./src/seats.ts",
+    "./ratings": "./src/ratings.ts",
+    "./safety": "./src/safety.ts",
     "./input": "./src/input.ts",
     "./lifecycle": "./src/lifecycle.ts"
   },
