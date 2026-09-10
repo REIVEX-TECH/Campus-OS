@@ -44,6 +44,9 @@ export const PERMISSIONS = [
   // membership, not a role permission. The DB template already carries this
   // (rides migration 0003); this entry aligns the code catalogue with it.
   'rides.moderate',
+  // Campus map. Management only — browsing is tenant-wide public content, not a
+  // role permission. Granted to the tenant_admin template by campus-map 0000.
+  'map.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

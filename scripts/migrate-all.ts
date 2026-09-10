@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { applyMigrations, migrationDatabaseUrl, runBaseMigrations } from '@campusos/db/migrate';
+import { manifest as campusMapManifest } from '@campusos/module-campus-map/manifest';
 import { manifest as communitiesManifest } from '@campusos/module-communities/manifest';
 import { manifest as identityManifest } from '@campusos/module-identity/manifest';
 import { manifest as lostFoundManifest } from '@campusos/module-lost-found/manifest';
@@ -25,6 +26,9 @@ const modules = [
   // Rides uses auth_blocked_between (communities) and public_profiles (identity),
   // both created earlier, so it runs last.
   ridesManifest,
+  // Campus map references the base buildings/campuses tables (created by the base
+  // migrations) and the role templates (identity), both present by now.
+  campusMapManifest,
 ];
 
 // Migrations are DDL, so they run as the schema owner rather than the runtime
