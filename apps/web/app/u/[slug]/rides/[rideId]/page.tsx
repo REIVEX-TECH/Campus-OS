@@ -5,6 +5,8 @@ import { mySeatRequests, requestsForRide } from '@campusos/module-rides/seats';
 import { DriverRequests } from '@/app/_components/rides/driver-requests';
 import { SeatRequestButton } from '@/app/_components/rides/seat-request-button';
 import { CancelRideButton } from '@/app/_components/rides/cancel-ride-button';
+import { ReportButton } from '@/app/_components/rides/report-button';
+import { RateForm } from '@/app/_components/rides/rate-form';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -40,6 +42,16 @@ export default async function RidePage({ params }: Params) {
   const isAuthor = actor?.userId === ride.authorId;
   const isOffer = ride.kind === 'offer';
   const isOpen = ride.status === 'active' || ride.status === 'full';
+  const isCompleted = ride.status === 'completed';
+
+  const rateLabels = {
+    rating: t('rides.rate.heading'),
+    comment: t('rides.rate.commentHint'),
+    submit: t('rides.rate.submit'),
+    submitting: t('rides.rate.submitting'),
+    done: t('rides.rate.done'),
+    failed: t('rides.rate.failed'),
+  };
 
   const when = new Intl.DateTimeFormat(tenant.locale, {
     weekday: 'long',
@@ -162,6 +174,54 @@ export default async function RidePage({ params }: Params) {
               cancelling: t('rides.seat.cancelling'),
               failed: t('rides.seat.failed'),
               full: t('rides.full'),
+            }}
+          />
+        ) : null}
+
+        {isCompleted && isAuthor
+          ? requests
+              .filter((r) => r.status === 'accepted')
+              .map((r) => (
+                <RateForm
+                  key={r.id}
+                  tenant={slug}
+                  rideId={rideId}
+                  ratee={r.passengerId}
+                  direction="of_passenger"
+                  labels={{
+                    heading: t('rides.rate.ofPassenger').replace('{who}', r.passengerHandle ?? '?'),
+                    ...rateLabels,
+                  }}
+                />
+              ))
+          : null}
+
+        {isCompleted && !isAuthor && myRequest?.status === 'accepted' ? (
+          <RateForm
+            tenant={slug}
+            rideId={rideId}
+            ratee={ride.authorId}
+            direction="of_driver"
+            labels={{ heading: t('rides.rate.ofDriver'), ...rateLabels }}
+          />
+        ) : null}
+
+        {actor && !isAuthor ? (
+          <ReportButton
+            tenant={slug}
+            targetType="ride_post"
+            targetId={rideId}
+            labels={{
+              button: t('rides.report.button'),
+              heading: t('rides.report.heading'),
+              reasonLabel: t('rides.report.reason'),
+              reasonPlaceholder: t('rides.report.reasonPlaceholder'),
+              noteLabel: t('rides.report.note'),
+              noteHint: t('rides.report.noteHint'),
+              submit: t('rides.report.submit'),
+              submitting: t('rides.report.submitting'),
+              done: t('rides.report.sent'),
+              failed: t('rides.report.failed'),
             }}
           />
         ) : null}

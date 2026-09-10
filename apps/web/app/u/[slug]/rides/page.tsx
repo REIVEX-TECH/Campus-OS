@@ -6,6 +6,7 @@ import {
   type RideKind,
   type RideSummary,
 } from '@campusos/module-rides/posts';
+import { can } from '@campusos/module-identity/rbac';
 import { RideCard } from '@/app/_components/rides/ride-card';
 import { EmptyState } from '@/app/_components/empty-state';
 import { PageShell } from '@/app/_components/page-shell';
@@ -60,6 +61,7 @@ export default async function RidesPage({ params, searchParams }: PageProps) {
   const search = query.q?.trim() || undefined;
   const onDate = /^\d{4}-\d{2}-\d{2}$/.test(query.day ?? '') ? query.day : undefined;
   const actor = await currentActor();
+  const isModerator = actor ? await can(actor.userId, slug, 'rides.moderate') : false;
 
   const filters: BrowseFilters = {
     ...(kind ? { kind } : {}),
@@ -136,6 +138,11 @@ export default async function RidesPage({ params, searchParams }: PageProps) {
             <p className="max-w-prose text-sm text-muted-foreground">{t('rides.intro')}</p>
           </div>
           <div className="flex items-center gap-3">
+            {isModerator ? (
+              <Link href={`${base}/rides/mod`} className="text-sm font-medium text-primary">
+                {t('rides.mod.heading')}
+              </Link>
+            ) : null}
             <Link href={`${base}/rides/mine`} className="text-sm font-medium text-primary">
               {t('rides.mine')}
             </Link>

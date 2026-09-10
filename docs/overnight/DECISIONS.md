@@ -509,3 +509,15 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   via `updated_at = now()` (this-txn rows only) + the `(recurrence_parent_id,
 depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
   maintenance action, not a privilege decision.
+- **Rides went live as a flag-gated module, so three e2e specs that asserted it as a
+  "coming soon" stub had to move to `map`.** Making `rides` a real module (`soon:false`,
+  `path:/rides`, hidden from tenants without the flag) removed the `/soon/rides` route
+  and the non-link "Rides" sidebar row. `seo.spec` (sitemap `/soon/rides`→`/soon/map`),
+  `modules.spec` (soon-stub click + heading `Rides`→`Campus map`), and `shell.spec`
+  (sidebar soon-row `Rides`→`Campus map`) now assert against `map`, the still-soon
+  module. LGU's `enabledModules` is unchanged — rides stays OFF; the module is simply
+  live-and-hidden rather than a stub.
+- **Rides UI-1 (PR #225) shipped rider/driver core only.** Browse-by-day + filters,
+  post (one-off) / request forms, ride page, seat request + driver accept/decline, my
+  rides. Ratings, reports, the mod queue, notifications wiring, and the share link are
+  UI-2/UI-3 (backend for them already landed in PRs 3-4), built off main one at a time.
