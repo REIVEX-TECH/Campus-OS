@@ -18,6 +18,10 @@ const KIND_LINE: Record<string, MessageKey> = {
   'services.order_update': 'notifications.generic.services.order_update',
   'messages.request': 'notifications.generic.messages.request',
   'messages.request_accepted': 'notifications.generic.messages.request_accepted',
+  'rides.seat_requested': 'notifications.generic.rides.seat_requested',
+  'rides.seat_accepted': 'notifications.generic.rides.seat_accepted',
+  'rides.seat_declined': 'notifications.generic.rides.seat_declined',
+  'rides.cancelled': 'notifications.generic.rides.cancelled',
 };
 
 export function notificationLineKey(kind: string): MessageKey {

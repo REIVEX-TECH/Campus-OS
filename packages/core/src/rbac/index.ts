@@ -40,6 +40,10 @@ export const PERMISSIONS = [
   // Direct messages. Moderation only — messaging is gated on membership and the
   // tenant's who-can-message setting, not a role permission.
   'messages.moderate',
+  // Ride sharing. Moderation only — offering and requesting are gated on verified
+  // membership, not a role permission. The DB template already carries this
+  // (rides migration 0003); this entry aligns the code catalogue with it.
+  'rides.moderate',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

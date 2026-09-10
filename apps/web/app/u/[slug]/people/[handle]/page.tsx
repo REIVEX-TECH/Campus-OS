@@ -17,9 +17,12 @@ import { memberPublicFacts } from '@campusos/module-identity/membership';
 import { conversationBetween } from '@campusos/module-messages/service';
 import { sellerActiveListings } from '@campusos/module-marketplace/listings';
 import { reviewsForSeller } from '@campusos/module-marketplace/orders-read';
+import { ratingsForUser } from '@campusos/module-rides/ratings';
 import { ListingCard } from '@/app/_components/marketplace/listing-card';
 import { ReviewList } from '@/app/_components/marketplace/review-list';
+import { RidesReputation } from '@/app/_components/rides/rides-reputation';
 import { conditionLabels, marketplaceEnabled, marketplaceServicesEnabled } from '@/lib/marketplace';
+import { ridesEnabled } from '@/lib/rides';
 import { MessageButton } from '@/app/_components/messages/message-button';
 import { composeLabels } from '@/lib/messages-labels';
 import { messagesEnabled, messagesSettings } from '@/lib/messages';
@@ -119,6 +122,8 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
   const sellerReviews = marketplaceServicesEnabled(tenant)
     ? await reviewsForSeller(slug, profile.userId)
     : null;
+  // Ride reputation, shown when the rides module is enabled for the tenant.
+  const rideRatings = ridesEnabled(tenant) ? await ratingsForUser(slug, profile.userId) : null;
   const memberSince = facts.memberSince
     ? new Intl.DateTimeFormat(tenant.locale, { month: 'long', year: 'numeric' }).format(
         facts.memberSince,
@@ -330,6 +335,20 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
               summary: t('marketplace.review.summary'),
               empty: t('marketplace.review.empty'),
               anon: t('marketplace.gig.aSeller'),
+            }}
+          />
+        ) : null}
+        {rideRatings && (rideRatings.asDriver.count > 0 || rideRatings.asPassenger.count > 0) ? (
+          <RidesReputation
+            asDriver={rideRatings.asDriver}
+            asPassenger={rideRatings.asPassenger}
+            recent={rideRatings.recent.map((r) => ({ stars: r.stars, comment: r.comment }))}
+            labels={{
+              heading: t('rides.reputation.heading'),
+              asDriver: t('rides.reputation.asDriver'),
+              asPassenger: t('rides.reputation.asPassenger'),
+              count: t('rides.reputation.count'),
+              none: t('rides.reputation.none'),
             }}
           />
         ) : null}
