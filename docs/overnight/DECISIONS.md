@@ -491,3 +491,21 @@ Newest at the bottom of each block. Same one-line-per-decision rule.
   ratings/moderation definers can read across the two parties. The messages
   system-conversation is deferred to a follow-up; PR 2 ships the design's
   notify-only degradation path (both parties are told through A2).
+
+## Run 4 — Block B (rides) continued
+
+- **PR 5 lifecycle: the sweep is an owner-run definer, and `ride_posts` drops FORCE.**
+  Deciding completed-vs-expired reads `ride_seat_requests` (accepted seat?) across
+  users, which the app cannot see without an actor (participant RLS) — a no-actor
+  sweep would expire every ride. So `auth_rides_sweep` does the complete/expire and
+  recurrence spawn as the owner. For the owner to write `ride_posts` (across authors,
+  and to insert a spawned occurrence carrying the original author's id), the table is
+  set `NO FORCE`: the app is a non-owner and stays bound by tenant_isolation +
+  insert-as-self regardless, so nothing the app can do changes — the platform_roles /
+  role_templates / tenant_configs discipline. Recurrence uses `rides_next_occurrence`
+  (a plain STABLE function, not a definer) which materialises the next weekly slot
+  through the tenant timezone (`timestamp AT TIME ZONE tz`), correct across DST, after
+  `max(depart_at, now())` so a long-missed offer jumps to a future slot. Idempotent
+  via `updated_at = now()` (this-txn rows only) + the `(recurrence_parent_id,
+depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
+  maintenance action, not a privilege decision.

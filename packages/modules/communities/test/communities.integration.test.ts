@@ -2915,6 +2915,10 @@ describe('definer grant hygiene', () => {
     // RLS hides them from the reporter) and hides only an already-N-times-reported
     // ride, so it is app-callable and not a privilege decision.
     auth_rides_hide_if_overreported: 'app',
+    // Rides lifecycle sweep: a maintenance run (no actor). Reads seat requests + the
+    // tenant tz as owner (the app cannot without an actor) and writes ride status /
+    // spawns recurrences; idempotent, no privilege decision, so app-callable.
+    auth_rides_sweep: 'app',
     // Direct-messages moderation: app-callable, each self-gates on messages.moderate
     // (via auth_effective_permissions), then reads the report queue (with the
     // message snapshot) or resolves reports across participants.

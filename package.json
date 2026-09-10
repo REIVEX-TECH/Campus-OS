@@ -22,6 +22,7 @@
     "lostfound:expire": "tsx scripts/lost-found-expire.ts",
     "marketplace:expire": "tsx scripts/marketplace-expire.ts",
     "messages:cleanup": "tsx scripts/messages-cleanup.ts",
+    "rides:sweep": "tsx scripts/rides-sweep.ts",
     "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
     "db:seed": "tsx scripts/seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",

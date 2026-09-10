@@ -19,8 +19,8 @@ import { cancelRide, createRidePost, editRide } from '../src/write';
 
 /**
  * RLS for rides: a ride is tenant-wide readable but writable only as yourself
- * (the posts pattern), FORCE on. The write path adds verified-membership, seat,
- * departure and contact-info gates, and browse hides a blocked author both ways.
+ * (the posts pattern). The write path adds verified-membership, seat, departure and
+ * contact-info gates, and browse hides a blocked author both ways.
  * The suite refuses to run on an unsplit database (the RESTRICTIVE policy only
  * bites a non-owner), matching the other modules.
  */

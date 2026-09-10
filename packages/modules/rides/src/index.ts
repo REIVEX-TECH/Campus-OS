@@ -5,5 +5,6 @@ export * from './write';
 export * from './seats';
 export * from './ratings';
 export * from './safety';
+export * from './lifecycle';
 export { rideInputSchema, containsContactInfo, type RideInput } from './input';
 export type { RidePostRow } from './schema/rides';

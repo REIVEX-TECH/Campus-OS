@@ -10,7 +10,8 @@
     "./schema": "./src/schema/index.ts",
     "./posts": "./src/posts.ts",
     "./write": "./src/write.ts",
-    "./input": "./src/input.ts"
+    "./input": "./src/input.ts",
+    "./lifecycle": "./src/lifecycle.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
