@@ -90,9 +90,9 @@ async function completedRideWith(driver: { userId: string }, rider: { userId: st
   const req = await requestSeat(rider, 'aaa', made.value.id);
   if (!req.ok) throw new Error('request setup');
   await acceptRequest(driver, 'aaa', req.value.id);
-  // Complete the ride the way the (PR 5) sweep will: an in-tenant update. Not via
-  // the migration role — ride_posts is FORCE RLS and the owner is NOBYPASSRLS, so a
-  // no-tenant-context update matches zero rows.
+  // Complete the ride the way the sweep does (`auth_rides_sweep`), but inline here so
+  // the ratings test does not depend on the lifecycle module: an in-tenant update as
+  // the app, which the tenant policy admits.
   await withTenant('aaa', (tx) =>
     tx.execute(
       sql`update ride_posts set status = 'completed', completed_at = now() where id = ${made.value.id}::uuid`,
