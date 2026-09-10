@@ -537,3 +537,28 @@ depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
   expired / cancelled, so it is not an existence oracle. Rate-limiting the public GET
   is a follow-up (256-bit tokens make enumeration infeasible; the lookup is a single
   indexed query).
+
+## Run 4 — Block C (campus map)
+
+- **Campus map is the one user-facing module with no §8 moderation stack, and needs
+  no SECURITY DEFINER.** It is read-mostly tenant-wide public content (building/POI
+  locations), the same trust class as `buildings`/`rooms` — it connects no strangers,
+  so no reports/blocking/queue gate. Reads are plain tenant-scoped selects
+  (`getMapForCampus`/`listPlacements`/`listPois` via `withTenant`, no actor), so no
+  privilege decision keys on the map and no definer exists. RLS is `tenant_isolation`
+  - FORCE on all three tables; its WITH CHECK already pins every write to the tenant,
+    so there is NO RESTRICTIVE insert-as-self (the map has no per-row owner). Admin
+    writes (a later PR) are gated on the new `map.manage` permission in the write path
+    (the timetable admin-rooms pattern, `auth_effective_permissions` — unforgeable).
+- **Buildings are not duplicated.** The shared base `buildings` table stays the
+  identity source; `building_placements` adds a FK + position + optional label, and
+  `map_pois` holds non-building features. A deleted building cascades its placement.
+- **`map.manage` added to the core catalogue AND seeded in the DB by campus-map 0000**
+  (unlike rides.moderate, whose DB grant predated the catalogue entry). The 0000
+  migration inserts it into `role_template_permissions` for `tenant_admin` and
+  backfills existing admin roles, mirroring rides 0003; `auth_sync_tenant_roles` then
+  carries it to each tenant's admin role. Registered in `scripts/migrate-all.ts` and
+  the ROOT `package.json` (the migrate-all ERR_MODULE_NOT_FOUND trap).
+- **C1 scope = scaffold + data model + read path only.** No UI, no write path, `map`
+  stays a soon nav stub, flag OFF for every tenant. UI (Leaflet image-mode browse,
+  accessible list) is C2; the `map.manage`-gated admin editor is C3.
