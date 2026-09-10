@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ridePost } from '@campusos/module-rides/posts';
 import { mySeatRequests, requestsForRide } from '@campusos/module-rides/seats';
+import { hasActiveShareLink } from '@campusos/module-rides/share';
 import { DriverRequests } from '@/app/_components/rides/driver-requests';
 import { SeatRequestButton } from '@/app/_components/rides/seat-request-button';
 import { CancelRideButton } from '@/app/_components/rides/cancel-ride-button';
 import { ReportButton } from '@/app/_components/rides/report-button';
 import { RateForm } from '@/app/_components/rides/rate-form';
+import { ShareLink } from '@/app/_components/rides/share-link';
 import { PageShell } from '@/app/_components/page-shell';
 import { currentActor } from '@/lib/auth';
 import { translator, type MessageKey } from '@/lib/i18n';
@@ -74,6 +76,12 @@ export default async function RidePage({ params }: Params) {
       : null;
 
   const statusLabelKey = `rides.status.${ride.status}` as MessageKey;
+
+  // The driver or an accepted passenger can publish a bearer share link while the
+  // ride is open.
+  const canShare = !!actor && isOpen && (isAuthor || myRequest?.status === 'accepted');
+  const shareBase = await tenantBase(slug);
+  const shareActive = canShare && actor ? await hasActiveShareLink(actor, slug, rideId) : false;
 
   return (
     <PageShell>
@@ -203,6 +211,28 @@ export default async function RidePage({ params }: Params) {
             ratee={ride.authorId}
             direction="of_driver"
             labels={{ heading: t('rides.rate.ofDriver'), ...rateLabels }}
+          />
+        ) : null}
+
+        {canShare ? (
+          <ShareLink
+            tenant={slug}
+            rideId={rideId}
+            base={shareBase}
+            hasActive={shareActive}
+            labels={{
+              heading: t('rides.share.heading'),
+              intro: t('rides.share.intro'),
+              create: t('rides.share.create'),
+              creating: t('rides.share.creating'),
+              copy: t('rides.share.copy'),
+              copied: t('rides.share.copied'),
+              revoke: t('rides.share.revoke'),
+              revoking: t('rides.share.revoking'),
+              active: t('rides.share.active'),
+              revoked: t('rides.share.revoked'),
+              failed: t('rides.share.failed'),
+            }}
           />
         ) : null}
 

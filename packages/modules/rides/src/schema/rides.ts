@@ -158,3 +158,26 @@ export const rideReports = pgTable(
 );
 
 export type RideReportRow = typeof rideReports.$inferSelect;
+
+export const rideShareTokens = pgTable(
+  'ride_share_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    ridePostId: uuid('ride_post_id').notNull(),
+    /** sha256 hex of the raw bearer token; the raw token lives only in the URL. */
+    tokenHash: text('token_hash').notNull(),
+    createdBy: uuid('created_by').notNull(),
+    expiresAt: tz('expires_at').notNull(),
+    revokedAt: tz('revoked_at'),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('ride_share_tokens_hash_uq').on(t.tokenHash),
+    index('ride_share_tokens_ride_idx').on(t.tenantId, t.ridePostId),
+  ],
+);
+
+export type RideShareTokenRow = typeof rideShareTokens.$inferSelect;

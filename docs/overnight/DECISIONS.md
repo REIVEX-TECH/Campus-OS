@@ -521,3 +521,19 @@ depart_at)` unique index. `auth_rides_sweep` is 'app' in DEFINER_INTENT: a
   post (one-off) / request forms, ride page, seat request + driver accept/decline, my
   rides. Ratings, reports, the mod queue, notifications wiring, and the share link are
   UI-2/UI-3 (backend for them already landed in PRs 3-4), built off main one at a time.
+- **Rides UI-3 share link needs NO SECURITY DEFINER.** The threat-model draft assumed
+  an owner-run definer for the public `/r/[token]` lookup ("public can't read
+  ride_share_tokens or ride_posts across tenants"). But the share page is served on
+  the tenant host, so it resolves the tenant like every other public tenant page and
+  reads under `withTenant` (no actor) — exactly what `ridePost` already does. So the
+  resolve is a plain tenant-scoped SELECT matched by token hash; `ride_share_tokens`
+  is `tenant_isolation` + FORCE (no owner-bypass path exists, so FORCE stays on,
+  unlike the sweep's tables), with a RESTRICTIVE insert-as-self. Fewer definers, a
+  smaller §6 surface, and the token (a 256-bit secret, stored only as its sha256) is
+  the capability. Which member may PUBLISH a link (driver or accepted passenger) is a
+  write-path check, not an RLS boundary — the link only exposes ride fields already
+  visible to every tenant member, so it is a publishing policy, not data protection.
+  The public page shows one generic "no longer available" for unknown / revoked /
+  expired / cancelled, so it is not an existence oracle. Rate-limiting the public GET
+  is a follow-up (256-bit tokens make enumeration infeasible; the lookup is a single
+  indexed query).
