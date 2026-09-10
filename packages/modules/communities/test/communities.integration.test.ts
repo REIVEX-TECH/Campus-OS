@@ -2941,6 +2941,27 @@ describe('definer grant hygiene', () => {
     // finance actions that call it (confirm, release, payout, refund) ship with the
     // finance admin, gated on a grant.
     money_post_txn: 'owner',
+    // Finance anchor: the platform-admin stamp for THIS txid, mirroring the tenant
+    // grant use-row (identity 0018). Both app-callable and self-gating.
+    auth_begin_finance: 'app',
+    auth_finance_admin_for_txn: 'app',
+    // Self-service finance: the caller acts on their own order/balance (data
+    // ownership), no stamp. pay_submit_receipt and open_dispute key on the order's
+    // buyer; payout_request on the seller's own ledger balance.
+    pay_submit_receipt: 'app',
+    payout_request: 'app',
+    open_dispute: 'app',
+    // Finance admin money movers: app-callable, each self-gates on the finance stamp
+    // (auth_finance_admin_for_txn) then posts the ledger through money_post_txn.
+    finance_confirm_payment: 'app',
+    finance_reject_payment: 'app',
+    finance_refund: 'app',
+    finance_resolve_dispute: 'app',
+    finance_mark_payout_paid: 'app',
+    finance_reject_payout: 'app',
+    // Mechanical release on order completion: owner-only, no stamp, reached only
+    // owner->owner from the order-completion path. Revoked from the app by name.
+    money_release_internal: 'owner',
     // Stamps an after-viewing message's expiry on first view; app-callable, gated
     // on the caller being a participant of the conversation.
     auth_msg_stamp_viewed: 'app',
