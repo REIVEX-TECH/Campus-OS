@@ -8,7 +8,9 @@
     ".": "./src/index.ts",
     "./manifest": "./src/manifest.ts",
     "./schema": "./src/schema/index.ts",
-    "./ledger": "./src/ledger.ts"
+    "./ledger": "./src/ledger.ts",
+    "./finance": "./src/finance.ts",
+    "./secrets": "./src/secrets.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
