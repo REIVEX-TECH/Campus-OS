@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { withTenant } from '@campusos/db';
+import { PAGE_SIZE, decodeCursor, encodeCursor, toDate, withTenant } from '@campusos/db';
+
+export { PAGE_SIZE };
 
 /**
  * Reading Lost & Found items. Browse and the item page are tenant-scoped reads
@@ -75,26 +77,6 @@ export interface BrowseFilters {
   search?: string;
 }
 
-export const PAGE_SIZE = 24;
-
-function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
-  try {
-    const [createdAt, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
-    if (!createdAt || !id) return null;
-    return { createdAt, id };
-  } catch {
-    return null;
-  }
-}
-
-function toDate(value: string | Date): Date {
-  return value instanceof Date ? value : new Date(value);
-}
-
 export async function listItems(
   tenantId: string,
   opts: { filters?: BrowseFilters; cursor?: string | null } = {},
@@ -120,7 +102,7 @@ export async function listItems(
               ? sql`and (i.title ilike ${'%' + filters.search + '%'} or i.description ilike ${'%' + filters.search + '%'})`
               : sql``
           }
-          ${cursor ? sql`and (i.created_at, i.id) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)` : sql``}
+          ${cursor ? sql`and (i.created_at, i.id) < (${cursor.sortVal}::timestamptz, ${cursor.id}::uuid)` : sql``}
         order by i.created_at desc, i.id desc
         limit ${PAGE_SIZE + 1}
       `)),
@@ -147,7 +129,7 @@ export async function listItems(
       thumbKey: r.thumb_key,
     }));
     const last = items[items.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+    const nextCursor = hasMore && last ? encodeCursor(last.createdAt.toISOString(), last.id) : null;
     return { items, nextCursor };
   });
 }

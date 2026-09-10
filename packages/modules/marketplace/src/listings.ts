@@ -1,5 +1,14 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { withActorInTenant, withTenant } from '@campusos/db';
+import {
+  PAGE_SIZE,
+  decodeCursor,
+  encodeCursor,
+  toDate,
+  withActorInTenant,
+  withTenant,
+} from '@campusos/db';
+
+export { PAGE_SIZE };
 
 /**
  * Reading marketplace listings. Browse and the listing page are tenant-scoped
@@ -57,26 +66,6 @@ export interface BrowseFilters {
   priceMaxPaisa?: number;
   /** Free-text match on title and description. */
   search?: string;
-}
-
-export const PAGE_SIZE = 24;
-
-function encodeCursor(sortVal: string, id: string): string {
-  return Buffer.from(`${sortVal}|${id}`, 'utf8').toString('base64url');
-}
-
-function decodeCursor(cursor: string): { sortVal: string; id: string } | null {
-  try {
-    const [sortVal, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
-    if (sortVal === undefined || !id) return null;
-    return { sortVal, id };
-  } catch {
-    return null;
-  }
-}
-
-function toDate(value: string | Date): Date {
-  return value instanceof Date ? value : new Date(value);
 }
 
 /** The sort's ORDER BY, keyset predicate, and how it reads the cursor value. */
