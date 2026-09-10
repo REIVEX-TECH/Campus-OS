@@ -79,13 +79,15 @@ describe('campus map reads', () => {
         where template_key = 'tenant_admin' and permission = 'map.manage'`)),
     ];
     expect(template.length).toBe(1);
-    const synced = [
-      ...(await getDb().execute(sql`
+    // roles / role_permissions read policies key on app.tenant_id, so this read
+    // must run in the tenant context (a no-actor getDb read would see nothing).
+    const synced = await withTenant('aaa', (tx) =>
+      tx.execute(sql`
         select 1 from role_permissions rp
         join roles r on r.id = rp.role_id
-        where r.tenant_id = 'aaa' and r.key = 'tenant_admin' and rp.permission = 'map.manage'`)),
-    ];
-    expect(synced.length).toBe(1);
+        where r.tenant_id = 'aaa' and r.key = 'tenant_admin' and rp.permission = 'map.manage'`),
+    );
+    expect([...synced].length).toBe(1);
   });
 
   it('reads a map only within its own tenant', async () => {
