@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getDb, getSqlClient } from '@campusos/db/client';
+import { withTenant } from '@campusos/db';
 import {
   applyMigrations,
   migrationDatabaseUrl,
@@ -174,8 +175,10 @@ describe('rides share links', () => {
     const made = await createShareLink(driver, 'aaa', rideId);
     if (!made.ok) return;
 
-    await runAsMigrationRole(
-      `update ride_share_tokens set expires_at = now() - interval '1 hour' where tenant_id = 'aaa'`,
+    // Backdate the token under the tenant context: ride_share_tokens is FORCE, so a
+    // migration-role update (owner, NOBYPASSRLS) would match 0 rows without app.tenant_id.
+    await withTenant('aaa', (tx) =>
+      tx.execute(sql`update ride_share_tokens set expires_at = now() - interval '1 hour'`),
     );
     expect(await resolveSharedRide('aaa', made.value.token)).toBeNull();
   });
