@@ -213,7 +213,10 @@ describe('finance money movements', () => {
 
     expect(await markPayoutPaid(admin, req.value.id, 'TRX-1')).toMatchObject({ ok: true });
     expect(await balance('payout_hold', 'user', seller.userId)).toBe(0);
-    expect(await balance('external', 'platform', 'platform')).toBe(0); // -10000 confirm + 10000 payout
+    // external = -10000 (confirm) + net (payout of the seller's net); the fee stays as
+    // platform_fee, so external nets to -fee, balanced by platform_fee = +fee.
+    expect(await balance('external', 'platform', 'platform')).toBe(net - 10_000);
+    expect(await balance('platform_fee', 'platform', 'platform')).toBe(10_000 - net);
   });
 
   it('splits a dispute: the seller gets their share net of fee, the buyer the rest', async () => {
