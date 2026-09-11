@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
 import type { TimeFormat } from '@campusos/core/time';
 import { buttonVariants } from '@campusos/ui';
 import type { TimetableView } from '@campusos/module-timetable/read';
@@ -30,6 +31,20 @@ export function SectionTimetableView({
   title?: string;
 }) {
   const t = translator(locale);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (views.length === 0 || sectionRef.current === null) return;
+
+    function computeElementTopYPos(element: Element) {
+      const eleYPos = element.getBoundingClientRect().y;
+      const currYPos = window.scrollY;
+      return eleYPos > currYPos ? eleYPos : currYPos - eleYPos;
+    }
+
+    window.scrollTo({ top: computeElementTopYPos(sectionRef.current), behavior: 'smooth' });
+  }, []);
+
   if (views.length === 0) return <EmptyState title={t('timetable.empty.noEntries')} />;
 
   // view.pending already folds in the section's own pending status (see the read
@@ -37,7 +52,7 @@ export function SectionTimetableView({
   const anyPending = views.some((v) => v.pending);
 
   return (
-    <section className="flex flex-col gap-4">
+    <section ref={sectionRef} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="flex min-w-0 flex-col gap-0.5">
           {title ? <h2 className="text-lg font-semibold">{title}</h2> : null}
