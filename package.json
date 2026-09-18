@@ -25,6 +25,7 @@
     "rides:sweep": "tsx scripts/rides-sweep.ts",
     "tenants:sync": "tsx scripts/sync-tenant-configs.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts",
     "ingest:lgu": "tsx scripts/ingest-lgu.ts",
     "backfill:rooms": "tsx scripts/backfill-rooms.ts",
     "prepare": "husky"
