@@ -239,6 +239,13 @@
       "when": 1756800033000,
       "tag": "0033_role_template_writes",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1756800034000,
+      "tag": "0034_users_is_demo",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import { standingFor } from '@campusos/module-identity/standing';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { AppShell } from '@/app/_components/app-shell';
 import { StandingNotice } from '@/app/_components/standing-notice';
+import { TenantNotice } from '@/app/_components/tenant-notice';
 import { VerifyGateProvider } from '@/app/_components/verify-gate';
 import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
@@ -87,8 +88,9 @@ export default async function TenantLayout({ children, params }: Params & { chil
           needsVerify={needsVerify}
           labels={getVerifiedLabels(t)}
         >
-          {notice ? (
+          {tenant.notice || notice ? (
             <div className="flex flex-col gap-5">
+              {tenant.notice ? <TenantNotice message={tenant.notice} /> : null}
               {notice}
               {standing?.status === 'suspended' ? null : children}
             </div>

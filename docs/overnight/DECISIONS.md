@@ -639,3 +639,34 @@ implementation).
   boot-assert of `PAYOUT_ENCRYPTION_KEY` (optional today, like `MEDIA_DATA_DIR`).
   The money definers read `mkt_orders` (owner, NO FORCE) by value for the trusted
   amount/parties — a DB-level read, no TS import, no FK (respects §4).
+
+## Run 5 — demo tenant
+
+- **Two markers.** `users.is_demo` (the persona/fixture, platform-level) and a
+  tenant-level `isDemo` on `tenantConfigSchema` (where the read-only rule fires). A
+  membership row can't tell a persona from a real visitor (both get an ordinary
+  membership on any tenant), so the persona fact lives on the account; the rule-scope
+  fact lives on the tenant. Both are additive and default off/false, so LGU and every
+  other tenant are untouched. `actor.isDemo` is threaded through `resolveSession`
+  (reads the row it already loads) and `findOrCreateUser` (always false — a real
+  sign-in is never a persona); the gate already holds `tenant.isDemo` for free.
+- **is_demo is not app-writable (§8).** The H authorization decision keys on
+  `actor.is_demo`, read from the user's own row, and `own_user` (identity 0001) would
+  let a user write their own row — so a real user could flip their own is_demo and
+  escape the read-only rule. A column-level revoke does not survive db-grants' blanket
+  table GRANT, so instead a RESTRICTIVE RLS policy scoped `TO campusos_app` forbids the
+  app role from ever writing `is_demo = true` (insert or update); only the owner-run
+  seed sets it. Being a policy (not a grant) it is independent of db-grants and
+  survives re-application. Skipped on an unsplit dev DB (app == owner), like every
+  other app-write lock. Migration identity `0034`.
+- **Banner is a tenant `notice` field, not a demo-only widget (G).** An optional
+  `notice` string on `tenantConfigSchema` renders as a top banner on every tenant page
+  when set; the demo config sets it to the required copy, reaching the DB via the file
+  config -> `pnpm tenants:sync` (the seed/migration path, never a hand edit). LGU omits
+  it -> no banner, exact same DOM (the layout only adds the wrapper when a notice or a
+  standing notice exists).
+- **Demo tenant is a fictional institution.** `slug: 'demo'`, displayName "CampusOS
+  Demo University" (impersonates no real school), closed join (`invite`, no domains),
+  every UI module enabled (`campus-map` stays soon), a blue accent to read differently
+  from LGU. Added to `fileTenantConfigs`; the wildcard `*.campusos.reivex.io` host
+  resolves `demo.campusos.reivex.io` with zero infra change.

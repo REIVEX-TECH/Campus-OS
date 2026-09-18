@@ -79,6 +79,18 @@ export const tenantConfigSchema = z.object({
    */
   moduleSettings: z.record(z.string(), z.unknown()).default({}),
   seo: seoSchema,
+  /**
+   * A demo/showcase tenant: content is seeded fixtures and real signed-in users are
+   * read-only (enforced server-side; see docs/design-demo-tenant.md). Default false,
+   * so every ordinary tenant (LGU) is unaffected.
+   */
+  isDemo: z.boolean().default(false),
+  /**
+   * An optional site-wide notice shown as a banner on every tenant page. Used by the
+   * demo tenant to say its content is illustrative; absent (no banner) for everyone
+   * else.
+   */
+  notice: z.string().min(1).optional(),
 });
 
 export type JoinMode = z.infer<typeof joinModeSchema>;

@@ -44,6 +44,10 @@ export const users = pgTable(
     /** Seeds the generated avatar; carries no meaning. */
     avatarSeed: text('avatar_seed').notNull(),
     status: text('status').notNull().default('active'),
+    /** A seeded demo persona (fixture), not a real signed-in person. Default false;
+     * set only by the demo seed. Distinguishes fixtures from real visitors on the
+     * demo tenant, where real users are read-only (see docs/design-demo-tenant.md). */
+    isDemo: boolean('is_demo').notNull().default(false),
     createdAt,
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     /** When a session was last issued. Timing only: there is no column for where. */
