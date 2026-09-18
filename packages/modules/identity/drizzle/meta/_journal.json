@@ -246,6 +246,13 @@
       "when": 1756800034000,
       "tag": "0034_users_is_demo",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1756800035000,
+      "tag": "0035_users_is_official",
+      "breakpoints": true
     }
   ]
 }

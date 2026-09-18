@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { BadgeCheck } from 'lucide-react';
 import { myAnonymousPosts, postsByAuthor } from '@campusos/module-communities/posts';
 import {
   ownKarma,
@@ -156,6 +157,12 @@ export default async function ProfilePage({ params, searchParams }: PageProps) {
             <p className="text-sm font-medium text-muted-foreground">{tenant.displayName}</p>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-2xl font-bold tracking-tight">{profile.handle}</h1>
+              {facts.isOfficial ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t('profile.badge.official')}
+                </span>
+              ) : null}
               {facts.isAdmin ? (
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                   {t('profile.badge.admin')}
