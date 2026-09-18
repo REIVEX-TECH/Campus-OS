@@ -6,6 +6,7 @@ import { currentActor } from './auth';
 import { marketplaceEnabled, marketplaceServicesEnabled, marketplaceSettings } from './marketplace';
 import { clientKey, rateLimit } from './rate-limit';
 import { readJson } from './read-json';
+import { demoReadOnly } from './demo';
 import { isSameOrigin } from './same-origin';
 import { getTenantRegistry } from './tenants';
 
@@ -44,6 +45,8 @@ export async function marketplaceGate<S extends z.ZodTypeAny>(
   if (!tenant || !marketplaceEnabled(tenant)) {
     return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
   }
+  const readonly = demoReadOnly(tenant, actor);
+  if (readonly) return { ok: false, response: readonly };
   return { ok: true, actor, tenant, settings: marketplaceSettings(tenant), data: parsed.data };
 }
 
@@ -77,6 +80,8 @@ export async function marketplaceServicesGate<S extends z.ZodTypeAny>(
   if (!tenant || !marketplaceServicesEnabled(tenant)) {
     return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
   }
+  const readonly = demoReadOnly(tenant, actor);
+  if (readonly) return { ok: false, response: readonly };
   return { ok: true, actor, tenant, settings: marketplaceSettings(tenant), data: parsed.data };
 }
 

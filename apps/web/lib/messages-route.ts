@@ -6,6 +6,7 @@ import { currentActor } from './auth';
 import { messagesEnabled, messagesSettings } from './messages';
 import { clientKey, rateLimit } from './rate-limit';
 import { readJson } from './read-json';
+import { demoReadOnly } from './demo';
 import { isNotCrossOrigin, isSameOrigin } from './same-origin';
 import { getTenantRegistry } from './tenants';
 
@@ -45,6 +46,8 @@ export async function messagesGate<S extends z.ZodTypeAny>(
   if (!tenant || !messagesEnabled(tenant)) {
     return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
   }
+  const readonly = demoReadOnly(tenant, actor);
+  if (readonly) return { ok: false, response: readonly };
   return { ok: true, actor, tenant, settings: messagesSettings(tenant), data: parsed.data };
 }
 
