@@ -1,158 +1,101 @@
-# Overnight run 4 — morning report
+# Overnight run 5 — morning report
 
-Rides is now a complete module — the whole backend from Run 3 plus its entire web UI
-(browse, post/request, seats, ratings, reports, a moderation queue, notifications, and
-a signed share link). Campus map (Block C) has its foundation. Block D did the one
-behavior-preserving shared-listings extraction that existing e2e can prove. Block E
-(money movements) is built and **left unmerged for a human SQL review**, as instructed.
+A demo tenant, `demo`, served at `demo.campusos.reivex.io`: a fictional "CampusOS Demo
+University" with seeded, illustrative content across every enabled module — a showcase
+for prospects and a staging surface. It carries the required banner, and real signed-in
+users are read-only on it (enforced server-side). **Nothing about LGU changes** — every
+demo-specific field is additive and defaults off.
 
-Every merged PR went through the normal loop: branch → PR → CI green → merge, one
-level deep, off `main` (the Run-4 rule: never stack on an unmerged branch; the CI
-waits were spent on design notes, tests, and docs). No gate was weakened; nothing was
-merged red. Non-obvious calls are in `DECISIONS.md` (Run 4 sections).
+Design first (`docs/design-demo-tenant.md`), then four PRs, each branched off `main`,
+CI-green before merge. Non-obvious calls are in `DECISIONS.md` (Run 5). No production
+change: no migration run against prod, no deploy, no tenant flag flipped; the demo
+reaches a database only when a human runs `pnpm demo:seed`.
 
-Production was **not** touched: no migrations run, no deploy, no tenant flag flipped
-in the DB. **Nothing was newly enabled for LGU.** `rides` and `campus-map` are both
-live-capable modules that stay OFF in committed config.
-
-Run 3's report is in git history; this supersedes it.
+Run 4's report is in git history; this supersedes it.
 
 ---
 
-## 1. What shipped, by block
+## 1. What shipped
 
-§6 = a concrete-SQL adversarial review applied (any PR adding/altering RLS, a
-SECURITY DEFINER, or a privilege grant).
+§6 = a concrete-SQL adversarial review applied.
 
-### Rides — the module is complete (flag `rides`, DISABLED everywhere)
+| PR   | What                                                                                                                                          | §6      |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| #232 | Foundation: `isDemo`/`notice` on the tenant config, the `demo` tenant, the notice banner, `users.is_demo` (identity 0034) + `Actor` threading | **yes** |
+| #233 | `pnpm demo:seed` — personas + verified memberships + content across timetable, communities, lost-found, marketplace, messages, rides          | no      |
+| #234 | Read-only rule (H): `demoReadOnly` wired into every mutation gate + a boundary test                                                           | **yes** |
+| #235 | `pnpm demo:reset` (wipe + re-seed) + `docs/runbooks/demo-tenant.md` (deploy notes)                                                            | no      |
 
-| PR   | What                                                                                                                                                                          | §6      |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| #224 | Lifecycle sweep (`auth_rides_sweep` owner definer) + `rides_next_occurrence` + script + runbook                                                                               | **yes** |
-| #225 | Web UI-1: browse-by-day + filters, post/request forms, ride page, seat request + accept/decline, my rides; `rides` becomes a live flag-gated module                           | no      |
-| #226 | Web UI-2: report control, rate forms on completed rides, `/rides/mod` queue, profile reputation, seat/cancel notification lines; `rides.moderate` added to the core catalogue | no      |
-| #227 | Web UI-3: signed share link — `ride_share_tokens` (0005) + public `/r/[token]` page + create/copy/revoke                                                                      | **yes** |
+### A. Tenant + branding
 
-Rides is feature-complete and CI-green. Enabling it for LGU is a one-line config
-change (see §2), deliberately not made.
+`tenants/demo/tenant.config.ts`: fictional "CampusOS Demo University", a blue accent,
+closed join (`invite`, no domains), every UI module enabled (`campus-map` stays soon),
+`isDemo: true`, and the banner `notice`. The wildcard `*.campusos.reivex.io` already
+resolves the host — zero infra change.
 
-### Block C — campus map (module `packages/modules/campus-map`, flag `map`/`campus-map`, DISABLED)
+### B/C. Seed users + content
 
-| PR   | What                                                                                                                                                                                        | §6      |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| #228 | Module scaffold + data model (`campus_maps`, `building_placements`, `map_pois`) + tenant RLS + read path; `map.manage` granted to the tenant_admin template and added to the core catalogue | **yes** |
+8 personas (`users.is_demo = true`) with verified `demo` memberships, and content across
+every module: a full timetable (campus/buildings/rooms/term/dept/program/4 courses/2
+teachers/2 sections/6 weekly entries), 2 communities with posts/comments/votes/karma, 4
+lost-and-found items, 5 marketplace listings + a gig with packages + a completed order and
+review, 2 message threads, and 3 rides with an accepted seat and a rating. Owner-run and
+idempotent (`ON CONFLICT DO NOTHING` on deterministic ids).
 
-Design: `docs/design-campus-map.md`. **C1 (foundation) is the run's deliverable; the
-browse UI (C2) and admin editor (C3) are deferred** — the UI is browser-unverifiable
-while the flag is off, and turning `map` into a live module now would churn the e2e
-suite (`map` is the last "soon" stub the shell/modules/seo specs assert against, just
-repointed there from rides). The review-critical core (schema, tenant RLS, permission)
-is landed and integration-tested.
+### D. Guardrails
 
-### Block D — shared-listings extraction (behavior-preserving)
+- **G — banner**: a `notice` field on the tenant config renders a top banner on every
+  tenant page when set; the demo config sets it to the required copy, and it reaches the
+  DB through `pnpm demo:seed` / `pnpm tenants:sync` (the seed/migration path, never a hand
+  edit).
+- **H — read-only for real users**: `demoReadOnly(tenant, actor)` returns a 403 when
+  `tenant.isDemo && !actor.isDemo`, wired into every mutation gate (communities,
+  lost-found, marketplace goods + services, rides, messages). Reads are untouched. A
+  boundary test proves a real user cannot mutate on demo while a persona can, and LGU is
+  unaffected. "No messaging seeded users" falls out of the same rule.
+- **Closed join** and **no LGU change** round out the guardrails.
 
-| PR   | What                                                                                                                                                             | §6  |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| #229 | Extract the byte-identical keyset-cursor codec (`PAGE_SIZE`/`encodeCursor`/`decodeCursor`/`toDate`) into `@campusos/db`; adopt in marketplace goods + L&F browse | no  |
+### E/F. Reset + deploy
 
-Proven behavior-preserving by the existing marketplace browse e2e + both integration
-suites. The moderation-surface and browse-card dedup is **not** taken — it is not
-covered by existing e2e (only communities' report/remove flow is), so it can't be
-proven "by existing e2e" as the brief requires; logged for a test-first PR.
-
-### Block E — money movements (built, **UNMERGED**, `needs human SQL review`)
-
-| PR   | What                                                                                   | §6      |
-| ---- | -------------------------------------------------------------------------------------- | ------- |
-| #230 | Finance anchor + payments/payouts/disputes + the money-moving definers + PayoutSecrets | **yes** |
-
-See §3 for the SQL file paths and the reviewer's checklist. The seven design questions
-are decided (`DECISIONS.md`, Block E); Q1 is the platform finance stamp per the
-standing "finance grant, not tenant grant".
+`pnpm demo:reset` wipes demo content and re-seeds to a known state (scoped to `demo`
+only). `docs/runbooks/demo-tenant.md` documents the host (wildcard, no infra),
+seed/reset, the banner path, and optional `-- --tenant demo` maintenance crons.
 
 ---
 
-## 2. Enabling `rides` and `campus-map` (exact strings — NOT applied)
+## 2. Standing the demo up (NOT run against prod)
 
-Both stay OFF. To enable, edit `tenants/lgu/tenant.config.ts` `enabledModules`.
+```bash
+pnpm db:migrate:all   # applies identity 0034 (users.is_demo)
+pnpm demo:seed        # tenant + config (banner) + roles + content, idempotent
+```
 
-- Today (unchanged in the repo):
-  ```ts
-  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace'],
-  ```
-- To enable rides (after a human is ready; rides has a full UI):
-  ```ts
-  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace', 'rides'],
-  ```
-- To also enable campus map — only once C2/C3 (its UI) ship; C1 alone has no page:
-  ```ts
-  enabledModules: ['timetable', 'communities', 'lost-found', 'messages', 'marketplace', 'rides', 'campus-map'],
-  ```
+Reset any time with `pnpm demo:reset`. The host `demo.campusos.reivex.io` needs no DNS/
+cert/nginx/env change (existing wildcard). First tenant admin, if wanted, is granted via a
+platform grant at `/u/demo/admin/roles` (the demo already seeds a `tenant_admin` persona
+for display).
 
-The module registry key is `rides` and `campus-map` respectively. Rides also needs its
-lifecycle sweep on cron (`pnpm rides:sweep`, `docs/runbooks/rides-sweep.md`) once live.
+## 3. Security (CLAUDE.md 6, 8)
 
----
-
-## 3. Block E — the unmerged PR and its SQL, for review
-
-PR **#230** `feat(money): money movements` — branch `feat/money-movements`, label
-**`needs human SQL review`**, CI green, **not merged**.
-
-SQL files to review (adversarially, against the written SQL — CLAUDE.md §6):
-
-- `packages/modules/money/drizzle/0001_finance_anchor.sql` — `platform_finance_uses`,
-  `auth_begin_finance()`, `auth_finance_admin_for_txn()` (the platform finance stamp;
-  the identity-0018 grant-use pattern).
-- `packages/modules/money/drizzle/0002_finance_tables.sql` — `payments`, `payouts`,
-  `disputes`; party-read RLS; all writes revoked from `campusos_app` by name.
-- `packages/modules/money/drizzle/0003_finance_definers.sql` — the twelve definers:
-  `pay_submit_receipt`, `payout_request`, `open_dispute` (self-service);
-  `finance_confirm_payment`, `finance_reject_payment`, `finance_refund`,
-  `finance_resolve_dispute`, `finance_mark_payout_paid`, `finance_reject_payout`
-  (finance, stamp-gated); `money_release_internal` (owner-only, mechanical).
-
-Supporting: `packages/modules/money/src/finance.ts` (TS surface),
-`packages/modules/money/src/secrets.ts` (`PayoutSecrets` AES-256-GCM),
-`.env.example` (`PAYOUT_ENCRYPTION_KEY`), and the `DEFINER_INTENT` additions in
-`packages/modules/communities/test/communities.integration.test.ts`.
-
-Reviewer's checklist (from the PR body): the split-dispute sum-to-zero; fee rounding
-`(amount*1000)/10000`; each `md5(...)` txn_id's idempotency under a racing double-call;
-`money_release_internal` being unreachable by the app (revoked by name); and whether
-the platform-global stamp (Q1) is the right boundary. **Do not merge before this.**
-
-Integration proof already in the PR: a raw app write to each finance table is refused;
-confirm→escrow→release nets the fee; refund before/after release; a dispute split
-balances; a payout holds then pays; a non-platform-admin is refused.
-
-Deferred to the reviewed build (NOT in #230): the order↔money status wiring (editing
-the live `mkt_order_transition`/`mkt_order_autocomplete`), the platform finance-admin
-UI, and the production boot-assert of `PAYOUT_ENCRYPTION_KEY`.
-
----
+- The H decision keys on two values a real user cannot forge: `tenant.isDemo` (tenant
+  config, platform-admin-write) and `actor.is_demo` (the user's own row, which a
+  RESTRICTIVE policy `TO campusos_app` — identity 0034 — stops the app role from ever
+  setting true; only the owner seed sets it). Enforced at the API gate, so hitting the API
+  directly does not get around it; independent of verification, so the demo is read-only
+  by construction.
+- No new SECURITY DEFINER. Personas carry a fake `google_sub` no real sign-in can match.
 
 ## 4. Verification
 
-- Every merged PR (#224–#229): CI green across `typecheck · lint · format · build ·
-test`, `integration (Postgres + RLS)`, and `e2e smoke`. A first-run integration
-  failure on #227 (a FORCE-table update via the migration role matched 0 rows — the
-  documented split-DB trap) and on #228 (a no-actor read of tenant-scoped
-  `role_permissions`) were fixed and re-run green; a timetable e2e flake on #228
-  cleared on re-run.
-- Local checks used throughout: `turbo run typecheck lint`, the web vitest suite
-  (`no-dash`, migration-journal-parity, etc.), and the module integration suites
-  against a real Postgres. Migrations that only fully assert under the split DB were
-  applied locally to prove they parse, with the RLS/stamp assertions running in CI.
+Every PR: CI green across typecheck/lint/format/build/test, integration (Postgres + RLS),
+and e2e (one known timetable-combobox flake on #234 cleared on re-run). The seed and reset
+are owner-run tooling CI does not execute, so both were verified locally against real
+Postgres: `demo:seed` is idempotent and populates every module; `demo:reset` returns the
+tenant to its exact seeded counts.
 
 ## 5. Follow-ups
 
-- **Campus map C2/C3:** the Leaflet image-mode browse page + the accessible building/
-  POI list, then the `map.manage`-gated admin editor (place/move pins, campus image via
-  the ObjectStore seam). Do it when the flag can be exercised in a browser.
-- **Block E integration** (the reviewer's, after §6): order↔money wiring, the finance
-  admin UI, the `PAYOUT_ENCRYPTION_KEY` boot-assert.
-- **Shared-listings, part 2:** a test-first extraction of the moderation surface
-  (reportTarget/queue/dismiss/remove) and the browse cards.
-- **Rides:** the recurring-offer creation form (backend + sweep already support it);
-  rate-limit the public `/r/[token]` GET.
+- A demo logo asset at `/tenants/demo/logo.svg` (referenced, not committed — as with LGU).
+- `membership_roles` for the seeded personas if the demo ever needs live RBAC surfaces
+  (skipped: personas never sign in, and content displays by handle, not role).
+- Photos on demo lost-found / marketplace listings once an ObjectStore is wired for demo.
