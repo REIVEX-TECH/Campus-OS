@@ -6,6 +6,7 @@ import { currentActor } from './auth';
 import { ridesEnabled, ridesSettings } from './rides';
 import { clientKey, rateLimit } from './rate-limit';
 import { readJson } from './read-json';
+import { demoReadOnly } from './demo';
 import { isSameOrigin } from './same-origin';
 import { getTenantRegistry } from './tenants';
 
@@ -44,6 +45,8 @@ export async function ridesGate<S extends z.ZodTypeAny>(
   if (!tenant || !ridesEnabled(tenant)) {
     return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
   }
+  const readonly = demoReadOnly(tenant, actor);
+  if (readonly) return { ok: false, response: readonly };
   return { ok: true, actor, tenant, settings: ridesSettings(tenant), data: parsed.data };
 }
 
