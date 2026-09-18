@@ -27,6 +27,9 @@ export interface Actor {
   avatarSeed: string;
   /** When the handle last changed, for the cooldown. Null if never. */
   handleChangedAt: Date | null;
+  /** True for a seeded demo persona (fixture); false for every real sign-in. Drives
+   * the demo tenant's read-only rule (see docs/design-demo-tenant.md). */
+  isDemo: boolean;
 }
 
 export interface IssuedSession {
@@ -72,6 +75,9 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
       email: found.email!,
       avatarSeed: found.avatar_seed ?? found.user_id,
       handleChangedAt: found.handle_changed_at ?? null,
+      // A real sign-in is never a seeded persona (personas carry a fake subject that
+      // no Google sign-in can match), so this is always false here.
+      isDemo: false,
     };
     // An email can change upstream; the subject is what identifies the person.
     if (found.email !== identity.email) {
@@ -103,6 +109,7 @@ export async function findOrCreateUser(identity: VerifiedIdentity): Promise<Acto
     email: identity.email,
     avatarSeed: userId,
     handleChangedAt: null,
+    isDemo: false,
   };
 }
 
@@ -159,6 +166,7 @@ export async function resolveSession(token: string | undefined): Promise<Actor |
     email: user.email,
     avatarSeed: user.avatarSeed,
     handleChangedAt: user.handleChangedAt,
+    isDemo: user.isDemo,
   };
 }
 

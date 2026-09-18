@@ -21,6 +21,7 @@ const BLANK: TenantConfig = {
   enabledModules: ['timetable'],
   moduleSettings: {},
   seo: { titleTemplate: '%s · CampusOS', description: '', keywords: [], aliases: [] },
+  isDemo: false,
 };
 
 /** Create a university. Platform administrators only; 404 to anyone else. */
