@@ -187,6 +187,8 @@ export interface MemberPublicFacts {
   memberSince: Date | null;
   /** Whether they carry an administrator's reach here — a public "Admin" badge. */
   isAdmin: boolean;
+  /** Whether this is a first-party official account — a public "Official" badge. */
+  isOfficial: boolean;
 }
 
 /**
@@ -212,6 +214,12 @@ export async function memberPublicFacts(
         select 1 from auth_effective_permissions(${userId}::uuid, ${tenantId})
         where permission = 'manage-members' limit 1`)),
     ];
+    // The official flag is a public, non-tenant fact, read through the sanctioned
+    // public view (0005/0035) so no other user column can ride along.
+    const official = [
+      ...(await tx.execute(sql`
+        select is_official from public_profiles where user_id = ${userId}::uuid limit 1`)),
+    ] as { is_official: boolean }[];
     return {
       memberSince: membership
         ? membership.created_at instanceof Date
@@ -219,6 +227,7 @@ export async function memberPublicFacts(
           : new Date(membership.created_at)
         : null,
       isAdmin: admin.length > 0,
+      isOfficial: official[0]?.is_official === true,
     };
   });
 }

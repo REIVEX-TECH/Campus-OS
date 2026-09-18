@@ -172,6 +172,20 @@ describe('users', () => {
       ),
     ).rejects.toThrow();
   });
+
+  it('refuses to let the app role promote itself to an official account (0035, §8)', async () => {
+    // own_user (0001) lets alice update her own row, but is_official is an
+    // authorization input (it waives the community gates), so the RESTRICTIVE
+    // users_app_not_official policy forbids the app role writing is_official = true.
+    // A self-promote must be rejected, not silently a no-op.
+    await expect(
+      withActor(alice, (tx) =>
+        tx.execute(sql`update users set is_official = true where id = ${alice}::uuid`),
+      ),
+    ).rejects.toThrow();
+    const [row] = await withActor(alice, (tx) => tx.select().from(users));
+    expect(row!.isOfficial).toBe(false);
+  });
 });
 
 describe('sessions', () => {
@@ -468,8 +482,11 @@ describe('handles', () => {
     ];
     expect(rows).toHaveLength(1);
     // The protection is structural: email is not a column of the view, so no
-    // query against it can select one.
-    expect(Object.keys(rows[0]!)).toEqual(['user_id', 'handle', 'avatar_seed']);
+    // query against it can select one. is_official (0035) is a public, non-sensitive
+    // fact and rides along; nothing sensitive does.
+    expect(Object.keys(rows[0]!)).toEqual(['user_id', 'handle', 'avatar_seed', 'is_official']);
+    expect(Object.keys(rows[0]!)).not.toContain('email');
+    expect(Object.keys(rows[0]!)).not.toContain('google_sub');
   });
 });
 

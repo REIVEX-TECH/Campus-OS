@@ -1530,6 +1530,7 @@ export const en = {
     'Including {count} from what you posted anonymously. Only you see that part.',
   'profile.memberSince': 'Member since {date}',
   'profile.badge.admin': 'Admin',
+  'profile.badge.official': 'Official',
   'profile.edit': 'Edit profile',
   'profile.tabsLabel': 'Profile sections',
   'profile.posts': 'Posts',
