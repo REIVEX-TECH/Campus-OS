@@ -6,6 +6,7 @@ import type { CommunitiesSettings } from '@campusos/module-communities/manifest'
 import type { Actor } from '@campusos/module-identity/sessions';
 import { currentActor } from './auth';
 import { communitiesEnabled, communitiesSettings } from './communities';
+import { demoReadOnly } from './demo';
 import { clientKey, rateLimit } from './rate-limit';
 import { readJson } from './read-json';
 import { isSameOrigin } from './same-origin';
@@ -50,6 +51,8 @@ export async function communityGate<S extends z.ZodTypeAny>(
   if (!tenant || !communitiesEnabled(tenant)) {
     return { ok: false, response: Response.json({ error: 'not_found' }, { status: 404 }) };
   }
+  const readonly = demoReadOnly(tenant, actor);
+  if (readonly) return { ok: false, response: readonly };
   return { ok: true, actor, tenant, settings: communitiesSettings(tenant), data: parsed.data };
 }
 
