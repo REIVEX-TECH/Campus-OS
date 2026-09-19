@@ -324,7 +324,10 @@ export const en = {
 
   'rides.heading': 'Rides',
   'rides.intro': 'Offer a ride or find one to and from campus. Cost is between you and the driver.',
-  'rides.empty': 'No upcoming rides yet.',
+  'rides.empty.heading': 'No rides posted yet',
+  'rides.empty.body': 'Offer a seat or ask for one. The board fills as people post.',
+  'rides.empty.filtered': 'No rides match these filters.',
+  'rides.empty.clearFilters': 'Clear filters',
   'rides.more': 'More',
   'rides.post': 'Post a ride',
   'rides.mine': 'My rides',
