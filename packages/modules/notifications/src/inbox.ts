@@ -76,6 +76,30 @@ export async function listGenericInbox(
   });
 }
 
+/**
+ * Stamp the first click on one of the viewer's notifications (any kind), for the
+ * click-through metric. Own row only, by RLS; idempotent (a second click is a no-op,
+ * so the metric counts recipients who clicked, not raw clicks). Marks it read too:
+ * following a notification is at least as strong a signal as marking it read.
+ */
+export async function recordClick(
+  actor: { userId: string },
+  tenantId: string,
+  id: string,
+): Promise<{ recorded: boolean }> {
+  return withActorInTenant(actor.userId, tenantId, async (tx) => {
+    const rows = [
+      ...(await tx.execute(sql`
+        update notifications
+        set clicked_at = now(), read_at = coalesce(read_at, now())
+        where tenant_id = ${tenantId} and user_id = ${actor.userId}::uuid
+          and id = ${id}::uuid and clicked_at is null
+        returning id`)),
+    ];
+    return { recorded: rows.length > 0 };
+  });
+}
+
 /** Mark some, or all, of the viewer's notifications read (any kind). Own rows only. */
 export async function markRead(
   actor: { userId: string },
