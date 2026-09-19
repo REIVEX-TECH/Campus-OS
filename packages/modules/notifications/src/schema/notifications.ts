@@ -24,6 +24,9 @@ export const notifications = pgTable(
     postId: uuid('post_id'),
     commentId: uuid('comment_id'),
     readAt: timestamp('read_at', { withTimezone: true }),
+    /** First time the recipient followed this notification to its target. Null until
+     * clicked. A UI metric (click-through), not an authorization input. */
+    clickedAt: timestamp('clicked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('notifications_inbox_idx').on(t.tenantId, t.userId, t.createdAt, t.id)],

@@ -5,6 +5,7 @@ import { listNotifications } from '@campusos/module-communities/notifications';
 import { listGenericInbox } from '@campusos/module-notifications/inbox';
 import { buttonVariants } from '@campusos/ui';
 import { MarkReadButton } from '@/app/_components/communities/mark-read-button';
+import { NotificationLink } from '@/app/_components/notifications/notification-link';
 import { EmptyState } from '@/app/_components/empty-state';
 import { IdentityAvatar } from '@/app/_components/identity-avatar';
 import { PageShell } from '@/app/_components/page-shell';
@@ -132,7 +133,9 @@ export default async function NotificationsPage({ params, searchParams }: PagePr
           <ol className="ios-card flex flex-col rounded-2xl p-2">
             {rows.map((r) => (
               <li key={r.id}>
-                <Link
+                <NotificationLink
+                  tenant={slug}
+                  id={r.id}
                   href={r.href}
                   className="ios-pressable flex items-start gap-3 rounded-xl px-2 py-2 hover:bg-muted"
                 >
@@ -162,7 +165,7 @@ export default async function NotificationsPage({ params, searchParams }: PagePr
                       className="mt-2 size-2 shrink-0 rounded-full bg-primary"
                     />
                   ) : null}
-                </Link>
+                </NotificationLink>
               </li>
             ))}
           </ol>

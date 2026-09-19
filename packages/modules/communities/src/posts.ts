@@ -14,7 +14,7 @@ import {
 import { pollInputSchema, writePollOptions } from './polls';
 import { applyVerdict, screen } from './automod';
 import { flairBelongs } from './flairs';
-import { checkGate } from './gates';
+import { checkGate, isOfficialAccount } from './gates';
 import { rulesPending } from './rules';
 import { hotScore } from './domain/ranking';
 import type { CommunitiesSettings } from './manifest';
@@ -191,26 +191,37 @@ export async function createPostIn(
   if (p.isAnonymous && (!community.allowAnonymous || settings.anonymousPosting !== 'on')) {
     return err('anonymous_not_allowed');
   }
-  if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
-  if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
-  if (await isMuted(tx, actor.userId, tenantId, communityId)) return err('muted');
-  if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
-    return err('not_allowed');
+  // An official account (identity 0035) may post in any community, subject to the
+  // structural content rules above (it exists, is approved, allows this kind), but not
+  // to the participation gates below: verification, membership standing, karma and
+  // account age are about who a person is here, and a first-party account answers to
+  // none of them. The content rules that follow (flair validity, duplicates, rate
+  // limits) still apply. Keyed on the unforgeable is_official (see isOfficialAccount).
+  const official = await isOfficialAccount(tx, actor.userId);
+  if (!official) {
+    if (!(await isVerifiedMember(tx, actor.userId, tenantId))) return err('not_verified');
+    if (await isBanned(tx, actor.userId, tenantId, communityId)) return err('banned');
+    if (await isMuted(tx, actor.userId, tenantId, communityId)) return err('muted');
+    if (!(await canInCommunity(tx, actor.userId, tenantId, communityId, 'communities.post'))) {
+      return err('not_allowed');
+    }
+    // The community's own gate, after the ban and the mute and before the rate
+    // limits: it is about who this person is here, not about how fast they are.
+    const gate = await checkGate(
+      tx,
+      actor.userId,
+      tenantId,
+      communityId,
+      community,
+      settings,
+      'post',
+    );
+    if (gate) return err(gate);
   }
-  // The community's own gate, after the ban and the mute and before the rate
-  // limits: it is about who this person is here, not about how fast they are.
-  const gate = await checkGate(
-    tx,
-    actor.userId,
-    tenantId,
-    communityId,
-    community,
-    settings,
-    'post',
-  );
-  if (gate) return err(gate);
   if (p.flairId && !(await flairBelongs(tx, communityId, p.flairId))) return err('invalid');
-  if (await rulesPending(tx, actor.userId, tenantId, communityId)) return err('rules_not_accepted');
+  if (!official && (await rulesPending(tx, actor.userId, tenantId, communityId))) {
+    return err('rules_not_accepted');
+  }
   if ((await ownPostsLastHour(tx, tenantId)) >= LIMITS.postsPerHour) return err('rate_limited');
   if (
     p.isAnonymous &&

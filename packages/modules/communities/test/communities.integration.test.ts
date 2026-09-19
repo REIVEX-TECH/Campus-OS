@@ -409,6 +409,38 @@ describe('communities and roles', () => {
       ),
     ).toEqual({ ok: false, error: 'banned' });
   });
+
+  it('lets an official account post in a community it is not a verified member of', async () => {
+    const owner = await member('off-owner');
+    const c = await community(owner, 'Announcements');
+    // A brand-new account with no membership is refused (the participation gate).
+    const acct = await stranger('off-acct');
+    expect(
+      await createPost(acct, 'aaa', c.id, { kind: 'text', title: 'Hi', body: '' }, settings),
+    ).toEqual({ ok: false, error: 'not_verified' });
+    // Promote it the only way is_official can be set (owner-run, as official:promote
+    // does; the app role is forbidden by the RESTRICTIVE policy). Now it may post,
+    // without ever joining or verifying, keyed on the unforgeable flag.
+    await runAsMigrationRole(`update users set is_official = true where id = '${acct.userId}'`);
+    const posted = await createPost(
+      acct,
+      'aaa',
+      c.id,
+      { kind: 'text', title: 'Rides is live', body: 'Offer a seat or find one.' },
+      settings,
+    );
+    expect(posted.ok).toBe(true);
+    // The content rules still bind it: the same title again within the day is a repeat.
+    expect(
+      await createPost(
+        acct,
+        'aaa',
+        c.id,
+        { kind: 'text', title: 'Rides is live', body: 'again' },
+        settings,
+      ),
+    ).toEqual({ ok: false, error: 'exists' });
+  });
 });
 
 describe('votes and ranking', () => {

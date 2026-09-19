@@ -67,6 +67,24 @@ export function effectiveGates(
   };
 }
 
+/**
+ * Whether this account is a first-party official one (identity 0035), read from its
+ * own row inside the write transaction.
+ *
+ * §8: this waives the participation gates, so it is an authorization input and must
+ * key on a value the application cannot forge. is_official is exactly that: the
+ * RESTRICTIVE `users_app_not_official` policy stops the app role ever writing it true,
+ * so the value read back here is the owner's, not something a caller set for itself.
+ * Read as the caller's own row (the own_user policy admits it), never trusted from a
+ * GUC or a client field.
+ */
+export async function isOfficialAccount(tx: TenantTransaction, userId: string): Promise<boolean> {
+  const rows = [
+    ...(await tx.execute(sql`select is_official from users where id = ${userId}::uuid`)),
+  ] as { is_official: boolean }[];
+  return rows[0]?.is_official === true;
+}
+
 /** Whole days since the account was created, read as themselves. */
 async function accountAgeDays(tx: TenantTransaction, userId: string): Promise<number> {
   const rows = [

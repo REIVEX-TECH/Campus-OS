@@ -14,7 +14,7 @@ import { ensureDomainMembership } from '@campusos/module-identity/membership';
 import { findOrCreateUser } from '@campusos/module-identity/sessions';
 import { migrationsFolder, migrationsTable } from '../src/manifest';
 import { notify } from '../src/notify';
-import { listGenericInbox, markRead, unreadCount } from '../src/inbox';
+import { listGenericInbox, markRead, recordClick, unreadCount } from '../src/inbox';
 
 /**
  * The notifications seam: a module emits a generic notification through the definer
@@ -141,5 +141,33 @@ describe('notifications seam', () => {
     expect(await unreadCount(u, 'aaa')).toBe(2);
     expect((await markRead(u, 'aaa', 'all')).marked).toBe(2);
     expect(await unreadCount(u, 'aaa')).toBe(0);
+  });
+
+  it('records a click-through once, marks it read, and only on own rows', async () => {
+    if (!split) return;
+    const u = await member('ntf-click');
+    const other = await member('ntf-click-other');
+    const actor = await member('ntf-click-actor');
+    await notify('aaa', {
+      userId: u.userId,
+      kind: 'services.order_delivered',
+      link: '/u/aaa/orders/z',
+      actorId: actor.userId,
+    });
+    const [item] = await listGenericInbox(u, 'aaa');
+    expect(item).toBeDefined();
+    // Another member cannot stamp it (own-row RLS): no row matches, nothing recorded.
+    expect((await recordClick(other, 'aaa', item!.id)).recorded).toBe(false);
+    // The recipient's first click records and marks it read (following > reading).
+    expect((await recordClick(u, 'aaa', item!.id)).recorded).toBe(true);
+    expect(await unreadCount(u, 'aaa')).toBe(0);
+    // Idempotent: a second click is a no-op, so the metric counts clickers, not clicks.
+    expect((await recordClick(u, 'aaa', item!.id)).recorded).toBe(false);
+    const rows = [
+      ...(await withActorInTenant(u.userId, 'aaa', (tx) =>
+        tx.execute(sql`select clicked_at from notifications where id = ${item!.id}::uuid`),
+      )),
+    ] as { clicked_at: string | Date | null }[];
+    expect(rows[0]?.clicked_at).not.toBeNull();
   });
 });
