@@ -48,6 +48,10 @@ export const users = pgTable(
      * set only by the demo seed. Distinguishes fixtures from real visitors on the
      * demo tenant, where real users are read-only (see docs/design-demo-tenant.md). */
     isDemo: boolean('is_demo').notNull().default(false),
+    /** A first-party official account (platform/campus). Default false; set only by an
+     * owner-run promote/seed. Waives the participation gates so it may announce and
+     * re-post across communities (see packages/modules/communities/src/posts.ts). */
+    isOfficial: boolean('is_official').notNull().default(false),
     createdAt,
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     /** When a session was last issued. Timing only: there is no column for where. */
