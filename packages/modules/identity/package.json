@@ -16,6 +16,7 @@
     "./membership": "./src/membership.ts",
     "./recents": "./src/recents.ts",
     "./verification": "./src/verification.ts",
+    "./cards": "./src/cards.ts",
     "./rbac": "./src/rbac.ts",
     "./members": "./src/members.ts",
     "./analytics": "./src/analytics.ts",

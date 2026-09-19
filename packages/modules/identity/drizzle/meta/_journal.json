@@ -253,6 +253,13 @@
       "when": 1756800035000,
       "tag": "0035_users_is_official",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1756800036000,
+      "tag": "0036_card_dismissals",
+      "breakpoints": true
     }
   ]
 }

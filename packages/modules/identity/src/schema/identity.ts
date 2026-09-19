@@ -234,6 +234,26 @@ export const verifyPromptDismissed = pgTable(
 );
 
 /**
+ * Which contextual home cards a person has dismissed, and when (0036). Per account,
+ * per card; a dismissal is honoured for a 24h window (applied on read) so a card does
+ * not return the same day. card_id is opaque here (the catalog lives in the web app).
+ */
+export const cardDismissals = pgTable(
+  'card_dismissals',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    cardId: text('card_id').notNull(),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tenantId, t.cardId] })],
+);
+
+/**
  * Asks to be verified in a tenant, from people off its email domain. The
  * details are what an admin checks against the university's records and are
  * PURGED on decision; the row stays, with its status and timestamps, so the

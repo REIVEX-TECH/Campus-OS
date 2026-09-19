@@ -32,6 +32,7 @@ import {
   verificationRequests,
   verifyPromptDismissed,
 } from '../src/schema/identity';
+import { activeCardDismissals, dismissCard } from '../src/cards';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
@@ -2676,5 +2677,31 @@ describe('verify prompt dismissal (0027)', () => {
     const aliceSees = await withActor(alice, (tx) => tx.select().from(verifyPromptDismissed));
     expect(aliceSees.every((r) => r.userId === alice)).toBe(true);
     expect(await isVerifyPromptDismissed(bob, 'aaa')).toBe(true);
+  });
+});
+
+describe('card dismissals (0036)', () => {
+  it('remembers a dismissal within the window, per account, and re-dismiss restarts it', async () => {
+    expect(await activeCardDismissals(alice, 'aaa')).toEqual([]);
+    await dismissCard(alice, 'aaa', 'rides-intro');
+    await dismissCard(alice, 'aaa', 'rides-intro'); // idempotent: one row, restarts the window
+    expect(await activeCardDismissals(alice, 'aaa')).toEqual(['rides-intro']);
+    // Per account: bob never sees alice's dismissal (own-row RLS).
+    expect(await activeCardDismissals(bob, 'aaa')).toEqual([]);
+    // Per tenant: the same card in another tenant is not dismissed.
+    expect(await activeCardDismissals(alice, 'bbb')).toEqual([]);
+  });
+
+  it('drops a dismissal older than the window, and a wider window still sees it', async () => {
+    await dismissCard(alice, 'aaa', 'messages-intro');
+    // Age it past 24h as the owner of the row (own-row policy admits the self-write).
+    await withActor(alice, (tx) =>
+      tx.execute(
+        sql`update card_dismissals set dismissed_at = now() - interval '25 hours'
+            where user_id = ${alice}::uuid and tenant_id = 'aaa' and card_id = 'messages-intro'`,
+      ),
+    );
+    expect(await activeCardDismissals(alice, 'aaa')).toEqual([]); // default 24h window
+    expect(await activeCardDismissals(alice, 'aaa', 48)).toEqual(['messages-intro']);
   });
 });

@@ -5,12 +5,15 @@ import { notFound } from 'next/navigation';
 import { getTenantRegistry } from '@/lib/tenants';
 import { isVerified, membershipFor } from '@campusos/module-identity/membership';
 import { isVerifyPromptDismissed } from '@campusos/module-identity/verification';
+import { activeCardDismissals } from '@campusos/module-identity/cards';
 import { currentActor } from '@/lib/auth';
 import { JsonLd } from '@/app/_components/json-ld';
 import { LogoMark } from '@/app/_components/logo-mark';
 import { ModuleIcon } from '@/app/_components/module-icon';
 import { PageShell } from '@/app/_components/page-shell';
+import { ContextualCard } from '@/app/_components/contextual-card';
 import { VerifyPromptCard } from '@/app/_components/verify-prompt-card';
+import { selectContextualCards, type ContextualCardDef } from '@/lib/cards';
 import { translator, type MessageKey } from '@/lib/i18n';
 import { universityLd } from '@/lib/json-ld';
 import { pageMetadata } from '@/lib/metadata';
@@ -42,12 +45,23 @@ export default async function TenantHome({ params }: Params) {
   // Dismissal is remembered per account, and a verified person never sees it.
   const actor = await currentActor();
   let showVerifyPrompt = false;
+  // Contextual cards: time-decayed nudges toward an enabled module, dismissible per
+  // card per account (hidden for 24h). Signed-in only, since dismissal is per person.
+  let cards: ContextualCardDef[] = [];
   if (actor) {
-    const membership = await membershipFor(actor.userId, slug);
+    const [membership, dismissed] = await Promise.all([
+      membershipFor(actor.userId, slug),
+      activeCardDismissals(actor.userId, slug),
+    ]);
     showVerifyPrompt =
       membership !== null &&
       !isVerified(membership) &&
       !(await isVerifyPromptDismissed(actor.userId, slug));
+    cards = selectContextualCards({
+      enabledModules: tenant.enabledModules,
+      dismissedIds: new Set(dismissed),
+      now: new Date(),
+    });
   }
 
   const live = MODULES.filter((m) => !m.soon);
@@ -96,6 +110,26 @@ export default async function TenantHome({ params }: Params) {
               dismiss: t('verify.prompt.dismiss'),
             }}
           />
+        ) : null}
+
+        {cards.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {cards.map((c) => (
+              <ContextualCard
+                key={c.id}
+                tenant={slug}
+                cardId={c.id}
+                icon={c.icon}
+                href={`${base}/${c.path}`}
+                labels={{
+                  title: t(c.titleKey),
+                  body: t(c.bodyKey),
+                  cta: t(c.ctaKey),
+                  dismiss: t('cards.dismiss'),
+                }}
+              />
+            ))}
+          </div>
         ) : null}
 
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-3">
