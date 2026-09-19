@@ -1,17 +1,25 @@
-# Overnight run 5 — morning report
+# Overnight run 6 — morning report
 
-A demo tenant, `demo`, served at `demo.campusos.reivex.io`: a fictional "CampusOS Demo
-University" with seeded, illustrative content across every enabled module — a showcase
-for prospects and a staging surface. It carries the required banner, and real signed-in
-users are read-only on it (enforced server-side). **Nothing about LGU changes** — every
-demo-specific field is additive and defaults off.
+Two features built as one coordinated set, plus a design-first empty state and the
+instrumentation for a held decision:
 
-Design first (`docs/design-demo-tenant.md`), then four PRs, each branched off `main`,
-CI-green before merge. Non-obvious calls are in `DECISIONS.md` (Run 5). No production
-change: no migration run against prod, no deploy, no tenant flag flipped; the demo
-reaches a database only when a human runs `pnpm demo:seed`.
+- **A. Contextual cards** on the tenant home: dismissible, time-decayed nudges toward an
+  enabled module, no personalization, no repeat for 24h once dismissed.
+- **C. Official account**: a first-party `is_official` account with a profile badge that
+  may post in any community (subject to the content rules), plus owner-run promote tooling
+  and an ops runbook for launch posts and re-posting.
+- **B. Empty states**: a one-page design, then the rides board's empty state built to it.
+- **D. Held.** Notification click-through is now instrumented so a week of data can accrue
+  before the decision.
 
-Run 4's report is in git history; this supersedes it.
+Each piece is its own PR, branched off `main`, CI-green before merge. Non-obvious calls
+are in `DECISIONS.md` (Run 6). **No production change**: no migration run against prod, no
+deploy, no tenant flag flipped, and no account promoted; the new capability reaches a real
+tenant only when a human runs the migrations and (for C) `pnpm official:promote`. LGU is
+unchanged apart from the home nudges and the improved rides empty state, which every
+tenant gets.
+
+Run 5's report is in git history; this supersedes it.
 
 ---
 
@@ -19,83 +27,89 @@ Run 4's report is in git history; this supersedes it.
 
 §6 = a concrete-SQL adversarial review applied.
 
-| PR   | What                                                                                                                                          | §6      |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| #232 | Foundation: `isDemo`/`notice` on the tenant config, the `demo` tenant, the notice banner, `users.is_demo` (identity 0034) + `Actor` threading | **yes** |
-| #233 | `pnpm demo:seed` — personas + verified memberships + content across timetable, communities, lost-found, marketplace, messages, rides          | no      |
-| #234 | Read-only rule (H): `demoReadOnly` wired into every mutation gate + a boundary test                                                           | **yes** |
-| #235 | `pnpm demo:reset` (wipe + re-seed) + `docs/runbooks/demo-tenant.md` (deploy notes)                                                            | no      |
+| PR   | What                                                                                 | §6      |
+| ---- | ------------------------------------------------------------------------------------ | ------- |
+| #237 | C1: `users.is_official` (identity 0035) + profile "Official" badge, not app-writable | **yes** |
+| #238 | B: empty-state design (`docs/design-empty-states.md`) + the rides board empty state  | no      |
+| #239 | D: notification click-through instrumentation (`notifications.clicked_at`)           | no      |
+| #240 | C2: official accounts may post in any community + `official:promote` + runbook       | **yes** |
+| #241 | A: contextual cards on the tenant home (`card_dismissals`, identity 0036)            | **yes** |
 
-### A. Tenant + branding
+### A. Contextual cards (#241)
 
-`tenants/demo/tenant.config.ts`: fictional "CampusOS Demo University", a blue accent,
-closed join (`invite`, no domains), every UI module enabled (`campus-map` stays soon),
-`isDemo: true`, and the banner `notice`. The wildcard `*.campusos.reivex.io` already
-resolves the host — zero infra change.
+A code catalog of small nudges (`apps/web/lib/cards.ts`), each gated on its module being
+enabled, ranked by `weight x 2^(-ageDays / 30d)` with no personalization, top two shown.
+Each is an accent-tinted card, visually distinct from posts, with a per-card dismiss that
+hides it for 24h (server-side, own-row RLS in `card_dismissals`, identity 0036, mirroring
+the verify-prompt store). Shown to signed-in members.
 
-### B/C. Seed users + content
+### C. Official account (#237, #240)
 
-8 personas (`users.is_demo = true`) with verified `demo` memberships, and content across
-every module: a full timetable (campus/buildings/rooms/term/dept/program/4 courses/2
-teachers/2 sections/6 weekly entries), 2 communities with posts/comments/votes/karma, 4
-lost-and-found items, 5 marketplace listings + a gig with packages + a completed order and
-review, 2 message threads, and 3 rides with an accepted seat and a rating. Owner-run and
-idempotent (`ON CONFLICT DO NOTHING` on deterministic ids).
+`is_official` on the account (identity 0035), unforgeable by the app (a RESTRICTIVE
+`TO campusos_app` policy, the is_demo pattern), an "Official" badge on the profile read
+through the public-profile view, and a rule in `createPostIn` that waives the participation
+gates (verification, ban/mute, access, karma/age, unaccepted rules) for an official
+account while keeping the content rules (approval, kind, flair, duplicates, rate limit) and
+moderation. `pnpm official:promote` is the owner-only way to set the flag;
+`docs/runbooks/official-account.md` covers launch posts and the manual re-post ops.
 
-### D. Guardrails
+### B. Empty states (#238)
 
-- **G — banner**: a `notice` field on the tenant config renders a top banner on every
-  tenant page when set; the demo config sets it to the required copy, and it reaches the
-  DB through `pnpm demo:seed` / `pnpm tenants:sync` (the seed/migration path, never a hand
-  edit).
-- **H — read-only for real users**: `demoReadOnly(tenant, actor)` returns a 403 when
-  `tenant.isDemo && !actor.isDemo`, wired into every mutation gate (communities,
-  lost-found, marketplace goods + services, rides, messages). Reads are untouched. A
-  boundary test proves a real user cannot mutate on demo while a persona can, and LGU is
-  unaffected. "No messaging seeded users" falls out of the same rule.
-- **Closed join** and **no LGU change** round out the guardrails.
+`docs/design-empty-states.md` sets the shape (a first-run invitation with one CTA, plus a
+quieter "clear filters" variant), the first module (rides), and the metric (empty-board
+CTA conversion, read via D). The rides board now shows that invitation when genuinely
+empty and a "clear filters" state when only a filter emptied it.
 
-### E/F. Reset + deploy
+### D. Notification instrumentation (#239)
 
-`pnpm demo:reset` wipes demo content and re-seeds to a known state (scoped to `demo`
-only). `docs/runbooks/demo-tenant.md` documents the host (wildcard, no infra),
-seed/reset, the banner path, and optional `-- --tenant demo` maintenance crons.
+`notifications.clicked_at` + `recordClick` (own-row, idempotent, marks read) + a
+keepalive beacon on each inbox link. The decision is deferred: CTR is a documented query
+run after a week of data.
 
 ---
 
-## 2. Standing the demo up (NOT run against prod)
+## 2. Standing any of this up (NOT run against prod)
 
 ```bash
-pnpm db:migrate:all   # applies identity 0034 (users.is_demo)
-pnpm demo:seed        # tenant + config (banner) + roles + content, idempotent
+pnpm db:migrate:all     # applies identity 0035, 0036 and notifications 0001
+# C only, per tenant, once an account has signed in and verified:
+pnpm official:promote -- --tenant <slug> --handle <Handle_1234>
 ```
 
-Reset any time with `pnpm demo:reset`. The host `demo.campusos.reivex.io` needs no DNS/
-cert/nginx/env change (existing wildcard). First tenant admin, if wanted, is granted via a
-platform grant at `/u/demo/admin/roles` (the demo already seeds a `tenant_admin` persona
-for display).
+Cards, the badge, the rides empty state, and the click stamp are live from the migrations
+alone; no tenant flag or deploy toggle. No account is official until promoted.
 
 ## 3. Security (CLAUDE.md 6, 8)
 
-- The H decision keys on two values a real user cannot forge: `tenant.isDemo` (tenant
-  config, platform-admin-write) and `actor.is_demo` (the user's own row, which a
-  RESTRICTIVE policy `TO campusos_app` — identity 0034 — stops the app role from ever
-  setting true; only the owner seed sets it). Enforced at the API gate, so hitting the API
-  directly does not get around it; independent of verification, so the demo is read-only
-  by construction.
-- No new SECURITY DEFINER. Personas carry a fake `google_sub` no real sign-in can match.
+- **is_official is an authorization input and is not app-writable.** RESTRICTIVE
+  `users_app_not_official` (0035) blocks the app role from setting it; it is read
+  unforgeably (the public view for the badge, the caller's own row inside the write
+  transaction for the post-anywhere decision), never from a GUC. A boundary test proves
+  the app role cannot self-promote, and a communities test proves an official account may
+  post where a non-member cannot while the content rules still bind.
+- **The official waiver is scoped to participation, never content or safety**, and the
+  account is not an admin.
+- **card_dismissals and clicked_at are own-row UI state, not privileges**, under own-row
+  RLS on `app.user_id`; no new definer or grant in either.
+- The `public_profiles` PII-guard test was tightened to admit the one public column while
+  still asserting `email`/`google_sub` are absent.
 
 ## 4. Verification
 
 Every PR: CI green across typecheck/lint/format/build/test, integration (Postgres + RLS),
-and e2e (one known timetable-combobox flake on #234 cleared on re-run). The seed and reset
-are owner-run tooling CI does not execute, so both were verified locally against real
-Postgres: `demo:seed` is idempotent and populates every module; `demo:reset` returns the
-tenant to its exact seeded counts.
+and e2e. New tests: the is_official self-promote boundary and the public-profile columns
+(#237); the official post-anywhere behaviour (#240); the card selection unit tests and the
+dismissal window/own-row integration test (#241); the click-through record test (#239).
+The card render and the promote script are exercised where they can be (unit + CI e2e for
+the auth-gated card, a load/usage check for the owner-run script), since the local sandbox
+holds no signed-in session and runs nothing against a real DB.
 
 ## 5. Follow-ups
 
-- A demo logo asset at `/tenants/demo/logo.svg` (referenced, not committed — as with LGU).
-- `membership_roles` for the seeded personas if the demo ever needs live RBAC surfaces
-  (skipped: personas never sign in, and content displays by handle, not role).
-- Photos on demo lost-found / marketplace listings once an ObjectStore is wired for demo.
+- **D decision** after a week of click-through data (the point of the hold).
+- The empty-state shape adopts next for marketplace, lost-and-found, and the communities
+  feed (design doc names them).
+- Once a per-user signal exists (D's click-through is the first candidate), card relevance
+  can move beyond time decay toward light personalization.
+- The demo tenant could seed an official persona to showcase the badge (not done; no prod
+  or LGU change).
