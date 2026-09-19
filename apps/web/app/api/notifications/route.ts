@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { markRead } from '@campusos/module-notifications/inbox';
+import { markRead, recordClick } from '@campusos/module-notifications/inbox';
 import { currentActor } from '@/lib/auth';
 import { clientKey, rateLimit } from '@/lib/rate-limit';
 import { readJson } from '@/lib/read-json';
@@ -8,16 +8,23 @@ import { getTenantRegistry } from '@/lib/tenants';
 
 export const dynamic = 'force-dynamic';
 
-const schema = z.object({
-  tenant: z.string().min(1).max(64),
-  action: z.literal('read'),
-  ids: z.union([z.literal('all'), z.array(z.string().uuid()).min(1).max(100)]),
-});
+const schema = z.discriminatedUnion('action', [
+  z.object({
+    tenant: z.string().min(1).max(64),
+    action: z.literal('read'),
+    ids: z.union([z.literal('all'), z.array(z.string().uuid()).min(1).max(100)]),
+  }),
+  z.object({
+    tenant: z.string().min(1).max(64),
+    action: z.literal('click'),
+    id: z.string().uuid(),
+  }),
+]);
 
 /**
- * Mark notifications read, across every kind. Not gated on any module: a member may
- * have notifications from a module that is no longer in their sidebar. Own rows only,
- * by RLS.
+ * Mark notifications read, or record a click-through, across every kind. Not gated on
+ * any module: a member may have notifications from a module that is no longer in their
+ * sidebar. Own rows only, by RLS.
  */
 export async function POST(request: Request): Promise<Response> {
   if (!isSameOrigin(request.headers)) {
@@ -32,6 +39,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.success) return Response.json({ error: 'invalid' }, { status: 400 });
   const tenant = (await getTenantRegistry()).resolveBySlug(parsed.data.tenant);
   if (!tenant) return Response.json({ error: 'not_found' }, { status: 404 });
+  if (parsed.data.action === 'click') {
+    const result = await recordClick({ userId: actor.userId }, tenant.slug, parsed.data.id);
+    return Response.json(result);
+  }
   const result = await markRead({ userId: actor.userId }, tenant.slug, parsed.data.ids);
   return Response.json(result);
 }

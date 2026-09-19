@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Car, SearchX } from 'lucide-react';
 import {
   browseRides,
   type BrowseFilters,
@@ -200,7 +201,28 @@ export default async function RidesPage({ params, searchParams }: PageProps) {
         </form>
 
         {rides.length === 0 ? (
-          <EmptyState title={t('rides.empty')} />
+          // A cold board reads as broken unless it invites the first post; but a
+          // board emptied only by a filter needs the filter cleared, not a nudge to
+          // post. See docs/design-empty-states.md.
+          kind || womenOnly || search || onDate ? (
+            <EmptyState title={t('rides.empty.filtered')} icon={SearchX}>
+              <Link href={`${base}/rides`} className="font-medium text-primary hover:underline">
+                {t('rides.empty.clearFilters')}
+              </Link>
+            </EmptyState>
+          ) : (
+            <EmptyState title={t('rides.empty.heading')} icon={Car}>
+              <div className="flex flex-col items-center gap-3">
+                <p className="max-w-xs">{t('rides.empty.body')}</p>
+                <Link
+                  href={`${base}/rides/post`}
+                  className="ios-pressable rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+                >
+                  {t('rides.post')}
+                </Link>
+              </div>
+            </EmptyState>
+          )
         ) : (
           <div className="flex flex-col gap-5">
             {groups.map((g) => (
