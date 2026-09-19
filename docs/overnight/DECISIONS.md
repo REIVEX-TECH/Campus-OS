@@ -670,3 +670,60 @@ implementation).
   every UI module enabled (`campus-map` stays soon), a blue accent to read differently
   from LGU. Added to `fileTenantConfigs`; the wildcard `*.campusos.reivex.io` host
   resolves `demo.campusos.reivex.io` with zero infra change.
+
+## Run 6 — contextual cards, official account, empty states, notification instrumentation
+
+- **Shape of the run.** A (cards) + C (official account) built as one coordinated set,
+  sequenced C1 (is_official flag) then C2 (post-anywhere + ops) then A1 (cards) because C2
+  and A1 both need the flag from C1; B (empty states) and D (instrumentation) are
+  independent and shipped alongside. One PR per piece, CI green before merge, SHA per PR.
+
+- **is_official mirrors is_demo, and is not app-writable (§8).** The flag waives the
+  community participation gates, so it is an authorization input and must not be settable
+  by the app. A RESTRICTIVE policy scoped `TO campusos_app` forbids the app role from ever
+  writing `is_official = true` (identity `0035`), exactly the is_demo (`0034`) pattern; only
+  the owner-run promote sets it. It is read two ways, each unforgeable: the public badge
+  through the `public_profiles` view (extended with the flag, a public non-sensitive fact,
+  nothing else added); the post-anywhere decision by reading the caller's own row inside
+  the write transaction. Deliberately NOT threaded through `Actor` (unlike is_demo): the
+  demo read-only rule runs at the web gate, which only holds the Actor, whereas
+  is_official's consumers each read the row where they run, so there is no reason to widen
+  the session object.
+
+- **Official waives participation, never content or safety.** `createPostIn` skips
+  verification, ban/mute, community access, the karma/account-age gate, and unaccepted
+  rules for an official account; it keeps community existence/approval/kind, flair
+  validity, duplicate detection, and the per-hour rate limit, and moderation acts on its
+  posts like anyone's. "Subject to rules" = the content and safety rules stay.
+
+- **Promotion is owner-only tooling; launch and re-post are documented ops.** `pnpm
+official:promote` sets the flag (the app cannot). The account, once official, posts
+  launch announcements through the normal composer, and re-posts lost/found and for-sale
+  items into their module with a link back by hand (runbook). Honest seeding by a
+  labelled real account, not bots or a bulk script.
+
+- **Cards: catalog in the web app, dismissal store in identity.** `card_dismissals`
+  (identity `0036`) keys on an opaque `card_id` with own-row RLS on `app.user_id`,
+  mirroring `verify_prompt_dismissed` (`0027`); identity stays agnostic of the catalog.
+  The 24h no-repeat rule is a read-time window (`dismissed_at > now() - interval`), and a
+  re-dismiss restarts it. Relevance is `weight x 2^(-ageDays / 30d)` with no
+  personalization (no per-user signal yet): decay sets the ORDER among enabled, undismissed
+  cards, while dismissal and a top-2 cap set visibility, so an onboarding nudge keeps its
+  place until acted on or dismissed rather than fading to nothing. Cards show to signed-in
+  members only, since dismissal is per account.
+
+- **B: rides first, a two-variant empty state.** A genuinely empty board gets a first-run
+  invitation with one CTA; a board emptied only by a filter gets a "clear filters" state
+  with no create-CTA (nudging someone who over-filtered to post is worse than silence).
+  Metric: empty-board CTA conversion, read via D's click-through. `docs/design-empty-states.md`.
+
+- **D is held; only the instrumentation ships.** `notifications.clicked_at` +
+  `recordClick` (own-row, idempotent, marks read) + a keepalive beacon on inbox links.
+  No cross-user CTR report is built (an aggregate over the FORCE table would need a
+  definer); CTR is a documented SQL query the operator runs after a week, then the D
+  decision is made.
+
+- **The public_profiles column test was tightened, not weakened.** Adding is_official to
+  the view broke the "exactly these columns" test that guards against a PII leak; it now
+  asserts the four columns AND that `email` and `google_sub` are absent, keeping the
+  guarantee while admitting the one public column.
