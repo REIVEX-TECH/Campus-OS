@@ -5,7 +5,7 @@ import { Blocks, CalendarDays, Search, Unlock } from 'lucide-react';
 import { buttonVariants, Card } from '@campusos/ui';
 import { getTenantRegistry } from '@/lib/tenants';
 import { translator, type MessageKey } from '@/lib/i18n';
-import { websiteLd } from '@/lib/json-ld';
+import { organizationLd, websiteLd } from '@/lib/json-ld';
 import { baseUrlFromHost } from '@/lib/tenant';
 import { tenantOrigin } from '@/lib/tenant-routing';
 import { JsonLd } from './_components/json-ld';
@@ -28,6 +28,10 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(baseUrl),
     title,
     description,
+    // Attribute the platform site to CampusOS itself, not to any other brand.
+    authors: [{ name: 'CampusOS' }],
+    creator: 'CampusOS',
+    publisher: 'CampusOS',
     alternates: { canonical: url },
     openGraph: { title, description, url, siteName: title, type: 'website', locale: 'en' },
     twitter: { card: 'summary_large_image', title, description },
@@ -54,6 +58,7 @@ export default async function PlatformHome() {
   return (
     <div className="flex min-h-screen flex-col">
       <JsonLd data={websiteLd({ url: `${baseUrl}/`, description: t('platform.description') })} />
+      <JsonLd data={organizationLd({ url: `${baseUrl}/`, logo: `${baseUrl}/icon-512.png` })} />
       <SkipLink label={t('a11y.skipToContent')} />
       <PlatformHeader />
       <main
