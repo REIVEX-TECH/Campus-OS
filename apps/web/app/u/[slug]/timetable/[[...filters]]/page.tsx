@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { CalendarSearch } from 'lucide-react';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getTenantRegistry } from '@/lib/tenants';
 import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
@@ -15,6 +16,7 @@ import { translator } from '@/lib/i18n';
 import { pageMetadata } from '@/lib/metadata';
 import { tenantNow, toHHMM } from '@/lib/tenant-time';
 import { getQueries, requireTenant } from '@/lib/timetable';
+import { buildTimetablePath, parseTimetableFilters } from '@/lib/timetable-url';
 import { tenantBase } from '@/lib/tenant-url';
 
 // Visual only: the workspace owns the live region (a permanent role="status"
@@ -34,28 +36,56 @@ function ResultsSkeleton() {
 
 export const dynamic = 'force-dynamic';
 
+// The picker state lives in the path: /timetable/t/{term}/p/{program}/s/{section}
+// (see lib/timetable-url.ts). `filters` is the optional catch-all of ordered,
+// prefixed segments; the legacy `?term&program&section` form is 301'd here from
+// middleware.
 type Params = {
-  params: Promise<{ slug: string }>;
-  searchParams: Promise<{ term?: string; program?: string; section?: string }>;
+  params: Promise<{ slug: string; filters?: string[] }>;
 };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug, filters } = await params;
   const tenant = (await getTenantRegistry()).resolveBySlug(slug);
   if (!tenant) return {};
-  return pageMetadata({
-    tenant,
-    title: translator(tenant.locale)('timetable.heading'),
-    path: `${await tenantBase(slug)}/timetable`,
-  });
+  const t = translator(tenant.locale);
+  const base = await tenantBase(slug);
+  const sel = parseTimetableFilters(filters);
+
+  // Title and canonical come from the resolved names, not the ids. A fully chosen
+  // section shares the dedicated /sections/{id} page's title and canonicalises to it,
+  // so there is one canonical per section; partial states canonicalise to /timetable.
+  let title = t('timetable.heading');
+  let path = `${base}/timetable`;
+  if (sel?.section) {
+    const section = await getQueries(slug).getSection(sel.section);
+    if (section) {
+      title = `${section.program.code} ${section.name}`;
+      path = `${base}/sections/${sel.section}`;
+    }
+  } else if (sel?.term) {
+    const queries = getQueries(slug);
+    const term = await queries.getTerm(sel.term);
+    if (sel.program) {
+      const program = (await queries.listProgramsByTerm(sel.term)).find(
+        (p) => p.id === sel.program,
+      );
+      if (program && term) title = `${program.name} · ${term.name}`;
+    } else if (term) {
+      title = term.name;
+    }
+  }
+  return pageMetadata({ tenant, title, path });
 }
 
-export default async function TimetablePickerPage({ params, searchParams }: Params) {
-  const { slug } = await params;
-  const sp = await searchParams;
+export default async function TimetablePickerPage({ params }: Params) {
+  const { slug, filters } = await params;
+  const sel = parseTimetableFilters(filters);
+  if (!sel) notFound();
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
+  const timetablePath = `${base}/timetable`;
   const queries = getQueries(slug);
 
   const [terms, freshness] = await Promise.all([
@@ -64,12 +94,12 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
   ]);
 
   // Default to the first term-with-sections so the program step is ready with
-  // no clicks; validate query params against real data.
-  const term = terms.find((x) => x.id === sp.term)?.id ?? terms[0]?.id;
+  // no clicks; validate path segments against real data.
+  const term = terms.find((x) => x.id === sel.term)?.id ?? terms[0]?.id;
   const programs = term ? await queries.listProgramsByTerm(term) : [];
-  const program = programs.find((p) => p.id === sp.program)?.id;
+  const program = programs.find((p) => p.id === sel.program)?.id;
   const sections = term && program ? await queries.listSectionsByProgramTerm(term, program) : [];
-  const section = sections.find((s) => s.id === sp.section)?.id;
+  const section = sections.find((s) => s.id === sel.section)?.id;
   const sectionSummary = section ? sections.find((s) => s.id === section) : undefined;
   const views = section ? await queries.sectionTimetable(section) : [];
 
@@ -127,6 +157,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
           <EmptyState title={t('timetable.empty.noTerms')} />
         ) : (
           <TimetableWorkspace
+            basePath={timetablePath}
             terms={terms.map((x) => ({ id: x.id, label: x.name }))}
             programs={programs.map((p) => ({ id: p.id, label: p.name }))}
             sections={sections.map((s) => ({ id: s.id, label: s.name }))}
@@ -171,7 +202,7 @@ export default async function TimetablePickerPage({ params, searchParams }: Para
                       kind: 'section',
                       key: section,
                       label: `${sectionSummary.program.code} ${sectionSummary.name}`,
-                      href: `${base}/timetable?term=${encodeURIComponent(term ?? '')}&program=${encodeURIComponent(program ?? '')}&section=${encodeURIComponent(section)}`,
+                      href: buildTimetablePath(timetablePath, { term, program, section }),
                     }}
                   />
                   <SectionTimetableView

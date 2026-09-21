@@ -14,6 +14,7 @@ import { TimetablePicker, type PickerLabels, type PickerOption } from './timetab
  * fallback would not appear on a param change.
  */
 export function TimetableWorkspace({
+  basePath,
   terms,
   programs,
   sections,
@@ -26,6 +27,8 @@ export function TimetableWorkspace({
   skeleton,
   loadingLabel,
 }: {
+  /** The tenant's `/timetable` path; the picker builds the path form under it. */
+  basePath: string;
   /** Sits under the picker: things that help choose, like recent views. */
   aside?: ReactNode;
   terms: PickerOption[];
@@ -46,6 +49,7 @@ export function TimetableWorkspace({
       <div className="flex flex-col gap-3">
         <Card className="p-4">
           <TimetablePicker
+            basePath={basePath}
             terms={terms}
             programs={programs}
             sections={sections}

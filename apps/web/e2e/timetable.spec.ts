@@ -1,46 +1,12 @@
-import { expect, type Page, test } from '@playwright/test';
-
-// The picker state lives in the URL (?term&program&section). We read the program
-// ids from the searchable combobox and the section ids from the native select,
-// then drive the cascade by navigating URLs directly. That keeps the picker
-// exercised while being deterministic (no soft-navigation click races). Lands the
-// page on the first section that renders a timetable (view switcher visible).
-async function programIds(page: Page): Promise<string[]> {
-  await page.goto('/u/lgu/timetable');
-  await page.locator('#pick-program').click(); // semester defaults to the first term
-  const ids = await page
-    .getByRole('option')
-    .evaluateAll((els) => els.map((e) => e.getAttribute('data-value')));
-  return ids.filter((v): v is string => Boolean(v));
-}
-
-async function sectionIds(page: Page, pid: string): Promise<string[]> {
-  await page.goto(`/u/lgu/timetable?program=${pid}`);
-  return page
-    .locator('#pick-section option:not([disabled])')
-    .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
-}
-
-async function cascadeToPopulatedSection(page: Page): Promise<void> {
-  const programs = await programIds(page);
-  expect(programs.length).toBeGreaterThan(0);
-  for (const pid of programs) {
-    for (const sid of await sectionIds(page, pid)) {
-      await page.goto(`/u/lgu/timetable?program=${pid}&section=${sid}`);
-      // A populated section renders class blocks (grid) or dots (list). Count is
-      // DOM-attached, so it is not subject to the visibility-probe timing.
-      if ((await page.locator('.evt, .evt-dot').count()) > 0) return;
-    }
-  }
-  throw new Error('no section with a rendered timetable was found in the fixture');
-}
+import { expect, test } from '@playwright/test';
+import { cascadeToPopulatedSection, firstTermId, programIds, sectionIds } from './cascade';
 
 test('cascade picker renders a section timetable inline, with an ICS subscribe', async ({
   page,
   request,
 }) => {
   await cascadeToPopulatedSection(page);
-  await expect(page).toHaveURL(/section=/); // shareable state lives in the URL
+  await expect(page).toHaveURL(/\/s\//); // shareable state lives in the URL path
 
   // The inline render uses the SAME four-view switcher as the section page (one
   // shared component, so the two paths cannot drift), and de-noises the badge.
@@ -58,10 +24,22 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(await res.text()).toContain('UID:');
 });
 
+test('the legacy query URL 301s to the path form', async ({ page, request }) => {
+  const term = await firstTermId(page);
+  const [pid] = await programIds(page, term);
+  // A raw request does not follow redirects, so we can assert the 301 and target.
+  const res = await request.get(`/u/lgu/timetable?term=${term}&program=${pid}`, {
+    maxRedirects: 0,
+  });
+  expect(res.status()).toBe(301);
+  expect(res.headers()['location']).toContain(`/u/lgu/timetable/t/${term}/p/${pid}`);
+});
+
 test('the picker shows all three steps, enabling section only after a program', async ({
   page,
 }) => {
-  const [pid] = await programIds(page);
+  const term = await firstTermId(page);
+  const [pid] = await programIds(page, term);
 
   // Fresh load: semester defaults to the first term, so program is ready; the
   // section step is visible but disabled with a hint (progressive enabling).
@@ -72,20 +50,21 @@ test('the picker shows all three steps, enabling section only after a program', 
   await expect(page.getByText('Choose a program first')).toBeVisible();
 
   // Choosing a program enables the section step and drops the hint.
-  await page.goto(`/u/lgu/timetable?program=${pid}`);
+  await page.goto(`/u/lgu/timetable/t/${term}/p/${pid}`);
   await expect(page.locator('#pick-section')).toBeEnabled();
   await expect(page.getByText('Choose a program first')).toHaveCount(0);
 });
 
 test('the results skeleton shows while the next section loads', async ({ page }) => {
-  const programs = await programIds(page);
+  const term = await firstTermId(page);
+  const programs = await programIds(page, term);
   expect(programs.length).toBeGreaterThan(0);
   const pid = programs[0]!;
-  const sids = await sectionIds(page, pid);
+  const sids = await sectionIds(page, term, pid);
   expect(sids.length).toBeGreaterThan(0);
   const sid = sids[0]!;
 
-  await page.goto(`/u/lgu/timetable?program=${pid}`);
+  await page.goto(`/u/lgu/timetable/t/${term}/p/${pid}`);
   await expect(page.locator('#pick-section')).toBeEnabled();
 
   // Hold the soft-navigation RSC fetch briefly (fetch the real response, then
@@ -107,7 +86,7 @@ test('the results skeleton shows while the next section loads', async ({ page })
   // loads, then clears once the new content arrives. The pending state is driven
   // by the picker's transition, so it is reliable on a soft navigation.
   await expect(page.locator('[aria-busy="true"]')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`section=${sid}`), { timeout: 6000 });
+  await expect(page).toHaveURL(new RegExp(`/s/${sid}`), { timeout: 6000 });
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 6000 });
 });
 
@@ -124,13 +103,13 @@ test('the semester combobox is searchable and keyboard-operable', async ({ page 
   await expect(semester).toBeFocused();
   await expect(page.getByRole('option').first()).toBeVisible();
 
-  // Arrow + Enter picks a term, closes the listbox, and writes ?term to the URL.
+  // Arrow + Enter picks a term, closes the listbox, and writes /t/{term} to the URL.
   await semester.press('ArrowDown');
   await semester.press('Enter');
   await expect(page.getByRole('listbox')).toBeHidden();
   // Picking runs a soft navigation, so the URL lands only after the server
   // responds; allow for a loaded CI runner rather than the 5s default.
-  await expect(page).toHaveURL(/term=/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/timetable\/t\//, { timeout: 15_000 });
 });
 
 test('a teacher name links to the teacher view', async ({ page }) => {
@@ -149,9 +128,7 @@ test('a teacher name links to the teacher view', async ({ page }) => {
 });
 
 test('the timetable page remembers what you looked at, even signed out', async ({ page }) => {
-  await cascadeToPopulatedSection(page);
-  const section = new URL(page.url()).searchParams.get('section');
-  expect(section).toBeTruthy();
+  const { section } = await cascadeToPopulatedSection(page);
   // The note is written after hydration, so wait for THIS section's entry: the
   // cascade above may have recorded an earlier section already.
   await page.waitForFunction(
@@ -169,7 +146,7 @@ test('the timetable page remembers what you looked at, even signed out', async (
   // By href, not by position: the cascade above records several sections and
   // they can land in the same millisecond, so "newest first" does not settle
   // their order and the first row is not reliably the one just viewed.
-  const recent = panel.locator(`a[href*="section=${section}"]`);
+  const recent = panel.locator(`a[href*="/s/${section}"]`);
   // The panel is client rendered from localStorage after hydration, so on a cold
   // runner the first click can land before the Link's router handler is attached
   // and the soft navigation never fires (the URL stays on the bare picker). Retry
@@ -177,11 +154,11 @@ test('the timetable page remembers what you looked at, even signed out', async (
   // single click that already raced hydration. Poll the URL, not waitForURL: a
   // soft navigation never fires the 'load' event waitForURL waits for by default.
   await expect(async () => {
-    if (new URL(page.url()).searchParams.get('section') === section) return;
+    if (new URL(page.url()).pathname.includes(`/s/${section}`)) return;
     await recent.click({ timeout: 2_000 });
-    await expect(page).toHaveURL(new RegExp(`section=${section}`), { timeout: 2_000 });
+    await expect(page).toHaveURL(new RegExp(`/s/${section}`), { timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
-  expect(new URL(page.url()).searchParams.get('section')).toBe(section);
+  expect(new URL(page.url()).pathname).toContain(`/s/${section}`);
 
   // And it is the reader's to forget.
   await page.goto('/u/lgu/timetable');

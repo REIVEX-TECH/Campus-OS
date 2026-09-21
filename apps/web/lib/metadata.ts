@@ -9,8 +9,10 @@ const APP_DOMAIN = process.env.APP_DOMAIN ?? 'localhost:3000';
 /**
  * Per-page metadata. The [slug] layout supplies the tenant title template
  * (tenant.seo.titleTemplate); `title` here is the page name it composes with.
- * NOTE: URLs use raw ids for now; human-readable slug paths
- * (/timetable/bscs/5/a) replace them once dimension data is verified.
+ * NOTE: paths carry ids (e.g. /timetable/t/{term}/p/{program}/s/{section} and
+ * /sections/{id}); human-readable names go in the title, not the path. Readable
+ * slug paths remain a possible future step once verified unique dimension slugs
+ * exist (a decision for later, see docs/design-timetable-urls.md).
  */
 export async function pageMetadata(opts: {
   tenant: TenantConfig;
