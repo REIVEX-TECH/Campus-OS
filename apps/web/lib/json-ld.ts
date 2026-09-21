@@ -28,6 +28,27 @@ export function websiteLd(opts: { url: string; description: string }): object {
     name: 'CampusOS',
     url: opts.url,
     description: opts.description,
+    // Names the publisher explicitly as the CampusOS organization (below), so search
+    // engines attach the site to a CampusOS entity rather than inferring one.
+    publisher: { '@id': `${opts.url}#organization` },
+  };
+}
+
+/**
+ * CampusOS as an Organization, for the platform landing. This is the publisher entity
+ * the WebSite points at: it names the product and its own logo, so the site reads as
+ * CampusOS's, not as another brand's. `sameAs` (official CampusOS social profiles) is
+ * left for when those profiles exist; a wrong or borrowed profile would misattribute
+ * the entity, which is the opposite of the intent. See docs/SEO.md.
+ */
+export function organizationLd(opts: { url: string; logo: string }): object {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${opts.url}#organization`,
+    name: 'CampusOS',
+    url: opts.url,
+    logo: opts.logo,
   };
 }
 
