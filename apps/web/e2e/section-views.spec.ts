@@ -1,33 +1,10 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { cascadeToPopulatedSection } from './cascade';
 
-/**
- * Find the first section that renders a grid, returning its id. Reads the program
- * ids from the searchable combobox and the section ids from the native select,
- * then drives the cascade by navigating URLs directly (deterministic, no click
- * races). The picker state lives in ?term&program&section.
- */
+/** The first section that renders a grid, by id (drives the shared path-form cascade). */
 async function firstSectionId(page: Page): Promise<string> {
-  await page.goto('/u/lgu/timetable');
-  await page.locator('#pick-program').click(); // semester defaults to the first term
-  const programs = (
-    await page
-      .getByRole('option')
-      .evaluateAll((els) => els.map((e) => e.getAttribute('data-value')))
-  ).filter((v): v is string => Boolean(v));
-
-  for (const pid of programs) {
-    await page.goto(`/u/lgu/timetable?program=${pid}`);
-    const sections = await page
-      .locator('#pick-section option:not([disabled])')
-      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
-    for (const sid of sections) {
-      await page.goto(`/u/lgu/timetable?program=${pid}&section=${sid}`);
-      // A populated section renders class blocks (grid) or dots (list); count is
-      // DOM-attached, unaffected by the visibility-probe timing.
-      if ((await page.locator('.evt, .evt-dot').count()) > 0) return sid;
-    }
-  }
-  throw new Error('no populated section found in the fixture');
+  const { section } = await cascadeToPopulatedSection(page);
+  return section;
 }
 
 test('section view switcher toggles four views and drops the per-class Unverified badge', async ({
