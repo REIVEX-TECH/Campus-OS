@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { planRoute } from './lib/tenant-routing';
+import { legacyTimetableRedirect } from './lib/timetable-url';
 
 /**
  * x-tenant-slug is set ONLY by this middleware and trusted downstream, so any
@@ -41,6 +42,18 @@ export function middleware(req: NextRequest): NextResponse {
     to.pathname = plan.pathname;
     to.search = url.search;
     return NextResponse.redirect(to, 308);
+  }
+
+  // The host is canonical by here (rewrite or next). Legacy timetable query URLs
+  // (?term&program&section) 301 to the path form on the same host, keeping indexed and
+  // externally linked links working. Operates on the public pathname, so it targets
+  // the public path form; the follow-up request rewrites internally as usual.
+  const legacyPath = legacyTimetableRedirect(url.pathname, url.searchParams);
+  if (legacyPath) {
+    const to = new URL(url.href);
+    to.pathname = legacyPath;
+    to.search = '';
+    return NextResponse.redirect(to, 301);
   }
 
   if (plan.action === 'rewrite') {

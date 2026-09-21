@@ -1,8 +1,9 @@
 'use client';
 
 import type { TransitionStartFunction } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Field, Select } from '@campusos/ui';
+import { buildTimetablePath } from '@/lib/timetable-url';
 import { Combobox } from './combobox';
 
 export type PickerOption = { id: string; label: string };
@@ -20,15 +21,17 @@ export type PickerLabels = {
 
 /**
  * The cascading semester -> program -> section picker. Each choice updates the
- * URL query (?term&program&section); the page re-renders the next control and the
- * timetable inline via a soft navigation (no full reload). State lives in the
- * URL, so it is shareable. All three steps are always visible: program is
+ * URL path (/timetable/t/{term}/p/{program}/s/{section}); the page re-renders the
+ * next control and the timetable inline via a soft navigation (no full reload).
+ * State lives in the URL, so it is shareable. All three steps are always visible:
+ * program is
  * disabled until a semester is chosen and section until a program is chosen
  * (progressive enabling, not progressive reveal), each with a hint saying what to
  * pick first. Semester and program are searchable comboboxes (long,
  * order-sensitive lists); section is a short native select.
  */
 export function TimetablePicker({
+  basePath,
   terms,
   programs,
   sections,
@@ -38,6 +41,8 @@ export function TimetablePicker({
   labels,
   startTransition,
 }: {
+  /** The tenant's `/timetable` path; the path form is built under it. */
+  basePath: string;
   terms: PickerOption[];
   programs: PickerOption[];
   sections: PickerOption[];
@@ -50,15 +55,9 @@ export function TimetablePicker({
   startTransition?: TransitionStartFunction;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
 
   function go(next: { term?: string; program?: string; section?: string }): void {
-    const params = new URLSearchParams();
-    if (next.term) params.set('term', next.term);
-    if (next.program) params.set('program', next.program);
-    if (next.section) params.set('section', next.section);
-    const query = params.toString();
-    const href = query ? `${pathname}?${query}` : pathname;
+    const href = buildTimetablePath(basePath, next);
     const run = (): void => router.replace(href, { scroll: false });
     if (startTransition) startTransition(run);
     else run();
