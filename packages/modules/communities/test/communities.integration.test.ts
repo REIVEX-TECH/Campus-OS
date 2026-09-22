@@ -2979,6 +2979,10 @@ describe('definer grant hygiene', () => {
     // The cleanup sweep: deletes a tenant's already-expired messages (owner-run so
     // the delete is not filtered by the participant SELECT policy).
     auth_msg_expire: 'app',
+    // Timetable chip dismissal: app-callable self-write. Stamps user_id/tenant_id from
+    // the GUCs and records the caller's own per-day dismissal; it satisfies the own-row
+    // WITH CHECK, so it is data ownership, not a privilege decision (identity 0037).
+    record_timetable_chip_dismissal: 'app',
     // Owner-only: a maintenance script, an internal helper of other definers, or
     // a trigger function. The application must NOT be able to call these; each is
     // revoked from campusos_app BY NAME in its migration.
