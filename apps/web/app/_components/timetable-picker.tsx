@@ -1,6 +1,5 @@
 'use client';
 
-import type { TransitionStartFunction } from 'react';
 import { useRouter } from 'next/navigation';
 import { Field, Select } from '@campusos/ui';
 import { buildTimetablePath } from '@/lib/timetable-url';
@@ -20,14 +19,13 @@ export type PickerLabels = {
 };
 
 /**
- * The cascading semester -> program -> section picker. Each choice updates the
- * URL path (/timetable/t/{term}/p/{program}/s/{section}); the page re-renders the
- * next control and the timetable inline via a soft navigation (no full reload).
- * State lives in the URL, so it is shareable. All three steps are always visible:
- * program is
- * disabled until a semester is chosen and section until a program is chosen
- * (progressive enabling, not progressive reveal), each with a hint saying what to
- * pick first. Semester and program are searchable comboboxes (long,
+ * The cascading semester -> program -> section picker. Each choice pushes the URL
+ * path (/timetable/t/{term}/p/{program}/s/{section}); only the schedule child route
+ * re-renders (a soft navigation, no full reload), while this picker and the sidebar
+ * stay mounted in the layout. State lives in the URL, so it is shareable. All three
+ * steps are always visible: program is disabled until a semester is chosen and section
+ * until a program is chosen (progressive enabling, not progressive reveal), each with a
+ * hint saying what to pick first. Semester and program are searchable comboboxes (long,
  * order-sensitive lists); section is a short native select.
  */
 export function TimetablePicker({
@@ -39,7 +37,6 @@ export function TimetablePicker({
   program,
   section,
   labels,
-  startTransition,
 }: {
   /** The tenant's `/timetable` path; the path form is built under it. */
   basePath: string;
@@ -50,17 +47,12 @@ export function TimetablePicker({
   program?: string;
   section?: string;
   labels: PickerLabels;
-  /** When provided, navigation runs inside this transition so the caller can
-   * show a pending (skeleton) state until the new results arrive. */
-  startTransition?: TransitionStartFunction;
 }) {
   const router = useRouter();
 
   function go(next: { term?: string; program?: string; section?: string }): void {
-    const href = buildTimetablePath(basePath, next);
-    const run = (): void => router.replace(href, { scroll: false });
-    if (startTransition) startTransition(run);
-    else run();
+    // scroll:false keeps the reader where they are; only the schedule pane changes.
+    router.push(buildTimetablePath(basePath, next), { scroll: false });
   }
 
   // Field ids are shared between the control and its hint (Field derives the hint

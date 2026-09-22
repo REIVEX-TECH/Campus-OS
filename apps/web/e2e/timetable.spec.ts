@@ -24,6 +24,30 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(await res.text()).toContain('UID:');
 });
 
+test('selecting a section is a soft navigation, not a full page reload', async ({ page }) => {
+  const { term, program, section } = await cascadeToPopulatedSection(page);
+  // Reset to the program step so the section dropdown is populated but none is chosen.
+  await page.goto(`/u/lgu/timetable/t/${term}/p/${program}`);
+  await expect(page.locator('#pick-section')).toBeEnabled();
+
+  // Mark the window. A full navigation builds a fresh window and wipes this; a soft
+  // navigation keeps it. This is how we assert "no full navigation event fired".
+  await page.evaluate(() => {
+    (window as unknown as { __kept?: boolean }).__kept = true;
+  });
+
+  await page.locator('#pick-section').selectOption(section);
+
+  // The URL moved to the section path...
+  await expect(page).toHaveURL(new RegExp(`/t/${term}/p/${program}/s/${section}`), {
+    timeout: 6000,
+  });
+  // ...and the marker survived, so only the schedule pane re-rendered (soft nav). The
+  // selectors stayed mounted in the layout.
+  expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+  await expect(page.locator('#pick-section')).toBeVisible();
+});
+
 test('the legacy query URL 301s to the path form', async ({ page, request }) => {
   const term = await firstTermId(page);
   const [pid] = await programIds(page, term);
