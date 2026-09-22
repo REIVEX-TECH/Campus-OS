@@ -33,6 +33,7 @@ import {
   verifyPromptDismissed,
 } from '../src/schema/identity';
 import { activeCardDismissals, dismissCard } from '../src/cards';
+import { dismissTimetableChip, dismissedChipKindsToday } from '../src/chips';
 import { findOrCreateUser, issueSession, resolveSession, revokeSession } from '../src/sessions';
 import { changeHandle, chooseAvatar } from '../src/handles/service';
 import { HANDLE_PATTERN } from '../src/handles/handle';
@@ -2703,5 +2704,38 @@ describe('card dismissals (0036)', () => {
     );
     expect(await activeCardDismissals(alice, 'aaa')).toEqual([]); // default 24h window
     expect(await activeCardDismissals(alice, 'aaa', 48)).toEqual(['messages-intro']);
+  });
+});
+
+describe('timetable chip dismissals (0037)', () => {
+  it('records a per-day dismissal through the definer, private to the actor', async () => {
+    expect(await dismissedChipKindsToday(alice, 'aaa')).toEqual([]);
+    await dismissTimetableChip(alice, 'aaa', 'rides-after-class');
+    await dismissTimetableChip(alice, 'aaa', 'rides-after-class'); // idempotent (ON CONFLICT)
+    expect(await dismissedChipKindsToday(alice, 'aaa')).toEqual(['rides-after-class']);
+    // Own-row: bob never sees alice's dismissal, and it is per tenant.
+    expect(await dismissedChipKindsToday(bob, 'aaa')).toEqual([]);
+    expect(await dismissedChipKindsToday(alice, 'bbb')).toEqual([]);
+  });
+
+  it('only counts today: a dismissal dated earlier does not suppress today', async () => {
+    await dismissTimetableChip(alice, 'aaa', 'free-window-today');
+    // Backdate as the owner of the row (own-row policy admits the self-write).
+    await withActor(alice, (tx) =>
+      tx.execute(
+        sql`update timetable_chip_dismissals set dismissed_on = current_date - 1
+            where user_id = ${alice}::uuid and tenant_id = 'aaa'
+              and chip_kind = 'free-window-today'`,
+      ),
+    );
+    expect(await dismissedChipKindsToday(alice, 'aaa')).toEqual([]);
+  });
+
+  it('the app role cannot forge a dismissal for another user via the definer', async () => {
+    // The definer stamps user_id from app.user_id, so running as bob records bob's row,
+    // never alice's, regardless of intent. bob dismisses; alice is unaffected.
+    await dismissTimetableChip(bob, 'aaa', 'lostfound-building-match');
+    expect(await dismissedChipKindsToday(bob, 'aaa')).toEqual(['lostfound-building-match']);
+    expect(await dismissedChipKindsToday(alice, 'aaa')).toEqual([]);
   });
 });

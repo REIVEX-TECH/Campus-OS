@@ -260,6 +260,13 @@
       "when": 1756800036000,
       "tag": "0036_card_dismissals",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1756800037000,
+      "tag": "0037_timetable_chip_dismissals",
+      "breakpoints": true
     }
   ]
 }

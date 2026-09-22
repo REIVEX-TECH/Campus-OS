@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigserial,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -251,6 +252,27 @@ export const cardDismissals = pgTable(
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.tenantId, t.cardId] })],
+);
+
+/**
+ * Which timetable contextual chips a person has dismissed, per day (0037). Per account,
+ * per chip_kind, per day: a dismissal holds until the next day. The `feedback-onetime`
+ * card reuses this under a synthetic chip_kind with a sentinel date. Written through the
+ * `record_timetable_chip_dismissal` definer; read as own rows.
+ */
+export const timetableChipDismissals = pgTable(
+  'timetable_chip_dismissals',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => universities.slug, { onDelete: 'cascade' }),
+    chipKind: text('chip_kind').notNull(),
+    dismissedOn: date('dismissed_on').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tenantId, t.chipKind, t.dismissedOn] })],
 );
 
 /**
