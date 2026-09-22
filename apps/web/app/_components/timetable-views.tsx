@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TimetableView } from '@campusos/module-timetable/read';
 import type { TimeFormat } from '@campusos/core/time';
 import { translator } from '../../lib/i18n';
@@ -15,6 +15,18 @@ import { WeeklyGrid } from './views/weekly-grid';
 type ViewKey = 'grid' | 'days' | 'list' | 'timeline';
 
 const ORDER: ViewKey[] = ['grid', 'days', 'list', 'timeline'];
+
+const VIEW_STORAGE_KEY = 'campusos_tt_view';
+
+/** The reader's last chosen view, if it is a known one, else null. Never throws. */
+function readStoredView(): ViewKey | null {
+  try {
+    const v = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return v && (ORDER as string[]).includes(v) ? (v as ViewKey) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Client-side view switcher for a section timetable. The section data is fetched
@@ -52,10 +64,36 @@ export function TimetableViews({
   const [day, setDay] = useState<number>(1);
   const [now, setNow] = useState<{ day: number; minutes: number } | null>(null);
 
-  // Responsive default view + default day (today if present), on the section's
-  // data (not on filter changes).
+  // The chosen view is a reader preference, not section state: pick it ONCE (a stored
+  // choice, else the responsive default) so switching sections keeps the current view
+  // instead of snapping back to grid/list. Persist it so it also survives a reload or a
+  // remount of this pane on a section change.
   useEffect(() => {
-    if (window.matchMedia('(min-width: 768px)').matches) setView('grid');
+    const stored = readStoredView();
+    if (stored) setView(stored);
+    else if (window.matchMedia('(min-width: 768px)').matches) setView('grid');
+    // Mount only (empty deps): not keyed on the section, so a new section does not reset
+    // the chosen view. readStoredView is a stable module function.
+  }, []);
+  // Persist only the reader's own later changes, never the initial mount value: on a
+  // section change this pane remounts with the default 'list', and writing that would
+  // clobber the stored choice before the restore effect above reads it.
+  const persisted = useRef(false);
+  useEffect(() => {
+    if (!persisted.current) {
+      persisted.current = true;
+      return;
+    }
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch {
+      // Private mode / disabled storage: the view still works, it just is not remembered.
+    }
+  }, [view]);
+
+  // Default day (today if present) follows the section's data; the day is section state,
+  // not a saved preference, so this may re-run per section.
+  useEffect(() => {
     const todayIso = ((new Date().getDay() + 6) % 7) + 1;
     setDay(allDays.includes(todayIso) ? todayIso : (allDays[0] ?? 1));
   }, [allDays]);

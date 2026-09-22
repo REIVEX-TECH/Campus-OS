@@ -24,6 +24,30 @@ test('cascade picker renders a section timetable inline, with an ICS subscribe',
   expect(await res.text()).toContain('UID:');
 });
 
+test('selecting a section is a soft navigation, not a full page reload', async ({ page }) => {
+  const { term, program, section } = await cascadeToPopulatedSection(page);
+  // Reset to the program step so the section dropdown is populated but none is chosen.
+  await page.goto(`/u/lgu/timetable/t/${term}/p/${program}`);
+  await expect(page.locator('#pick-section')).toBeEnabled();
+
+  // Mark the window. A full navigation builds a fresh window and wipes this; a soft
+  // navigation keeps it. This is how we assert "no full navigation event fired".
+  await page.evaluate(() => {
+    (window as unknown as { __kept?: boolean }).__kept = true;
+  });
+
+  await page.locator('#pick-section').selectOption(section);
+
+  // The URL moved to the section path...
+  await expect(page).toHaveURL(new RegExp(`/t/${term}/p/${program}/s/${section}`), {
+    timeout: 6000,
+  });
+  // ...and the marker survived, so only the schedule pane re-rendered (soft nav). The
+  // selectors stayed mounted in the layout.
+  expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+  await expect(page.locator('#pick-section')).toBeVisible();
+});
+
 test('the legacy query URL 301s to the path form', async ({ page, request }) => {
   const term = await firstTermId(page);
   const [pid] = await programIds(page, term);
@@ -55,7 +79,7 @@ test('the picker shows all three steps, enabling section only after a program', 
   await expect(page.getByText('Choose a program first')).toHaveCount(0);
 });
 
-test('the results skeleton shows while the next section loads', async ({ page }) => {
+test('selecting a section swaps the schedule with no skeleton flash', async ({ page }) => {
   const term = await firstTermId(page);
   const programs = await programIds(page, term);
   expect(programs.length).toBeGreaterThan(0);
@@ -67,13 +91,11 @@ test('the results skeleton shows while the next section loads', async ({ page })
   await page.goto(`/u/lgu/timetable/t/${term}/p/${pid}`);
   await expect(page.locator('#pick-section')).toBeEnabled();
 
-  // Hold the soft-navigation RSC fetch briefly (fetch the real response, then
-  // deliver it after a delay) so the pending skeleton is observable, and the
-  // navigation still commits afterwards.
+  // Delay the schedule RSC fetch so any transient loading state would be observable.
   await page.route('**/u/lgu/timetable**', async (route) => {
     if (route.request().resourceType() === 'fetch') {
       const response = await route.fetch();
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
       await route.fulfill({ response });
       return;
     }
@@ -82,12 +104,12 @@ test('the results skeleton shows while the next section loads', async ({ page })
 
   await page.locator('#pick-section').selectOption(sid);
 
-  // The results column is marked busy (and shows the skeleton) while the section
-  // loads, then clears once the new content arrives. The pending state is driven
-  // by the picker's transition, so it is reliable on a soft navigation.
-  await expect(page.locator('[aria-busy="true"]')).toBeVisible();
+  // The previous pane stays until the new schedule arrives: no busy skeleton replaces it
+  // (that boundary was removed so selecting never flickers). The URL still moves and the
+  // selectors stay mounted (a soft navigation).
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`/s/${sid}`), { timeout: 6000 });
-  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, { timeout: 6000 });
+  await expect(page.locator('#pick-section')).toBeVisible();
 });
 
 test('the semester combobox is searchable and keyboard-operable', async ({ page }) => {
