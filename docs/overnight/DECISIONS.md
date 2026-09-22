@@ -727,3 +727,31 @@ official:promote` sets the flag (the app cannot). The account, once official, po
   the view broke the "exactly these columns" test that guards against a PII leak; it now
   asserts the four columns AND that `email` and `google_sub` are absent, keeping the
   guarantee while admitting the one public column.
+
+## Overnight run — timetable contextual chips
+
+- **Blocking premise mismatch (logged, most of the run's telemetry deferred).** The
+  directive assumes `platform_events` + `record_platform_event` + a per-user cap,
+  `users.is_platform`, and a `/u/[slug]/admin/feed-cards` page — none exist (full-repo
+  search: source, docs, branches). What exists is `is_official` (Run 6), `platform_roles` /
+  `isPlatformAdmin`, and the admin pages analytics/communities/join-policy/members/
+  platform-access/roles/rooms/verification. Inventing an events subsystem (a SECURITY
+  DEFINER writer whose cap semantics the carryover itself flags as delicate), a
+  platform-account flag, and an admin analytics page overnight, undesigned, is a large
+  §6 surface and against "keep it small." Decision: build what does not depend on the
+  missing foundation (signal engine, dismissals table, chip UI); defer telemetry, the
+  feedback-onetime card, the admin panel, and Block 2 with a proposed design in
+  docs/design-timetable-chips.md. The carryover cannot be done: there is no
+  record_platform_event to confirm or test.
+- **Schedule source.** "Today's classes" = the section currently in view on the timetable
+  page (the chip renders under that schedule), passed into chipsForStudent. No section in
+  view -> no chip. Avoids inventing a "my enrolled section" concept that the data model
+  does not have.
+- **Module placement.** chipsForStudent aggregates four modules; modules may not import each
+  other (CLAUDE.md 4), so it lives in apps/web/lib. The dismissals table lives in identity
+  (with card_dismissals / verify_prompt_dismissed).
+- **Feature flag vs "no LGU config changes".** Directive says the chip flag is "ON for LGU";
+  standing rules say no LGU config / no production changes. The guardrail wins: ship the
+  chip behind a code flag defaulted OFF and give the exact enable diff in the report.
+- **Ambassador surface: not built (explicitly out of scope).** Noted here per the
+  instruction to log the temptation and move on; nothing ambassador-shaped was drafted.
