@@ -1,115 +1,161 @@
-# Overnight run 6 — morning report
+# Overnight run — timetable contextual chips — morning report
 
-Two features built as one coordinated set, plus a design-first empty state and the
-instrumentation for a held decision:
+## Read this first: the run is built on infrastructure that does not exist
 
-- **A. Contextual cards** on the tenant home: dismissible, time-decayed nudges toward an
-  enabled module, no personalization, no repeat for 24h once dismissed.
-- **C. Official account**: a first-party `is_official` account with a profile badge that
-  may post in any community (subject to the content rules), plus owner-run promote tooling
-  and an ops runbook for launch posts and re-posting.
-- **B. Empty states**: a one-page design, then the rides board's empty state built to it.
-- **D. Held.** Notification click-through is now instrumented so a week of data can accrue
-  before the decision.
+Most of tonight's directive stands on three things that are **not in the repository** (I
+searched all source, docs, and branches):
 
-Each piece is its own PR, branched off `main`, CI-green before merge. Non-obvious calls
-are in `DECISIONS.md` (Run 6). **No production change**: no migration run against prod, no
-deploy, no tenant flag flipped, and no account promoted; the new capability reaches a real
-tenant only when a human runs the migrations and (for C) `pnpm official:promote`. LGU is
-unchanged apart from the home nudges and the improved rides empty state, which every
-tenant gets.
+- **`platform_events` + `record_platform_event` + the per-user cap** — absent. The
+  carryover ("confirm the cap counts the actor's own rows; add an A-vs-B test") has nothing
+  to confirm or test: there is no such table or function. The only `count(*)` definer is
+  `0011_activity_timing` (active-user analytics), unrelated.
+- **`users.is_platform`** — absent. The report's `UPDATE users SET is_platform=true` and the
+  feedback card's "message the platform account" both assume a column that is not there.
+  What exists: `is_official` (Run 6, official-account badge) and `platform_roles` /
+  `isPlatformAdmin()` (platform-admin role) — different concepts.
+- **`/u/[slug]/admin/feed-cards` page + "announcement metrics"** — absent. Admin pages:
+  analytics, communities, join-policy, members, platform-access, roles, rooms, verification.
 
-Run 5's report is in git history; this supersedes it.
+I did **not** invent an events subsystem (a `SECURITY DEFINER` writer whose cap semantics
+you flagged as delicate), a platform-account flag, and an admin analytics page overnight,
+undesigned — that is a large §6 surface, against "keep it small," and you have a specific
+design in mind (you named `record_platform_event` and its cap rule). So this run built the
+parts that do **not** depend on the missing foundation and deferred the rest with a concrete
+proposal, for your decision.
 
----
+A second gap surfaced while scoping the signals: **rides have no structured "campus
+endpoint"** (only free-text `origin_text`/`dest_text` + optional coords). So the
+`rides-after-class` signal's "leaving campus" filter cannot be computed faithfully without a
+rides schema change or a fragile text heuristic — a decision for you (below).
 
-## 1. What shipped
+## PRs (SHA per PR)
 
-§6 = a concrete-SQL adversarial review applied.
+| PR   | SHA       | What                                                                     | CI    |
+| ---- | --------- | ------------------------------------------------------------------------ | ----- |
+| #246 | `93820f8` | docs: design pass (`docs/design-timetable-chips.md`) + decisions         | green |
+| #247 | `81c0204` | feat: signal engine (pure, fixture-tested) + `timetable_chip_dismissals` | green |
+| #248 | this PR   | docs: this report                                                        | green |
 
-| PR   | What                                                                                 | §6      |
-| ---- | ------------------------------------------------------------------------------------ | ------- |
-| #237 | C1: `users.is_official` (identity 0035) + profile "Official" badge, not app-writable | **yes** |
-| #238 | B: empty-state design (`docs/design-empty-states.md`) + the rides board empty state  | no      |
-| #239 | D: notification click-through instrumentation (`notifications.clicked_at`)           | no      |
-| #240 | C2: official accounts may post in any community + `official:promote` + runbook       | **yes** |
-| #241 | A: contextual cards on the tenant home (`card_dismissals`, identity 0036)            | **yes** |
+## What shipped
 
-### A. Contextual cards (#241)
+- **Design** (`docs/design-timetable-chips.md`): data model, the four signals, ranking,
+  per-user-per-day dismissal, the (deferred) telemetry, empty-state, mobile — and the
+  buildable-vs-blocked split.
+- **Signal engine** (`apps/web/lib/chips/signals.ts`): pure, deterministic
+  `marketplaceCourseMatch` / `lostfoundBuildingMatch` / `ridesAfterClass` /
+  `freeWindowToday` + `chipsForStudent` (rank marketplace > lost-found > rides >
+  free-window, drop dismissed kinds, one chip, none when no classes today). 16 unit tests.
+- **Dismissals** (`identity 0037` + `src/chips.ts`): `timetable_chip_dismissals`, own-row
+  FORCE RLS, written through the `record_timetable_chip_dismissal` self-write definer.
+  Integration test proves per-day, own-row, definer-stamped, no cross-user forge.
 
-A code catalog of small nudges (`apps/web/lib/cards.ts`), each gated on its module being
-enabled, ranked by `weight x 2^(-ageDays / 30d)` with no personalization, top two shown.
-Each is an accent-tinted card, visually distinct from posts, with a per-card dismiss that
-hides it for 24h (server-side, own-row RLS in `card_dismissals`, identity 0036, mirroring
-the verify-prompt store). Shown to signed-in members.
+## Deferred (blocked; proposed, not built)
 
-### C. Official account (#237, #240)
+- **Telemetry (item 3 / 1.2 / 1.5)** — needs `platform_events`. Proposed:
+  `platform_events(id, tenant_id, user_id, kind, payload jsonb, created_at)`, FORCE RLS
+  own-row on `app.user_id`; `record_platform_event(kind, payload)` `SECURITY DEFINER` that
+  stamps `user_id` from `app.user_id` and enforces the per-user cap with the count
+  **filtered to the caller** — `... WHERE user_id = app.user_id ...` inside the definer, not
+  a bare `count(*)` — so one user's cap can never block another's inserts. Its own PR + §6 +
+  the A-vs-B cross-user test you asked for. **This is the keystone: everything else in the
+  run depends on it.**
+- **Chip UI (PR3)** — the engine is done; wiring needs live reads. marketplace (exists),
+  L&F-by-building-recent (small read), room->building for the schedule (small read; the
+  join exists in `freeRooms`/`listRoomsWithCounts`) are clean; **rides is blocked on the
+  campus-endpoint gap**. Also, with telemetry blocked, a shipped chip could not be measured
+  (your stated goal), so wiring it now would likely be reworked. Deferred until the
+  foundation lands.
+- **"Anything missing?" card (1.4)** — needs the `timetable.view` count (`platform_events`)
+  and the platform account (`is_platform`). Deferred.
+- **Admin panel (1.5) + `/admin/feed-cards`** — needs `platform_events` + a page that does
+  not exist. Deferred.
+- **Block 2 ops** — the sweep additions land with the tables they purge; the report script
+  and cap-trajectory check need `platform_events`. Deferred.
 
-`is_official` on the account (identity 0035), unforgeable by the app (a RESTRICTIVE
-`TO campusos_app` policy, the is_demo pattern), an "Official" badge on the profile read
-through the public-profile view, and a rule in `createPostIn` that waives the participation
-gates (verification, ban/mute, access, karma/age, unaccepted rules) for an official
-account while keeping the content rules (approval, kind, flair, duplicates, rate limit) and
-moderation. `pnpm official:promote` is the owner-only way to set the flag;
-`docs/runbooks/official-account.md` covers launch posts and the manual re-post ops.
+## Decisions you need to make (so the rest can proceed)
 
-### B. Empty states (#238)
+1. **`platform_events` design** — confirm the proposed shape + the per-user cap value and
+   semantics. This unblocks all telemetry, 1.4, and 1.5.
+2. **Platform account** — is it a new `users.is_platform` column, or should the feedback
+   card message an `is_official` account, or a `platform_roles` holder? (You wrote
+   `is_platform`; it does not exist yet.)
+3. **rides "campus endpoint"** — add a structured field (e.g. `to_campus`/`from_campus`, or
+   a campus place ref) to the rides model, or accept a text/coords heuristic? Without it,
+   `rides-after-class` cannot honestly say "leaving campus".
+4. **Admin page** — create `/u/[slug]/admin/feed-cards` fresh (it does not exist), or put
+   the panel under the existing `/u/[slug]/admin/analytics`?
 
-`docs/design-empty-states.md` sets the shape (a first-run invitation with one CTA, plus a
-quieter "clear filters" variant), the first module (rides), and the metric (empty-board
-CTA conversion, read via D). The rides board now shows that invitation when genuinely
-empty and a "clear filters" state when only a filter emptied it.
-
-### D. Notification instrumentation (#239)
-
-`notifications.clicked_at` + `recordClick` (own-row, idempotent, marks read) + a
-keepalive beacon on each inbox link. The decision is deferred: CTR is a documented query
-run after a week of data.
-
----
-
-## 2. Standing any of this up (NOT run against prod)
+## Deploy steps (nothing runs against prod automatically)
 
 ```bash
-pnpm db:migrate:all     # applies identity 0035, 0036 and notifications 0001
-# C only, per tenant, once an account has signed in and verified:
-pnpm official:promote -- --tenant <slug> --handle <Handle_1234>
+pnpm db:migrate:all   # applies identity 0037 (timetable_chip_dismissals + definer)
 ```
 
-Cards, the badge, the rides empty state, and the click stamp are live from the migrations
-alone; no tenant flag or deploy toggle. No account is official until promoted.
+No tenant flag flips, no LGU config change, demo untouched. The chip UI is not built yet,
+so there is nothing user-visible to enable this run. When PR3 lands it ships behind a code
+flag defaulted OFF; the enable diff will be one line in the LGU tenant config.
 
-## 3. Security (CLAUDE.md 6, 8)
+## The `is_platform` grant you asked for
 
-- **is_official is an authorization input and is not app-writable.** RESTRICTIVE
-  `users_app_not_official` (0035) blocks the app role from setting it; it is read
-  unforgeably (the public view for the badge, the caller's own row inside the write
-  transaction for the post-anywhere decision), never from a GUC. A boundary test proves
-  the app role cannot self-promote, and a communities test proves an official account may
-  post where a non-member cannot while the content rules still bind.
-- **The official waiver is scoped to participation, never content or safety**, and the
-  account is not an admin.
-- **card_dismissals and clicked_at are own-row UI state, not privileges**, under own-row
-  RLS on `app.user_id`; no new definer or grant in either.
-- The `public_profiles` PII-guard test was tightened to admit the one public column while
-  still asserting `email`/`google_sub` are absent.
+`UPDATE users SET is_platform=true WHERE email='ahadnawaz585@gmail.com';` **will fail** —
+there is no `is_platform` column. Decide #2 above first. If you choose to reuse the existing
+official-account flag, the equivalent (Run 6) is
+`pnpm official:promote -- --tenant <slug> --handle <your-handle>` (owner-run; the app cannot
+set it). If you want a distinct platform account, it needs a new column + migration first.
 
-## 4. Verification
+## Per-signal "will it even fire on LGU?" probes (read-only; run against LGU yourself)
 
-Every PR: CI green across typecheck/lint/format/build/test, integration (Postgres + RLS),
-and e2e. New tests: the is_official self-promote boundary and the public-profile columns
-(#237); the official post-anywhere behaviour (#240); the card selection unit tests and the
-dismissal window/own-row integration test (#241); the click-through record test (#239).
-The card render and the promote script are exercised where they can be (unit + CI e2e for
-the auth-gated card, a load/usage check for the owner-run script), since the local sandbox
-holds no signed-in session and runs nothing against a real DB.
+I cannot reach the LGU production DB from here (no prod access; "no production changes"), so
+these are the read-only probes for you to run. They estimate the **supply** side (whether a
+signal has anything to fire on); the exact "N users today" also depends on which sections
+students view, which needs the view join once telemetry exists.
 
-## 5. Follow-ups
+```sql
+-- marketplace-course-match: active listings whose title carries a course-code-like token
+SELECT count(*) FROM mkt_listings
+WHERE tenant_id='lgu' AND status='active'
+  AND title ~* '[A-Z]{2,4}[- ]?[0-9]{3,4}';
 
-- **D decision** after a week of click-through data (the point of the hold).
-- The empty-state shape adopts next for marketplace, lost-and-found, and the communities
-  feed (design doc names them).
-- Once a per-user signal exists (D's click-through is the first candidate), card relevance
-  can move beyond time decay toward light personalization.
-- The demo tenant could seed an official persona to showcase the badge (not done; no prod
-  or LGU change).
+-- lostfound-building-match: active L&F items per building in the last 7 days
+SELECT building_id, count(*) FROM lost_found_items
+WHERE tenant_id='lgu' AND status='active' AND created_at > now() - interval '7 days'
+GROUP BY building_id ORDER BY 2 DESC;
+
+-- rides-after-class: ride offers per day (campus filter N/A until the gap is resolved)
+SELECT date_trunc('day', depart_at) d, count(*) FROM ride_posts
+WHERE tenant_id='lgu' AND status='active' AND kind='offer' AND depart_at > now()
+GROUP BY 1 ORDER BY 1;
+
+-- free-window-today: sections that have a >=2h gap between classes on some weekday
+--   (approximate; the real per-student figure depends on the section in view)
+-- run the engine's freeWindowToday over each section's entries, or inspect a few sections.
+```
+
+(Table names above are the working names; confirm against the live schema.)
+
+## Browser checklist
+
+Nothing user-visible shipped (engine + dismissal table only). Once PR3 lands: verify the
+chip renders under a section's schedule for the top signal, is specific, dismisses, does not
+reappear that day, shows nothing on a weekend / with no section in view, and does not block
+LCP.
+
+## Decisions log
+
+See `docs/overnight/DECISIONS.md` (this run's section): the premise mismatch, schedule
+source, module placement, the flag-vs-no-LGU-changes call, and the (untouched) ambassador
+out-of-scope note.
+
+## Unsure / risks
+
+- The four foundational decisions above gate the rest of the run.
+- `chipsForStudent` is keyed on the **section in view** (the chip renders under a schedule);
+  there is no "my enrolled section" in the data model. If you want a user-wide chip
+  independent of what they are viewing, that needs a schedule-resolution design.
+- The signal engine is verified by unit tests only; its live reads (PR3) are not yet
+  exercised against real data.
+
+## Explicitly not done (as instructed)
+
+No ambassador surface, role, badge, or page. No changes to communities/marketplace/rides/
+L&F/messages beyond the reads the engine will need. No DB module enablement. Demo untouched.
