@@ -336,8 +336,8 @@ the same room.
 
 This box is always on, so a cron replaces the `HOSTED_DB_ENABLED` GitHub workflow
 (leave that workflow's repo variable unset; it stays off). `scripts/cron-ingest.sh`
-loads Node 22 + `.env` and runs the full live crawl with the adapter's built-in
-retry through the portal's flaky windows.
+loads Node 22 and runs the full live crawl from the repo root with the adapter's
+built-in retry through the portal's flaky windows.
 
 ```bash
 # Add to root's crontab: twice a day (03:00 and 15:00 UTC). `crontab -e`, then:
@@ -350,9 +350,59 @@ retry through the portal's flaky windows.
 The web app picks up refreshed data automatically (queries are `force-dynamic`);
 no restart needed. Watch `/var/log/campusos-ingest.log` for anomaly counts.
 
+> The script does NOT source `.env` into the shell; the ingest loads it via
+> `dotenv/config`, the same way a manual `pnpm ingest:lgu` does. Shell-sourcing
+> (`set -a; . ./.env`) mis-parses a value with a shell-special character (a `#`, `$`,
+> space or quote in a DB password), which can silently give the cron a broken
+> `DATABASE_URL` while a manual run still works. If you rotate a secret, no cron change
+> is needed.
+
 > If the log shows "failed to mint PHPSESSID ... after retries" or many
 > anomalies, the LGU portal is in a flaky window (see `docs/overnight/DECISIONS.md`);
 > the next scheduled run retries.
+
+### 7a. Freshness monitoring (do not let a failure be silent)
+
+A cron that stops persisting is invisible without a monitor. Two independent checks, use
+either or both:
+
+- **Pull — `GET /api/health/ingest`** (for Uptime Kuma or any HTTP monitor). Returns
+  `200` when every monitored tenant's last **successful** ingest is within the window,
+  `503` when any is stale, with a JSON body naming each tenant and its age. Point a
+  monitor at `https://lgu.campusos.reivex.io/api/health/ingest` (or the platform host) on
+  a ~5-minute interval and alert on any non-200.
+
+  It keys on the last successful `ingestion_runs` row, NOT `max(created_at)` on
+  `timetable_entries`: the ingest is idempotent and only writes a new versioned entry when
+  the timetable actually changes, so a stable schedule legitimately has no new entry for
+  days — monitoring entry age would false-alarm nightly. Window: `INGEST_STALE_HOURS`
+  (default 14h = the 12h cron cadence plus a buffer). Scope: tenants with timetable
+  enabled that have ingested at least once; narrow with `INGEST_HEALTH_TENANTS=lgu,...`.
+  A never-ingested tenant is reported but never marks the check stale.
+
+- **Push — `INGEST_HEALTHCHECK_URL`** (for healthchecks.io). Set it in `.env` to a check
+  URL; each successful run pings it and a failure pings `<url>/fail`. healthchecks.io
+  raises the alarm when it hears nothing within the period you configure (set the period
+  to ~13h for the 12h cadence). This catches the cron not running at all.
+
+### 7b. Diagnosing a silent ingest failure
+
+If `/api/health/ingest` is `503` (or you notice stale data), work from data outward:
+
+```bash
+# 1. Did runs happen, and did they succeed? (the source of truth)
+sudo -u postgres psql -d campusos -c \
+  "SELECT started_at, status, stats, left(error,120) FROM ingestion_runs ORDER BY started_at DESC LIMIT 10;"
+```
+
+- Rows with recent `started_at` but `status='failed'` -> the crawl ran and errored; read
+  `error` and `/var/log/campusos-ingest.log`.
+- **No recent rows at all** -> the script never reached `runIngestion`. Check the log and
+  the crontab (`crontab -l`), then run the script by hand (above). Common causes: the
+  cron env can't find `node`/`pnpm` (nvm/PATH), or a required env var is missing/mangled.
+- To confirm the env parses identically to a manual run, run the script by hand from the
+  repo root; it uses `dotenv/config`, so if a manual run works but the cron does not, the
+  difference is the cron environment (PATH, `HOME`, or a stale crontab), not the `.env`.
 
 ---
 
@@ -362,8 +412,7 @@ One command pulls every semester × degree × section into the live DB:
 
 ```bash
 cd /root/codes/campusos && nvm use 22
-set -a; . ./.env; set +a
-SOURCE_MODE=live pnpm ingest:lgu
+SOURCE_MODE=live pnpm ingest:lgu   # loads .env itself via dotenv; no shell-sourcing
 ```
 
 Confirm it worked (last run succeeded, and entry/section counts grew):
