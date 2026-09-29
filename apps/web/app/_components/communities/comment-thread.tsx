@@ -35,6 +35,7 @@ export function CommentThread({
   anonymousAllowed,
   depthCap,
   hint,
+  hintHref,
   t,
 }: {
   tenant: string;
@@ -59,6 +60,8 @@ export function CommentThread({
   depthCap: number;
   /** Why the composer is absent, when it is. */
   hint: string | null;
+  /** When the hint is "sign in to reply", the sign-in link it points at (returns here). */
+  hintHref?: string | null;
   t: Translate;
 }) {
   const reasons = Object.fromEntries(
@@ -224,7 +227,15 @@ export function CommentThread({
         </div>
       ) : (
         <div className="flex flex-col items-start gap-2 px-1">
-          {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+          {hint ? (
+            hintHref ? (
+              <Link href={hintHref} className="text-sm font-medium text-primary hover:underline">
+                {hint}
+              </Link>
+            ) : (
+              <p className="text-sm text-muted-foreground">{hint}</p>
+            )
+          ) : null}
           <VerifyGateInline />
         </div>
       )}

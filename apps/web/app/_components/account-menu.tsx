@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type MouseEvent } from 'react';
 import { LoaderCircle, LogIn } from 'lucide-react';
 import { IdentityAvatar } from './identity-avatar';
@@ -41,11 +41,17 @@ export function AccountMenu({
   tenant: string;
   labels: AccountLabels;
 }) {
+  // Carry the current page as `next`, so signing in from the sign-in page (the no-script or
+  // middle-click fallback, or when no provider is configured) returns the visitor to where
+  // they were rather than a generic landing. The direct, in-place sign-in already stays put.
+  const pathname = usePathname();
+  const href = withNext(signInHref, pathname);
+
   if (account) return <SignedIn account={account} labels={labels} />;
   if (!firebase) {
     return (
       <Link
-        href={signInHref}
+        href={href}
         className="ios-pressable pill-pressable ios-field flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-foreground"
       >
         <LogIn className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
@@ -53,7 +59,13 @@ export function AccountMenu({
       </Link>
     );
   }
-  return <DirectSignIn href={signInHref} firebase={firebase} tenant={tenant} labels={labels} />;
+  return <DirectSignIn href={href} firebase={firebase} tenant={tenant} labels={labels} />;
+}
+
+/** Append the current path as `next`, unless we are already on the sign-in page. */
+function withNext(signInHref: string, pathname: string | null): string {
+  if (!pathname || pathname.endsWith('/signin')) return signInHref;
+  return `${signInHref}?next=${encodeURIComponent(pathname)}`;
 }
 
 /**

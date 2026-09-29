@@ -18,10 +18,22 @@ import { pageMetadata } from '@/lib/metadata';
 import { MODULES } from '@/lib/modules';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
+import { isSignInReason, safeReturnPath, type SignInReason } from '@/lib/sign-in-url';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ slug: string }> };
+type Search = { searchParams: Promise<{ next?: string; reason?: string }> };
+
+/** Why we are asking, when a gate sent the visitor here, as a one-line prompt above the card. */
+const REASON_MESSAGE: Record<SignInReason, MessageKey> = {
+  reply: 'signin.reason.reply',
+  comment: 'signin.reason.comment',
+  message: 'signin.reason.message',
+  post: 'signin.reason.post',
+  save: 'signin.reason.save',
+  vote: 'signin.reason.vote',
+};
 
 /**
  * A fixed, public seed for the example avatar. It belongs to nobody, draws the
@@ -72,14 +84,20 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
  * no database and no provider, so a deployment without Firebase still explains
  * itself instead of breaking.
  */
-export default async function SignInPage({ params }: Params) {
+export default async function SignInPage({ params, searchParams }: Params & Search) {
   const { slug } = await params;
+  const { next, reason } = await searchParams;
   const tenant = await requireTenant(slug);
   const t = translator(tenant.locale);
   const base = await tenantBase(slug);
 
-  // Already signed in, so the account page is what they actually wanted.
-  if (await currentActor()) redirect(`${base}/account`);
+  // Where to go once signed in: back to the page the visitor came from when a gate passed a
+  // safe same-tenant `next`, otherwise their account. Signing in on this page re-renders it
+  // (the button refreshes the route), so this same redirect carries them onward.
+  const returnTo = safeReturnPath(next, base) ?? `${base}/account`;
+  if (await currentActor()) redirect(returnTo);
+
+  const reasonKey = isSignInReason(reason) ? REASON_MESSAGE[reason] : null;
 
   const config = firebaseWebConfig();
   const example = t('signin.exampleHandle');
@@ -91,6 +109,9 @@ export default async function SignInPage({ params }: Params) {
       <div className="flex flex-col gap-5">
         <header className="flex flex-col gap-1 px-1">
           <h1 className="text-2xl font-bold tracking-tight">{t('signin.heading')}</h1>
+          {reasonKey ? (
+            <p className="max-w-prose text-sm font-medium text-foreground">{t(reasonKey)}</p>
+          ) : null}
           <p className="max-w-prose text-sm text-muted-foreground">{t('signin.intro')}</p>
         </header>
 
