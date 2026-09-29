@@ -32,6 +32,7 @@ import { pageMetadata } from '@/lib/metadata';
 import { getTenantRegistry } from '@/lib/tenants';
 import { requireTenant } from '@/lib/timetable';
 import { tenantBase } from '@/lib/tenant-url';
+import { signInPath } from '@/lib/sign-in-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,7 +77,10 @@ export default async function PostPage({ params, searchParams }: PageProps) {
     return (
       <PageShell>
         <EmptyState title={t('communities.signInToRead')}>
-          <Link href={`${base}/signin`} className="font-medium text-primary hover:underline">
+          <Link
+            href={signInPath(base, { next: `${base}/c/${community.slug}/post/${postId}` })}
+            className="font-medium text-primary hover:underline"
+          >
             {t('communities.signIn')}
           </Link>
         </EmptyState>
@@ -121,6 +125,13 @@ export default async function PostPage({ params, searchParams }: PageProps) {
     : canComment
       ? null
       : t('comments.joinToComment');
+  // When the reason to sign in is to reply, make the prompt a link that returns to this post.
+  const hintHref = actor
+    ? null
+    : signInPath(base, {
+        next: postPath(base, community.slug, post.id, post.title),
+        reason: 'reply',
+      });
 
   return (
     <PageShell
@@ -266,6 +277,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           anonymousAllowed={community.allowAnonymous && settings.anonymousPosting === 'on'}
           depthCap={settings.commentDepth}
           hint={hint}
+          hintHref={hintHref}
           t={t}
         />
       </div>

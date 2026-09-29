@@ -21,20 +21,22 @@ test('sign in reports plainly when the provider is not configured', async ({ pag
   );
 });
 
-test('the top bar offers sign in when signed out', async ({ page }) => {
+test('the top bar offers sign in when signed out, and carries where you are', async ({ page }) => {
   await page.goto('/u/lgu/timetable');
-  // The account corner sits at the right of the top bar, on every page.
-  const account = page.locator('#app-topbar a[href="/u/lgu/signin"]');
+  // The account corner sits at the right of the top bar, on every page, and carries the
+  // current path as `next` so signing in returns you here rather than a generic landing.
+  const account = page.locator('#app-topbar a[href^="/u/lgu/signin"]');
   await expect(account).toHaveCount(1);
   await expect(account).toContainText('Sign in');
+  await expect(account).toHaveAttribute('href', '/u/lgu/signin?next=%2Fu%2Flgu%2Ftimetable');
 });
 
 test('the top bar sign in is a real link when no provider is configured', async ({ page }) => {
   // With a provider it signs you in on the spot. Without one it must still take
   // you somewhere that explains why it cannot, rather than doing nothing.
   await page.goto('/u/lgu/timetable');
-  await page.locator('#app-topbar a[href="/u/lgu/signin"]').click();
-  await expect(page).toHaveURL(/\/u\/lgu\/signin$/);
+  await page.locator('#app-topbar a[href^="/u/lgu/signin"]').click();
+  await expect(page).toHaveURL(/\/u\/lgu\/signin\?next=%2Fu%2Flgu%2Ftimetable$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign in');
 });
 
