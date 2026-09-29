@@ -140,6 +140,11 @@ export const en = {
   'timetable.termDatesPending':
     'Term dates are pending, so the calendar feed recurs weekly without an end date.',
 
+  'teaser.heading': 'Only on CampusOS',
+  'teaser.confessions': 'Confessions',
+  'teaser.lostFound': 'Lost and found',
+  'teaser.forSale': 'For sale',
+
   'timetable.empty.noTerms': 'No timetable has been published yet.',
   'timetable.empty.noSections': 'No sections have been published for this term yet.',
   'timetable.empty.noEntries': 'No classes are scheduled yet.',
