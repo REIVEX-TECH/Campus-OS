@@ -4,6 +4,8 @@ import { EmptyState } from '@/app/_components/empty-state';
 import { FreshnessLine } from '@/app/_components/freshness';
 import { PageShell } from '@/app/_components/page-shell';
 import { TimetableSelectors } from '@/app/_components/timetable-selectors';
+import { TimetableTeasers } from '@/app/_components/timetable-teasers';
+import { getTimetableTeasers } from '@/lib/timetable-teasers';
 import { listRecents } from '@campusos/module-identity/recents';
 import { currentActor } from '@/lib/auth';
 import { translator } from '@/lib/i18n';
@@ -43,10 +45,12 @@ export default async function TimetableLayout({
   ]);
 
   // The whole cascade, loaded once, so the client picker can switch term -> program ->
-  // section without a server round trip. Each row is tiny (id + name + parent ids).
-  const [programsByTerm, sectionsByTerm] = await Promise.all([
+  // section without a server round trip. Each row is tiny (id + name + parent ids). The
+  // engagement teasers (anonymous-visible) load alongside it.
+  const [programsByTerm, sectionsByTerm, teasers] = await Promise.all([
     Promise.all(terms.map((tm) => queries.listProgramsByTerm(tm.id))),
     Promise.all(terms.map((tm) => queries.listSectionsByTerm(tm.id))),
+    getTimetableTeasers(slug),
   ]);
   const programs = terms.flatMap((tm, i) =>
     programsByTerm[i]!.map((p) => ({ id: p.id, label: p.name, termId: tm.id })),
@@ -145,6 +149,19 @@ export default async function TimetableLayout({
             <div className="min-w-0">{children}</div>
           </div>
         )}
+
+        {/* Anonymous-visible engagement strip, below the schedule (most timetable
+         * traffic is signed out). Renders nothing when no tile has data. */}
+        <TimetableTeasers
+          tiles={teasers}
+          labels={{
+            heading: t('teaser.heading'),
+            confessions: t('teaser.confessions'),
+            lostFound: t('teaser.lostFound'),
+            forSale: t('teaser.forSale'),
+            free: t('marketplace.price.free'),
+          }}
+        />
 
         <p className="px-1 text-xs text-muted-foreground">{t('timetable.provenance')}</p>
       </div>
